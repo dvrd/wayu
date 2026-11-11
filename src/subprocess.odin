@@ -1,9 +1,117 @@
 package wayu
 
+import "base:intrinsics"
 import "core:c"
 import "core:strings"
 import "core:sys/posix"
 import "core:time"
+
+// ── Interrupt guard ─────────────────────────────────────────────────────
+// Most children run in their own session / process group (no terminal, so
+// git and shells cannot prompt), so a Ctrl-C, SIGTERM or SIGHUP aimed at
+// wayu never reaches them: killed mid-clone, wayu used to leave git running
+// and a partial clone behind. While a child runs, these signals are caught:
+// the handler SIGKILLs the child's group (async-signal-safe: kill/killpg
+// and an atomic store only), then either chains to the handler that was
+// installed before (the TUI's / watcher's terminal and PID file cleanup,
+// which re-raise) or records the signal; when the runner has reaped the
+// child it calls subprocess_interrupt_cleanup and exits with 128 + signal.
+// A signal the process ignored (nohup) stays ignored and spares the child.
+
+CHILD_GUARD_SIGNALS :: [3]posix.Signal{.SIGINT, .SIGTERM, .SIGHUP}
+
+// Run (outside signal context) before an interrupted run exits: e.g. the
+// removal of a partial plugin clone. nil when there is nothing to undo.
+subprocess_interrupt_cleanup: proc()
+
+@(private = "file")
+_guard_busy: i32 // 1 while one runner owns the guard (others run unguarded)
+@(private = "file")
+_guard_pid: posix.pid_t // child to kill, 0 before fork / after reap
+@(private = "file")
+_guard_group: bool // the child leads its own process group
+@(private = "file")
+_guard_signal: i32 // the signal caught, 0 = none
+@(private = "file")
+_guard_prev: [len(CHILD_GUARD_SIGNALS)]posix.sigaction_t
+
+@(private = "file")
+child_guard_handler :: proc "c" (sig: posix.Signal) {
+	idx := -1
+	for g, i in CHILD_GUARD_SIGNALS {
+		if g == sig do idx = i
+	}
+	if idx < 0 do return
+	prev := _guard_prev[idx]
+	prev_ptr := rawptr(prev.sa_handler)
+	if prev_ptr == posix.SIG_IGN {
+		return
+	}
+	if pid := intrinsics.atomic_load(&_guard_pid); pid > 0 {
+		if _guard_group {
+			posix.killpg(pid, .SIGKILL)
+		}
+		posix.kill(pid, .SIGKILL)
+	}
+	if prev_ptr != posix.SIG_DFL {
+		if .SIGINFO in prev.sa_flags {
+			prev.sa_sigaction(sig, nil, nil)
+		} else {
+			prev.sa_handler(sig)
+		}
+		return
+	}
+	intrinsics.atomic_store(&_guard_signal, i32(sig))
+}
+
+// Install the guard before fork (a signal between fork and the install
+// would otherwise orphan the child). false: another runner owns it.
+@(private = "file")
+child_guard_begin :: proc(own_group: bool) -> bool {
+	if _, ok := intrinsics.atomic_compare_exchange_strong(&_guard_busy, 0, 1); !ok {
+		return false
+	}
+	intrinsics.atomic_store(&_guard_pid, 0)
+	_guard_group = own_group
+	act: posix.sigaction_t
+	act.sa_handler = child_guard_handler
+	act.sa_flags = {.RESTART}
+	posix.sigemptyset(&act.sa_mask)
+	for sig, i in CHILD_GUARD_SIGNALS {
+		posix.sigaction(sig, &act, &_guard_prev[i])
+	}
+	return true
+}
+
+@(private = "file")
+child_guard_set_pid :: proc(active: bool, pid: posix.pid_t) {
+	if active && pid > 0 {
+		intrinsics.atomic_store(&_guard_pid, pid)
+		// A signal that arrived between fork and here found no pid.
+		if intrinsics.atomic_load(&_guard_signal) != 0 {
+			if _guard_group do posix.killpg(pid, .SIGKILL)
+			posix.kill(pid, .SIGKILL)
+		}
+	}
+}
+
+// After the child is reaped: restore the previous handlers; if a signal was
+// caught, undo (subprocess_interrupt_cleanup) and exit 128 + signal.
+@(private = "file")
+child_guard_end :: proc(active: bool) {
+	if !active do return
+	intrinsics.atomic_store(&_guard_pid, 0)
+	for sig, i in CHILD_GUARD_SIGNALS {
+		posix.sigaction(sig, &_guard_prev[i], nil)
+	}
+	intrinsics.atomic_store(&_guard_busy, 0)
+	if sig := intrinsics.atomic_exchange(&_guard_signal, 0); sig != 0 {
+		if subprocess_interrupt_cleanup != nil {
+			subprocess_interrupt_cleanup()
+		}
+		wayu_exit(128 + int(sig))
+	}
+}
 
 // run_command runs a subprocess with the given arg array (no shell).
 // Returns true if the process exits with code 0, false otherwise.
@@ -30,8 +138,10 @@ run_command :: proc(args: []string) -> bool {
 	// Open /dev/null for redirecting stdout+stderr in child
 	devnull := posix.open("/dev/null", {.WRONLY})
 
+	guarded := child_guard_begin(false)
 	pid := posix.fork()
 	if pid < 0 {
+		child_guard_end(guarded)
 		// fork failed
 		if devnull >= 0 {
 			posix.close(devnull)
@@ -61,6 +171,7 @@ run_command :: proc(args: []string) -> bool {
 		// execvp only returns on failure — use _exit to avoid Odin atexit handlers
 		posix._exit(1)
 	}
+	child_guard_set_pid(guarded, pid)
 
 	// Parent process
 	if devnull >= 0 {
@@ -68,7 +179,8 @@ run_command :: proc(args: []string) -> bool {
 	}
 
 	status: c.int = 0
-	posix.waitpid(pid, &status, {})
+	for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
+	child_guard_end(guarded)
 	return posix.WIFEXITED(status) && posix.WEXITSTATUS(status) == 0
 }
 
@@ -103,8 +215,10 @@ capture_command :: proc(args: []string) -> string {
 	// Open /dev/null for stderr
 	devnull := posix.open("/dev/null", {.WRONLY})
 
+	guarded := child_guard_begin(true)
 	pid := posix.fork()
 	if pid < 0 {
+		child_guard_end(guarded)
 		posix.close(pipefd[0])
 		posix.close(pipefd[1])
 		if devnull >= 0 {
@@ -140,6 +254,7 @@ capture_command :: proc(args: []string) -> string {
 		posix.execvp(argv[0], raw_data(argv[:]))
 		posix._exit(1)
 	}
+	child_guard_set_pid(guarded, pid)
 
 	// Parent: read from read end of pipe
 	posix.close(pipefd[1]) // Close write end — child owns it
@@ -163,7 +278,8 @@ capture_command :: proc(args: []string) -> string {
 
 	// Wait for child
 	status: c.int = 0
-	posix.waitpid(pid, &status, {})
+	for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
+	child_guard_end(guarded)
 
 	if !posix.WIFEXITED(status) || posix.WEXITSTATUS(status) != 0 {
 		return ""
@@ -205,8 +321,10 @@ run_command_with_stdin :: proc(args: []string, input: string) -> bool {
 	// Open /dev/null for stdout+stderr
 	devnull := posix.open("/dev/null", {.WRONLY})
 
+	guarded := child_guard_begin(false)
 	pid := posix.fork()
 	if pid < 0 {
+		child_guard_end(guarded)
 		posix.close(pipefd[0])
 		posix.close(pipefd[1])
 		if devnull >= 0 {
@@ -228,6 +346,7 @@ run_command_with_stdin :: proc(args: []string, input: string) -> bool {
 		posix.execvp(argv[0], raw_data(argv[:]))
 		posix._exit(1)
 	}
+	child_guard_set_pid(guarded, pid)
 
 	// Parent: write input to write end, then close it (signals EOF to child)
 	posix.close(pipefd[0]) // Close read end — child owns it
@@ -243,7 +362,8 @@ run_command_with_stdin :: proc(args: []string, input: string) -> bool {
 
 	// Wait for child
 	status: c.int = 0
-	posix.waitpid(pid, &status, {})
+	for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
+	child_guard_end(guarded)
 	return posix.WIFEXITED(status) && posix.WEXITSTATUS(status) == 0
 }
 
@@ -315,8 +435,10 @@ run_command_capture_stderr :: proc(args: []string) -> (ok: bool, stderr_text: st
 		return false, strings.clone("")
 	}
 
+	guarded := child_guard_begin(true)
 	pid := posix.fork()
 	if pid < 0 {
+		child_guard_end(guarded)
 		posix.close(pipefd[0])
 		posix.close(pipefd[1])
 		return false, strings.clone("")
@@ -337,6 +459,7 @@ run_command_capture_stderr :: proc(args: []string) -> (ok: bool, stderr_text: st
 		posix.execvp(argv[0], raw_data(argv[:]))
 		posix._exit(127)
 	}
+	child_guard_set_pid(guarded, pid)
 
 	posix.close(pipefd[1])
 
@@ -358,7 +481,8 @@ run_command_capture_stderr :: proc(args: []string) -> (ok: bool, stderr_text: st
 	posix.close(pipefd[0])
 
 	status: c.int = 0
-	posix.waitpid(pid, &status, {})
+	for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
+	child_guard_end(guarded)
 
 	ok = posix.WIFEXITED(status) && posix.WEXITSTATUS(status) == 0
 	stderr_text = strings.clone(strings.trim_space(strings.to_string(sb)))
@@ -485,8 +609,10 @@ run_command_timeout :: proc(
 		return
 	}
 
+	guarded := child_guard_begin(true)
 	pid := posix.fork()
 	if pid < 0 {
+		child_guard_end(guarded)
 		posix.close(out_pipe[0])
 		posix.close(out_pipe[1])
 		posix.close(err_pipe[0])
@@ -531,6 +657,7 @@ run_command_timeout :: proc(
 		posix.execvp(argv[0], raw_data(argv[:]))
 		posix._exit(127)
 	}
+	child_guard_set_pid(guarded, pid)
 
 	posix.close(out_pipe[1])
 	posix.close(err_pipe[1])
@@ -625,6 +752,7 @@ run_command_timeout :: proc(
 
 	status: c.int = 0
 	for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
+	child_guard_end(guarded)
 
 	result.exit_code = int(posix.WEXITSTATUS(status)) if posix.WIFEXITED(status) else -1
 	result.ok =
@@ -664,8 +792,10 @@ run_command_passthrough_timeout :: proc(
 	}
 	argv[len(args)] = nil
 
+	guarded := child_guard_begin(true)
 	pid := posix.fork()
 	if pid < 0 {
+		child_guard_end(guarded)
 		return false, false
 	}
 	if pid == 0 {
@@ -678,6 +808,7 @@ run_command_passthrough_timeout :: proc(
 		posix.execvp(argv[0], raw_data(argv[:]))
 		posix._exit(127)
 	}
+	child_guard_set_pid(guarded, pid)
 	// Also set from the parent so the group exists before a deadline kill.
 	posix.setpgid(pid, pid)
 
@@ -689,6 +820,7 @@ run_command_passthrough_timeout :: proc(
 			break
 		}
 		if r < 0 && posix.errno() != .EINTR {
+			child_guard_end(guarded)
 			return false, false
 		}
 		if timeout_ms > 0 &&
@@ -696,9 +828,11 @@ run_command_passthrough_timeout :: proc(
 			posix.killpg(pid, .SIGKILL)
 			posix.kill(pid, .SIGKILL)
 			for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
+			child_guard_end(guarded)
 			return false, true
 		}
 		time.sleep(10 * time.Millisecond)
 	}
+	child_guard_end(guarded)
 	return posix.WIFEXITED(status) && posix.WEXITSTATUS(status) == 0, false
 }

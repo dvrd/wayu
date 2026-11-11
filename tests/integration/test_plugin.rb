@@ -113,6 +113,7 @@ class PluginIntegrationTest
       test_ssh_batch_mode_and_timeout
       test_build_regenerates_plugin_loaders
       test_offline_update_ignores_repo_hooks
+      test_interrupted_add_kills_git_and_cleans_up
     ensure
       teardown_test_env
     end
@@ -2009,6 +2010,43 @@ class PluginIntegrationTest
     content = File.read("#{dir}/hooked.plugin.zsh") rescue ""
     ok = st.exitstatus == 0 && st2.exitstatus == 0 && content.include?("v2") && ran.empty?
     check("repo hooks ran: #{ran}", ok, out + out2, st2)
+  end
+
+  # SIGTERM / SIGINT to wayu mid-clone: git (own session) and its ssh are
+  # killed, the partial clone dir is removed, wayu exits 128+signal, and the
+  # next add of that name is not blocked.
+  def test_interrupted_add_kills_git_and_cleans_up
+    print "Test 64: interrupted plugin add kills git/ssh and removes the partial clone... "
+    reset_plugins
+    fake_bin = "#{@tmp_home}/fake-bin-int"
+    pid_file = "#{@tmp_home}/ssh-pid"
+    FileUtils.mkdir_p(fake_bin)
+    File.write("#{fake_bin}/ssh", "#!/bin/sh\necho $$ > '#{pid_file}'\nexec sleep 60\n")
+    File.chmod(0o755, "#{fake_bin}/ssh")
+    env = ENV.to_h.merge('HOME' => @tmp_home, 'PATH' => "#{fake_bin}:#{ENV['PATH']}")
+    failures = []
+    { 'TERM' => 143, 'INT' => 130 }.each do |sig, want|
+      FileUtils.rm_f(pid_file)
+      wayu = Process.spawn(env, @wayu_bin, 'plugin', 'add', 'ssh://git.example.test/user/intr.git',
+                           out: File::NULL, err: File::NULL, in: File::NULL)
+      deadline = Time.now + 10
+      sleep 0.05 until File.exist?(pid_file) && File.size?(pid_file) || Time.now > deadline
+      ssh_pid = File.read(pid_file).to_i rescue 0
+      Process.kill(sig, wayu)
+      st = begin
+        Timeout.timeout(10) { Process.wait2(wayu)[1] }
+      rescue Timeout::Error
+        Process.kill('KILL', wayu) rescue nil
+        nil
+      end
+      sleep 0.2
+      ssh_alive = ssh_pid > 0 && (Process.kill(0, ssh_pid) rescue false)
+      Process.kill('KILL', ssh_pid) rescue nil if ssh_alive
+      unless st && st.exitstatus == want && ssh_pid > 0 && !ssh_alive && !File.exist?("#{@plugins_dir}/intr")
+        failures << "#{sig}: exit=#{st&.exitstatus} ssh_pid=#{ssh_pid} ssh_alive=#{ssh_alive} dir=#{File.exist?("#{@plugins_dir}/intr")}"
+      end
+    end
+    check("interrupted add", failures.empty?, failures.join("\n  "), nil)
   end
 end
 

@@ -105,6 +105,36 @@ run_git_network :: proc(
 	return result
 }
 
+// The clone in progress: interrupted (Ctrl-C, SIGTERM, SIGHUP), wayu kills
+// git and removes the partial checkout (see subprocess.odin) — it would
+// otherwise block the next `plugin add` of that name.
+@(private = "file")
+_clone_partial_dest: string
+
+@(private = "file")
+clone_remove_partial :: proc() {
+	if len(_clone_partial_dest) == 0 do return
+	parent := _clone_partial_dest[:max(strings.last_index_byte(_clone_partial_dest, '/'), 0)]
+	remove_cloned_plugin_dir(_clone_partial_dest, parent)
+}
+
+// Register `dest` for removal on interrupt, only when it does not exist yet
+// (never clean up a directory wayu did not create).
+@(private = "file")
+clone_guard_partial :: proc(dest: string) {
+	if _, err := os.lstat(dest, context.temp_allocator); err == nil {
+		return
+	}
+	_clone_partial_dest = dest
+	subprocess_interrupt_cleanup = clone_remove_partial
+}
+
+@(private = "file")
+clone_guard_done :: proc() {
+	_clone_partial_dest = ""
+	subprocess_interrupt_cleanup = nil
+}
+
 // Clone a plugin repository (shallow). `--` ends option parsing so a URL or
 // destination starting with '-' can never be read as a git option.
 // err_text is ALLOCATED (git's stderr, possibly empty) — caller must delete.
@@ -114,6 +144,8 @@ git_clone :: proc(url: string, dest: string) -> (ok: bool, err_text: string) {
 		return true, strings.clone("")
 	}
 
+	clone_guard_partial(dest)
+	defer clone_guard_done()
 	r := run_git_network(
 		git_argv("clone", "--depth=1", "--quiet", "--", url, dest),
 		GIT_CLONE_TIMEOUT_MS,
@@ -143,6 +175,8 @@ git_clone_at_commit :: proc(
 	if !is_valid_commit_sha(commit) {
 		return false, fmt.aprintf("invalid commit '%s'", commit)
 	}
+	clone_guard_partial(dest)
+	defer clone_guard_done()
 
 	cloned := run_git_network(
 		git_argv("clone", "--no-checkout", "--quiet", "--", url, dest),

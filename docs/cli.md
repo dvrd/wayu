@@ -623,6 +623,11 @@ BSD `sysexits.h` values (`EXIT_*` in `src/interfaces.odin`):
 | 126 | `EXIT_EXEC_NOT_RUNNABLE` | `secrets run`: the command was found but cannot be executed |
 | 127 | `EXIT_EXEC_NOT_FOUND` | `secrets run`: the command was not found |
 
+Interrupted (`SIGINT`, `SIGTERM`, `SIGHUP`) while a child process runs (git,
+a compiler, a profiled shell), wayu kills the child's whole process group,
+undoes a partial `plugin add` clone and exits `128 + signal` (`130` for
+Ctrl-C, `143` for `SIGTERM`, `129` for `SIGHUP`).
+
 ### Exit code examples
 
 Run against a freshly initialized config (`wayu init`) by
