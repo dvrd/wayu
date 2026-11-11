@@ -126,7 +126,7 @@ jobs:
     - name: Run integration tests (ASan)
       env:
         WAYU_BIN: bin/asan/wayu
-        ASAN_OPTIONS: detect_leaks=0:halt_on_error=1:abort_on_error=0
+        ASAN_OPTIONS: detect_leaks=0:halt_on_error=1:abort_on_error=0:disable_coredump=0
       run: ruby tests/integration/run_all.rb
 
   lint:
