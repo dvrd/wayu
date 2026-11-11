@@ -401,10 +401,12 @@ write_env_dq_body :: proc(sb: ^strings.Builder, s: string) {
 }
 
 // The text after NAME inside `${NAME...}` may expand only when it starts
-// with an operator that is valid in both zsh and bash and never evaluates
-// text: default/assign/alternate/error (`-` `=` `+` `?`, with or without a
-// leading `:`), prefix/suffix removal (`#` `%`) and substitution (`/`).
-// Everything else stays literal: bash `${X@P}` (4.4+) prompt-expands X's
+// with an operator that is valid in both zsh and bash, never evaluates text
+// and has no side effect: default/alternate/error (`-` `+` `?`, with or
+// without a leading `:`), prefix/suffix removal (`#` `%`) and substitution
+// (`/`). Everything else stays literal: assignment (`=` `:=`) sets another
+// variable while the constant is exported (`${PROMPT_COMMAND:=cmd}` made
+// bash run cmd at every prompt); bash `${X@P}` (4.4+) prompt-expands X's
 // value and runs a `$(...)` stored in it; `${X[Y]}` and `${X:Y}` evaluate Y
 // arithmetically, which runs `$(...)` hidden in Y's value (bash), and
 // `${X:Y}` / `${X^}` abort sourcing in zsh (unknown modifier / bad
@@ -422,10 +424,10 @@ env_brace_op_is_safe :: proc(body: string, is_length: bool) -> bool {
 			return false
 		}
 		op = body[1]
-		return op == '-' || op == '=' || op == '+' || op == '?'
+		return op == '-' || op == '+' || op == '?'
 	}
 	switch op {
-	case '-', '=', '+', '?', '#', '%', '/':
+	case '-', '+', '?', '#', '%', '/':
 		return true
 	}
 	return false

@@ -193,8 +193,9 @@ generate_eval_output :: proc() {
 	fmt.println(content)
 }
 
-// Build eval content (compact; statements separated by `;` so it also
-// survives the unquoted `eval $(...)` form).
+// Build eval content (compact; statements separated by `;`). For
+// `eval "$(wayu export --eval)"` only: unquoted, the shell glob-expands the
+// output before eval (see emit_path_eval).
 build_eval_content :: proc() -> string {
 	clear_toml_content_cache()
 	defer clear_toml_content_cache()

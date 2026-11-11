@@ -430,6 +430,11 @@ emit_env_exports :: proc(b: ^strings.Builder, sep: string = "\n", mask := false)
 			fmt.sbprintf(b, "# wayu: skipping invalid env name %q%s", e.name, sep)
 			continue
 		}
+		// A protected name stored by hand (doctor reports it) is not set.
+		if len(protected_env_name_error(e.name)) > 0 {
+			fmt.sbprintf(b, "# wayu: skipping protected env name %s%s", e.name, sep)
+			continue
+		}
 		v := expand_leading_tilde_to_home_var(e.value, context.temp_allocator)
 		if mask {
 			v = mask_secret_value(e.name, e.value)
@@ -468,8 +473,11 @@ emit_alias_definitions :: proc(b: ^strings.Builder, sep: string = "\n") {
 }
 
 // `wayu export --eval`: put the [paths] dirs (file order = priority) in
-// front of PATH, as one `;`-separated statement list (it must survive the
-// unquoted `eval $(...)` form). Values are expanded by the SHELL
+// front of PATH, as one `;`-separated statement list for
+// `eval "$(wayu export --eval)"`. Only the quoted form is supported: an
+// unquoted `eval $(...)` glob-expands the output in the current directory
+// (the case patterns, alias bodies), so a crafted file name there becomes
+// code. Values are expanded by the SHELL
 // (path_value_shell_word: `$FZG/bin` uses the shell's FZG, an unset variable
 // drops the entry); entries that are not directories or contain ':' are
 // skipped and duplicates dropped, like core.<ext>. Returns false when
@@ -1079,11 +1087,12 @@ read_path_sync_values :: proc() -> (values: [dynamic]string, sig: u64) {
 	return
 }
 
-// `_wayu_paths_apply <sig> <word>...` + newline (values expanded by the
+// `\_wayu_paths_apply <sig> <word>...` + newline (values expanded by the
 // shell, see path_value_shell_word). core.<ext> runs it at startup and
-// path_sync.<ext> holds it for the prompt hook.
+// path_sync.<ext> holds it for the prompt hook: sourced after the aliases
+// exist, so the call is backslash-escaped (no alias expansion).
 emit_path_apply_call :: proc(b: ^strings.Builder, values: []string, sig: u64) {
-	fmt.sbprintf(b, "_wayu_paths_apply %x", sig)
+	fmt.sbprintf(b, "\\_wayu_paths_apply %x", sig)
 	for v in values {
 		fmt.sbprint(b, " ")
 		fmt.sbprint(b, path_value_shell_word(v))
@@ -1465,6 +1474,8 @@ build_core_content :: proc(mask := false) -> string {
 	if login_count > 0 {
 		fmt.sbprintln(&b, "# === Login shell only ===")
 		fmt.sbprintln(&b, "if [[ -o login ]]; then" if is_zsh else "if shopt -q login_shell; then")
+		// `:` keeps the block valid when every entry was skipped (comments only).
+		fmt.sbprintln(&b, "  :")
 		for t in tools {
 			if t.login_only {
 				emit_tool_recipe(&b, t)
@@ -2336,8 +2347,7 @@ tool_kind_is_evalcache :: proc(kind: string) -> bool {
 // the tool (comment in the file, warning on stderr — stdout of `wayu build
 // eval` is eval'd); `wayu build` refuses them up front (validate_tools_args).
 emit_evalcache_call :: proc(b: ^strings.Builder, t: ToolEntry) {
-	if !is_safe_alias_name(t.name) {
-		fmt.sbprintfln(b, "# wayu: invalid tool name %q - skipping", t.name)
+	if !tool_name_ok(b, t.name) {
 		return
 	}
 	if len(t.args) == 0 {
@@ -2523,6 +2533,9 @@ validate_tools_args :: proc() -> bool {
 // Eager evalcache tools are handled in core; this dispatcher runs from
 // lazy/login and covers everything else (deferred evalcache + heavy recipes).
 emit_tool_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
+	if !tool_name_ok(b, t.name) {
+		return
+	}
 	is_zsh := wayu.shell == .ZSH
 	switch {
 	case tool_kind_is_evalcache(t.kind):
@@ -2538,6 +2551,19 @@ emit_tool_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
 	case:
 		fmt.sbprintfln(b, "# wayu: unknown kind %q for tool %q - skipping", t.kind, t.name)
 	}
+}
+
+// A [tools] key must be a valid alias name for every kind: it is printed in
+// generated comments and code, and a TOML quoted key can hold a newline that
+// would end a `# ...` comment and start a command. Otherwise the entry is
+// skipped with a comment (%q-escaped) and a warning on stderr.
+tool_name_ok :: proc(b: ^strings.Builder, name: string) -> bool {
+	if is_safe_alias_name(name) {
+		return true
+	}
+	fmt.sbprintfln(b, "# wayu: invalid tool name %q - skipping", name)
+	fmt.eprintfln("[wayu] [tools] invalid tool name %q - skipping", name)
+	return false
 }
 
 // Generic lazy recipe: wrap each `hook_commands` entry so the first call
@@ -2695,7 +2721,7 @@ _wayu_setup_nvm_lazy() {
       "$cmd" "$@"
       _exit_code=$?
     fi
-    eval "function $cmd { _wayu_run_node_bin $cmd \"\$@\" }"
+    eval "function $cmd { \_wayu_run_node_bin $cmd \"\$@\" }"
     return $_exit_code
   }
 
@@ -2980,6 +3006,11 @@ emit_env_exports_fish :: proc(b: ^strings.Builder, mask := false) {
 			fmt.sbprintfln(b, "# wayu: skipping invalid env name %q", e.name)
 			continue
 		}
+		// A protected name stored by hand (doctor reports it) is not set.
+		if len(protected_env_name_error(e.name)) > 0 {
+			fmt.sbprintfln(b, "# wayu: skipping protected env name %s", e.name)
+			continue
+		}
 		v := expand_leading_tilde_to_home_var(e.value, context.temp_allocator)
 		if mask {
 			v = mask_secret_value(e.name, e.value)
@@ -2993,7 +3024,15 @@ emit_env_exports_fish :: proc(b: ^strings.Builder, mask := false) {
 	}
 }
 
-// `alias name 'command'` per [aliases] entry (fully literal body).
+// One function per [aliases] entry, what fish's `alias` defines, except that
+// the body is never spliced into code: `alias` sources
+// "function NAME; BODY $argv; end", so a body holding `end; ...` ran at
+// startup. Here the body is one escaped word, run by `eval` at call time with
+// the arguments escaped (taken literally, as zsh/bash pass them after an
+// alias). As in `alias`: a body starting with NAME runs it as `command` (or
+// `builtin`) instead of recursing; --wraps (completions) unless the first or
+// last word is NAME; the description `alias NAME BODY` keeps `alias` listing
+// them.
 emit_alias_definitions_fish :: proc(b: ^strings.Builder) {
 	toml_aliases := read_alias_values()
 	defer {
@@ -3005,13 +3044,33 @@ emit_alias_definitions_fish :: proc(b: ^strings.Builder) {
 			fmt.sbprintfln(b, "# wayu: skipping invalid alias name %q", a.name)
 			continue
 		}
-		fmt.sbprintfln(
-			b,
-			`alias %s %s`,
-			a.name,
-			escape_fish_string(a.command, context.temp_allocator),
-		)
+		emit_alias_function_fish(b, a.name, a.command)
 	}
+}
+
+emit_alias_function_fish :: proc(b: ^strings.Builder, name, body: string) {
+	// fish's `alias` splits the body on whitespace (`read --list`).
+	words := strings.fields(body, context.temp_allocator)
+	first := len(words) > 0 ? words[0] : ""
+	last := len(words) > 0 ? words[len(words) - 1] : ""
+	qbody := escape_fish_string(body, context.temp_allocator)
+	fmt.sbprintf(b, "function %s", name)
+	if first != name && last != name {
+		fmt.sbprintf(b, " --wraps %s", qbody)
+	}
+	fmt.sbprintfln(
+		b,
+		" --description %s",
+		escape_fish_string(fmt.tprintf("alias %s %s", name, body), context.temp_allocator),
+	)
+	if first == name {
+		fmt.sbprintln(b, "    set -l p command")
+		fmt.sbprintfln(b, "    contains -- %s (builtin --names); and set p builtin", name)
+		fmt.sbprintfln(b, "    eval $p %s (string escape -- $argv)", qbody)
+	} else {
+		fmt.sbprintfln(b, "    eval %s (string escape -- $argv)", qbody)
+	}
+	fmt.sbprintln(b, "end")
 }
 
 // `wayu export --eval` for fish (`wayu export --eval | source`): [paths]
@@ -3239,8 +3298,7 @@ build_core_content_fish :: proc(mask := false) -> string {
 // init_script (`*.fish`); the nvm / conda recipes are POSIX-only and are
 // skipped with a comment (use nvm.fish / `conda init fish`).
 emit_tool_recipe_fish :: proc(b: ^strings.Builder, t: ToolEntry) {
-	if !is_safe_alias_name(t.name) {
-		fmt.sbprintfln(b, "# wayu: invalid tool name %q - skipping", t.name)
+	if !tool_name_ok(b, t.name) {
 		return
 	}
 	switch {
@@ -3361,7 +3419,10 @@ clear_evalcache :: proc() {
 		base = fmt.tprintf("%s/.cache", wayu.home)
 	}
 	dir := fmt.tprintf("%s/wayu/evalcache", base)
-	if !os.exists(dir) {
+	// lstat, not exists: a symlink in place of the dir is only unlinked
+	// (remove_all followed it and emptied the target).
+	fi, lerr := os.lstat(dir, context.temp_allocator)
+	if lerr != nil {
 		print_info("No evalcache at %s", dir)
 		return
 	}
@@ -3369,7 +3430,8 @@ clear_evalcache :: proc() {
 		fmt.printfln("[DRY RUN] Would remove %s", dir)
 		return
 	}
-	if err := os.remove_all(dir); err != nil {
+	rm_err := os.remove(dir) if fi.type != .Directory else os.remove_all(dir)
+	if err := rm_err; err != nil {
 		print_error("Failed to remove %s: %v", dir, err)
 		wayu_exit(EXIT_IOERR)
 	}

@@ -124,6 +124,14 @@ test_prompt_async_private_tempdir :: proc(t: ^testing.T) {
 	code := strings.to_string(sb)
 
 	testing.expect(t, !strings.contains(code, ".wayu_async_$$"), "no predictable shared temp file")
+	// The pending count never runs repo-configured commands (fsmonitor off,
+	// skipped when the repo defines a filter driver), zsh and fish.
+	fish_worker := wayu.fish_async_worker_script()
+	for c in ([]string{code, fish_worker}) {
+		testing.expect(t, strings.contains(c, wayu.PROMPT_GIT_STATUS), "hardened git status")
+		testing.expect(t, strings.contains(c, wayu.PROMPT_GIT_FILTER_RE), "filter driver check")
+		testing.expect(t, !strings.contains(c, "command git status"), "no bare git status")
+	}
 	testing.expect(
 		t,
 		strings.contains(code, `zf_mkdir -m 700 -- "$_d"`),

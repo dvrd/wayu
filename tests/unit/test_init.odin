@@ -268,3 +268,28 @@ test_tool_args_to_fish :: proc(t: ^testing.T) {
 	_, reason, ok := wayu.tool_args_to_fish("init $(id)")
 	testing.expectf(t, !ok && len(reason) > 0, "command substitution must be refused")
 }
+
+// fish aliases are functions whose body is one escaped word run by `eval`:
+// a body holding `end; ...` is never spliced into the definition, and a body
+// starting with the alias name runs `command`/`builtin` instead of recursing.
+@(test)
+test_fish_alias_function :: proc(t: ^testing.T) {
+	sb := strings.builder_make()
+	defer strings.builder_destroy(&sb)
+	wayu.emit_alias_function_fish(&sb, "fa", "echo; end; touch X")
+	testing.expect_value(
+		t,
+		strings.to_string(sb),
+		"function fa --wraps 'echo; end; touch X' --description 'alias fa echo; end; touch X'\n" +
+		"    eval 'echo; end; touch X' (string escape -- $argv)\nend\n",
+	)
+	strings.builder_reset(&sb)
+	wayu.emit_alias_function_fish(&sb, "ls", "ls -la")
+	testing.expect_value(
+		t,
+		strings.to_string(sb),
+		"function ls --description 'alias ls ls -la'\n    set -l p command\n" +
+		"    contains -- ls (builtin --names); and set p builtin\n" +
+		"    eval $p 'ls -la' (string escape -- $argv)\nend\n",
+	)
+}

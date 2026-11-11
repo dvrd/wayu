@@ -709,7 +709,7 @@ into `core.<ext>`. They are not read from `wayu.toml`; a `[paths]`,
 | `paths[]` | `{"key", "dir"}`: PATH entries, highest priority first. `key`: letters, digits, `_`; `dir`: non-empty, no `:` or newline. |
 | `aliases[]` | `{"name", "value"}`: aliases. `name` follows the [alias name rule](#aliases); `value` must not be blank. |
 | `env[]` | `{"name", "value"}`: constants (exported variables), in export order. `name`: letters, digits, `_`, not starting with a digit. An encrypted one is `{"name", "secret": true}` (no `value`), optionally `"run_only": true`. |
-| `fpath[]` | Strings, zsh only: completion dirs put on `fpath` (first = front) before wayu's `compinit`; the dump is rebuilt when their file list changes. Same expansion as PATH entries. Written only when non-empty (`wayu completions fpath`, `wayu optimize`). |
+| `fpath[]` | Strings, zsh only: completion dirs put on `fpath` (first = front) before wayu's `compinit`; the dump is rebuilt when their file list changes. Same expansion as PATH entries. No `:`, newline or glob character (`* ? [ ] ( ) < > | # ^ ~`, except a leading `~`/`~/`): `compinit` glob-expands fpath dirs. Written only when non-empty (`wayu completions fpath`, `wayu optimize`). |
 | `generators[]` | `{"shell", "cmd", "args"}`: `source <(cmd args)` / `eval "$(cmd args)"` lines moved by `wayu optimize`. `core.<shell>` (only that shell's) runs `_wayu_evalcache cmd args` after everything else, before the aliases; zsh/bash in interactive shells only. `args` follows the `[tools]` args rules. Written only when non-empty. |
 
 - **Writes** are atomic (temp file + rename, symlinks kept), under the lock
@@ -778,11 +778,15 @@ One rule for `alias add`, the TUI, templates and `entries.json`:
 | Rule | |
 |---|---|
 | Name characters | Printable ASCII except whitespace, quotes, `` ` `` `$ \ = / ^ ; & \| < > ( ) { } [ ] * ? # ~ !`; not starting with `-`. `..`, `g.st`, `1x`, `k8s-ctx` are fine |
-| Reserved names | `.` and `if then else elif fi case esac for while until do done in function time select coproc declare typeset local export readonly unset return exit cd pwd echo test true false` are refused |
+| Reserved names | Names starting with `_wayu` (wayu's helpers), `.` and `if then else elif fi case esac for while until do done in function time select coproc declare typeset local export readonly unset return exit cd pwd echo test true false` are refused |
 | Length | At most 255 characters |
 | Command | Must not be blank; no NUL byte, valid UTF-8 |
 
-Generated code: zsh/bash `alias name='command'`, fish `alias name 'command'`.
+Generated code: zsh/bash `alias name='command'`; fish a function
+`function name --wraps 'command' --description 'alias name command'` whose body
+is `eval 'command' (string escape -- $argv)` (what fish's `alias` defines, but
+the command is never parsed as code when the function is defined; arguments
+pass through literally).
 The command is single-quoted and stored verbatim, so `$VAR` in it expands when
 the alias runs. Aliases are emitted sorted by name, last in `core.<ext>`
 (after plugins and tools), so an alias never breaks a function wayu or a
@@ -807,9 +811,9 @@ named variables expand; every other character, `$` included, is literal:
 |---|---|---|
 | `$NAME` | expands (emitted as `${NAME}`, so `$HOME:h` or `$HOME[1]` are not zsh modifiers / subscripts) | expands |
 | `${NAME}` | expands | expands |
-| `${NAME<op>...}`, op = `-` `=` `+` `?` (each also with a leading `:`), `#`, `%`, `/` | expands, e.g. `${X:-d}`, `${X#pre}`, `${X/a/b}` | literal |
+| `${NAME<op>...}`, op = `-` `+` `?` (each also with a leading `:`), `#`, `%`, `/` | expands, e.g. `${X:-d}`, `${X#pre}`, `${X/a/b}` | literal |
 | `${#NAME}` | expands | literal |
-| Any other `${...}`: `${X@P}`, `${X[1]}`, `${X:1}`, `${X: -2}`, `${X^}`, `${HOME:h}`, `${(e)X}` | literal | literal |
+| Any other `${...}`: `${X=v}` / `${X:=v}` (would assign X), `${X@P}`, `${X[1]}`, `${X:1}`, `${X: -2}`, `${X^}`, `${HOME:h}`, `${(e)X}` | literal | literal |
 | `$1`, `$$`, `$?`, `$%`, a trailing `$`, an unclosed `${` | literal | literal |
 | `$(cmd)`, `` `cmd` `` | literal (never run) | literal |
 | `"`, `\` | literal | literal |

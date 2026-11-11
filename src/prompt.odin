@@ -529,6 +529,8 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 // with the `read` builtin: "ref: refs/heads/<branch>", or a commit id when
 // detached (first 7 characters). Only the reftable placeholder HEAD
 // (refs/heads/.invalid) asks git itself. A checkout shows at the next prompt.
+// Control characters (ESC, BEL, CR, ...) in the branch, which a crafted HEAD
+// can hold, show as `?`: they would reach the terminal as escape sequences.
 PROMPT_GIT_INFO_ZSH :: `_wayu_update_git_info() {
   emulate -L zsh
   local d=$PWD g="" top="" l=""
@@ -564,6 +566,7 @@ PROMPT_GIT_INFO_ZSH :: `_wayu_update_git_info() {
   else
     _WAYU_GIT_BRANCH=${l[1,7]}
   fi
+  _WAYU_GIT_BRANCH=${_WAYU_GIT_BRANCH//[[:cntrl:]]/?}
   return 0
 }
 `
@@ -1134,6 +1137,19 @@ context_detect_condition :: proc(detects: []string) -> string {
 // is cleared without forking. The USR1 handler reads the result with `read`
 // and removes it with zsh/files' zf_rm (it ran `$(<f)` + `command rm`); the
 // worker uses zf_mv and a pid-named file instead of mktemp + mv.
+//
+// The pending count runs git in whatever repo the shell is in, including one
+// unpacked from a tarball, whose .git/config can name commands: core.fsmonitor
+// (run on every index read) is forced off on the command line, and a
+// filter.<driver>.clean / .process (run on a stat-dirty file with that
+// attribute) set by the repo's own config (scope local/worktree, includes
+// included) skips the count; git-lfs and other filters from the global or
+// system config are trusted. --no-optional-locks: no index write, and
+// --ignore-submodules=dirty: no `git status` inside submodules, whose config
+// isn't checked. The branch is read from HEAD without git either way.
+PROMPT_GIT_FILTER_RE :: `^filter\..*\.(clean|process)$`
+PROMPT_GIT_STATUS :: "git -c core.fsmonitor=false --no-optional-locks status --porcelain --ignore-submodules=dirty"
+
 PROMPT_VERSION_CMDS :: [?][2]string {
 	{"rust", `command rustc --version 2>/dev/null | command awk '{print $2}'`},
 	{"bun", `command bun --version 2>/dev/null`},
@@ -1180,9 +1196,21 @@ generate_async_feature :: proc(b: ^strings.Builder, rprompt_format: string) {
 	)
 	fmt.sbprintln(b, "_wayu_async_worker() {")
 	fmt.sbprintln(b, `  local git_pending="" ver="" dir="$_WAYU_ASYNC_DIR" tmpf`)
-	fmt.sbprintln(b, "  local -a st")
+	fmt.sbprintln(b, "  local -a st fl")
+	fmt.sbprintln(b, "  local -i rc")
 	fmt.sbprintln(b, `  if [[ -n "$_WAYU_GIT_BRANCH" ]]; then`)
-	fmt.sbprintln(b, `    st=( ${(f)"$(command git status --porcelain 2>/dev/null)"} )`)
+	// See PROMPT_GIT_STATUS: no count when the repo defines a filter driver.
+	fmt.sbprintln(
+		b,
+		`    fl=( ${(f)"$(command git config --show-scope --get-regexp '` +
+		PROMPT_GIT_FILTER_RE +
+		`' 2>/dev/null)"} )`,
+	)
+	fmt.sbprintln(b, "    rc=$?")
+	fmt.sbprintln(b, `    fl=( ${fl:#(global|system|command)$'\t'*} )`)
+	fmt.sbprintln(b, "    if (( rc == 1 || (rc == 0 && ${#fl} == 0) )); then")
+	fmt.sbprintln(b, `      st=( ${(f)"$(command ` + PROMPT_GIT_STATUS + ` 2>/dev/null)"} )`)
+	fmt.sbprintln(b, "    fi")
 	fmt.sbprintln(b, "    if (( ${#st} > 0 )); then")
 	fmt.sbprintln(b, "      git_pending=${#st}")
 	fmt.sbprintfln(b, `      git_pending="%s"`, rpfmt)
@@ -1673,6 +1701,7 @@ function _wayu_update_git_info
         case '*'
             set -g _wayu_git_branch (string sub -l 7 -- "$l")
     end
+    set -g _wayu_git_branch (string replace -ra -- '[\x01-\x1f\x7f]' '?' "$_wayu_git_branch")
     return 0
 end
 `
@@ -1750,8 +1779,21 @@ fish_async_worker_script :: proc() -> string {
 	sb := strings.builder_make(context.temp_allocator)
 	fmt.sbprintln(&sb, "set -l n ''")
 	fmt.sbprintln(&sb, `if test -n "$argv[2]"`)
-	fmt.sbprintln(&sb, "    set -l st (command git status --porcelain 2>/dev/null)")
-	fmt.sbprintln(&sb, "    set -q st[1]; and set n (count $st)")
+	// See PROMPT_GIT_STATUS: no count when the repo defines a filter driver.
+	fmt.sbprintfln(
+		&sb,
+		"    set -l fl (command git config --show-scope --get-regexp '%s' 2>/dev/null)",
+		PROMPT_GIT_FILTER_RE,
+	)
+	fmt.sbprintln(&sb, "    set -l rc $status")
+	fmt.sbprintln(&sb, `    set fl (string match -rv '^(global|system|command)\t' -- $fl)`)
+	fmt.sbprintln(
+		&sb,
+		"    if test $rc -eq 1; or begin; test $rc -eq 0; and not set -q fl[1]; end",
+	)
+	fmt.sbprintfln(&sb, "        set -l st (command %s 2>/dev/null)", PROMPT_GIT_STATUS)
+	fmt.sbprintln(&sb, "        set -q st[1]; and set n (count $st)")
+	fmt.sbprintln(&sb, "    end")
 	fmt.sbprintln(&sb, "end")
 	fmt.sbprintln(&sb, "set -l ver ''")
 	fmt.sbprintln(&sb, "switch $argv[3]")

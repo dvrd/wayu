@@ -69,7 +69,9 @@ test_shell_double_quote_env_dollar_forms :: proc(t: ^testing.T) {
 		{`${X^}`, `"\${X^}"`}, // bash 4 only; zsh bad substitution
 		{`${#X:-a}`, `"\${#X:-a}"`},
 		{`${A:-${B@P}}`, `"${A:-\${B@P}}"`}, // nested body checked too
-		{`${X=a}${X:=a}${X+a}${X:+a}${X?a}${X:?a}`, `"${X=a}${X:=a}${X+a}${X:+a}${X?a}${X:?a}"`},
+		{`${X=a}${X:=a}${X+a}${X:+a}${X?a}${X:?a}`, `"\${X=a}\${X:=a}${X+a}${X:+a}${X?a}${X:?a}"`},
+		// Assignment stays literal at any depth (no side effect on another name).
+		{`${A:-${PROMPT_COMMAND:=touch x}}`, `"${A:-\${PROMPT_COMMAND:=touch x}}"`},
 		{
 			`${X#a}${X##a}${X%a}${X%%a}${X/a/b}${X//a/b}`,
 			`"${X#a}${X##a}${X%a}${X%%a}${X/a/b}${X//a/b}"`,

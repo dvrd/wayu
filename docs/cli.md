@@ -108,8 +108,8 @@ printable ASCII except whitespace, quotes, `$` `` ` `` `\` `=` `/` `^` `;` `&`
 `|` `<` `>` `(` `)` `{` `}` `[` `]` `*` `?` `#` `~` `!`, not starting with `-`
 (so `..`, `g.st`, `1x`, `k8s-ctx` work). Command names may be aliased
 (`alias add cd z`); shell grammar words (`if`, `do`, `function`, ...),
-declaration builtins (`local`, `export`, `typeset`, `return`, ...) and `.` are
-refused (exit `65`). The same rule applies to names in `entries.json`.
+declaration builtins (`local`, `export`, `typeset`, `return`, ...), `.` and
+names starting with `_wayu` (wayu's own helpers) are refused (exit `65`). The same rule applies to names in `entries.json`.
 
 | Action | Arguments | |
 |---|---|---|
@@ -125,9 +125,12 @@ Manage constants: exported environment variables (stored in
 `entries.json`). Default action: `list`. Names: ASCII letters, digits and
 `_`, not starting with a digit. Protected names exit `65`: `PATH`, `path`,
 `FPATH`, `fpath`, `HOME`, `IFS`, `SHELL`, `USER`, `LOGNAME`, `PWD`,
-`OLDPWD`, `ZDOTDIR`, `SHLVL`, `_` and every `WAYU_*` name (setting them from
-wayu breaks the shell or wayu; `wayu doctor` reports stored ones as an
-error). A value (alias command, constant value, PATH dir) with a NUL byte or
+`OLDPWD`, `ZDOTDIR`, `SHLVL`, `_`, every `WAYU_*` name (setting them from
+wayu breaks the shell or wayu), and names whose value a shell runs as code
+or loads code from: `PS0`-`PS4`, `PROMPT`, `prompt`, `PROMPT2`-`PROMPT4`,
+`RPROMPT`, `RPROMPT2`, `RPS1`, `RPS2`, `SPROMPT`, `PROMPT_EOL_MARK`,
+`PROMPT_COMMAND`, `BASH_ENV`, `ENV`, `fish_function_path`,
+`fish_complete_path`. `wayu doctor` reports stored ones as an error. A value (alias command, constant value, PATH dir) with a NUL byte or
 invalid UTF-8 exits `65`.
 
 | Action | Arguments | |
@@ -187,7 +190,7 @@ Completion scripts in the data dir's `completions/`. Default action: `list`.
 | `list`, `ls` | | |
 | `generate` | | Write wayu's own zsh, bash and fish completions |
 | `zsh`, `bash`, `fish` | | Print wayu's completion script for that shell |
-| `fpath` | `[list]`, `add <dir>`, `rm <dir>` | zsh: completion dirs wayu puts on `fpath` before `compinit` (entries.json `fpath`; `wayu optimize` fills it). `add` puts the dir first |
+| `fpath` | `[list]`, `add <dir>`, `rm <dir>` | zsh: completion dirs wayu puts on `fpath` before `compinit` (entries.json `fpath`; `wayu optimize` fills it). `add` puts the dir first; a dir with `:`, a newline or a glob character (`* ? [ ] ( ) < > \| # ^ ~`, except a leading `~`) is refused |
 | `help` | | |
 
 wayu's own completions parse the line rather than count positions: global
@@ -299,7 +302,7 @@ Default action: `turbo`. Each action may also be written as a flag
 | Action | |
 |---|---|
 | `turbo` | Write `turbo.<ext>`, a copy of `core.<ext>` (fish: `core.fish` followed by `tools.fish` and `extra.fish`, like `init.fish`) |
-| `eval` | Print constants, PATH entries and aliases as shell code for `eval` (fish: `wayu export --eval \| source`; writes nothing) |
+| `eval` | Print constants, PATH entries and aliases as shell code for `eval "$(wayu export --eval)"` (fish: `wayu export --eval \| source`; writes nothing). Keep the double quotes: an unquoted `eval $(…)` glob-expands the output against the current directory, so a crafted file name there can run code |
 | `check` | Exit `0` if `turbo.<ext>` is current — its content is exactly what `export --turbo` would write now (any input: wayu.toml, entries.json, `config.<ext>`, a newer wayu) — `78` if it is missing or stale |
 | `list`, `ls` | Show the formats |
 | `help` | |

@@ -46,12 +46,17 @@ class GeneratedShellTest
       test_fresh_init_has_no_error_output
       test_script_path_sync_after_path_add
       test_path_sync_retries_after_bad_save
+      test_path_sync_ignores_aliases
       test_dir_overrides_produce_working_init
       test_evalcache_binary_identity
+      test_build_clean_symlink
       test_bash_errexit_with_tools
       test_tools_args_never_run_code
+      test_tools_name_never_runs_code
       test_prompt_survives_hostile_commands
       test_prompt_async_forks
+      test_prompt_hostile_repo_runs_nothing
+      test_prompt_branch_control_chars
       test_init_and_turbo_define_the_same
       test_prompt_vi_mode_and_widgets
       test_prompt_git_branch_without_git
@@ -605,6 +610,83 @@ class GeneratedShellTest
     end
   end
 
+  # A [tools] key is a TOML quoted key and can hold a newline: it must never
+  # end a generated `# ...` comment and run the rest (every kind; zsh, bash
+  # 3.2, fish). The entry is skipped with a warning on stderr.
+  def test_tools_name_never_runs_code
+    print "Test: [tools] names with a newline are skipped, never run (zsh, bash, fish)... "
+    home = "#{@tmp_home}/tools_name"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p("#{home}/.config")
+    env = clean_env(home)
+    fish = ENV['PATH'].split(':').map { |d| "#{d}/fish" }.find { |f| File.executable?(f) }
+    shells = %w[zsh bash] + (fish ? %w[fish] : [])
+    shells.each { |sh| Open3.capture3(env.merge('SHELL' => "/bin/#{sh}"), @wayu_bin, 'init', '--shell', sh) }
+    marker = "#{home}/PWNED"
+    cfg = "#{home}/.config/wayu"
+    toml = %w[lazy nvm conda evalcache].map.with_index do |k, i|
+      extra = k == 'lazy' ? ', init_script = "~/i.sh", hook_commands = ["foo"]' : ''
+      %(\n"t#{i}\\ntouch #{marker}\\n" = { kind = "#{k}"#{extra}#{i.odd? ? ', login_only = true' : ''} }\n)
+    end.join
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[tools]" + toml)
+    _, berr, = Open3.capture3(env, @wayu_bin, 'build')
+    data = "#{home}/.local/share/wayu"
+    errs = []
+    shells.each do |sh|
+      exe = sh == 'bash' ? '/bin/bash' : (sh == 'fish' ? fish : 'zsh')
+      args = sh == 'fish' ? ['--no-config', '-l', '-c'] : ['-l', '-c']
+      _, e, = Open3.capture3(env, exe, *args, "source '#{data}/init.#{sh}'")
+      errs << "#{sh}: #{e.strip[0, 120]}" unless e.strip.empty?
+    end
+    ok = !File.exist?(marker) && berr.include?('invalid tool name') && errs.empty?
+    check('tools name', ok, "pwned=#{File.exist?(marker)} build_err=#{berr.strip[0, 200]} errs=#{errs}")
+  end
+
+  # path_sync.<ext> is sourced from the prompt hook, after aliases exist: an
+  # alias named like wayu's helper must not hijack the call (zsh, bash 3.2),
+  # and `alias add` refuses names starting with _wayu (65).
+  def test_path_sync_ignores_aliases
+    print "Test: path_sync calls wayu's helper alias-proof; _wayu* alias names refused... "
+    home = "#{@tmp_home}/sync_alias"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/bin"])
+    env = clean_env(home)
+    marker = "#{home}/PWNED"
+    errs = []
+    %w[zsh bash].each do |sh|
+      e = env.merge('SHELL' => "/bin/#{sh}")
+      Open3.capture3(e, @wayu_bin, 'init', '--shell', sh)
+      Open3.capture3(e, @wayu_bin, 'path', 'add', "#{home}/bin")
+      data = "#{home}/.local/share/wayu"
+      opt = sh == 'bash' ? 'shopt -s expand_aliases; ' : ''
+      out, err, = Open3.capture3(e, "/bin/#{sh}", '-c',
+                                 "#{opt}source '#{data}/init.#{sh}'; alias _wayu_paths_apply='touch #{marker}; :'\n" \
+                                 "source '#{data}/path_sync.#{sh}'\necho \"$PATH\"")
+      errs << "#{sh}: out=#{out.strip[0, 80]} err=#{err.strip[0, 120]}" unless out.include?("#{home}/bin") && !File.exist?(marker)
+      FileUtils.rm_f(marker)
+    end
+    _, _, st = Open3.capture3(env, @wayu_bin, 'alias', 'add', '_wayu_paths_apply', 'echo hi')
+    _, _, st2 = Open3.capture3(env, @wayu_bin, 'alias', 'add', '_wayu', 'echo hi')
+    check('path_sync aliases', errs.empty? && st.exitstatus == 65 && st2.exitstatus == 65,
+          "errs=#{errs} alias_add=#{st.exitstatus},#{st2.exitstatus}")
+  end
+
+  # `wayu build clean` with a symlink in place of the evalcache dir unlinks
+  # the symlink and never deletes what it points to.
+  def test_build_clean_symlink
+    print "Test: build clean unlinks a symlinked evalcache dir, target untouched... "
+    home = "#{@tmp_home}/clean_link"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/.cache/wayu", "#{home}/victim"])
+    File.write("#{home}/victim/keep", "x\n")
+    File.symlink("#{home}/victim", "#{home}/.cache/wayu/evalcache")
+    env = clean_env(home)
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
+    _, err, st = Open3.capture3(env, @wayu_bin, 'build', 'clean')
+    ok = st.success? && File.exist?("#{home}/victim/keep") && !File.symlink?("#{home}/.cache/wayu/evalcache")
+    check('build clean symlink', ok, "exit=#{st.exitstatus} keep=#{File.exist?("#{home}/victim/keep")} err=#{err.strip[0, 200]}")
+  end
+
   # OKAMI-349: outside a git work tree (and a versioned context) a prompt
   # render starts no async worker; in a repo the worker reports the pending
   # count and the USR1 handler reads and removes the result without forking
@@ -640,6 +722,106 @@ class GeneratedShellTest
     ok = st.success? && out.include?('plain bang=1 dir=none') && out =~ /repo data=\S*1\S* left=0/ &&
          out.include?('back data=[]')
     check('prompt async forks', ok, "out=#{out.inspect} err=#{err.strip[0, 400]}")
+  end
+
+  # The async worker's pending count runs git in any repo the shell enters: a
+  # repo whose own config names core.fsmonitor, or a filter.<x>.clean driver
+  # (directly or via include.path) for a stat-dirty file, must run nothing
+  # (zsh and fish); a plain repo still gets its count. Hostile repos keep the
+  # branch.
+  def test_prompt_hostile_repo_runs_nothing
+    print "Test: native prompt async worker runs no repo-configured commands (zsh, fish)... "
+    home = "#{@tmp_home}/prompt_repo"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p("#{home}/.config")
+    env = clean_env(home)
+    fish = ENV['PATH'].split(':').map { |d| "#{d}/fish" }.find { |f| File.executable?(f) }
+    shells = fish ? %w[zsh fish] : %w[zsh]
+    shells.each { |sh| Open3.capture3(env.merge('SHELL' => "/bin/#{sh}"), @wayu_bin, 'init', '--shell', sh) }
+    cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[prompt]\nenabled = true\n")
+    shells.each { |sh| Open3.capture3(env, @wayu_bin, 'build', '--shell', sh) }
+    git_env = clean_env(home, 'GIT_CONFIG_NOSYSTEM' => '1')
+    g = ->(*a) { Open3.capture3(git_env, 'git', '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', *a) }
+    marker = "#{home}/PWNED"
+    mk = lambda do |name, attr|
+      repo = "#{home}/#{name}"
+      g.call('init', '-q', '-b', "#{name}-br", repo)
+      File.write("#{repo}/f", "a\n")
+      File.write("#{repo}/.gitattributes", "f filter=#{attr}\n") if attr
+      g.call('-C', repo, 'add', '.')
+      g.call('-C', repo, 'commit', '-q', '-m', 'i')
+      File.write("#{repo}/untracked", "u\n")
+      repo
+    end
+    fsm = mk.call('fsm', nil)
+    g.call('-C', fsm, 'config', 'core.fsmonitor', "touch '#{marker}'; false")
+    flt = mk.call('flt', 'x')
+    g.call('-C', flt, 'config', 'filter.x.clean', "sh -c 'touch \"#{marker}\"; cat'")
+    inc = mk.call('inc', 'y')
+    File.write("#{inc}/.git/extra.cfg", "[filter \"y\"]\n\tprocess = touch '#{marker}'\n")
+    g.call('-C', inc, 'config', 'include.path', 'extra.cfg')
+    plain = mk.call('plain', nil)
+    results = []
+    stamp = 0
+    { 'fsm' => fsm, 'flt' => flt, 'inc' => inc, 'plain' => plain }.each do |name, repo|
+      shells.each do |sh|
+        stamp += 1
+        File.utime(Time.at(1_600_000_000 + stamp), Time.at(1_600_000_000 + stamp), "#{repo}/f")
+        adir = "#{home}/async_#{sh}"
+        FileUtils.rm_rf(adir)
+        FileUtils.mkdir_p(adir)
+        out, err, =
+          if sh == 'zsh'
+            Open3.capture3(env, 'zsh', '-f', '-i', '-c',
+                           "source '#{data}/init.zsh'; cd '#{repo}'; _wayu_update_git_info; " \
+                           "_WAYU_ASYNC_DIR='#{adir}'; trap '' USR1; _wayu_async_worker; " \
+                           "print -r -- \"$_WAYU_GIT_BRANCH $(head -1 '#{adir}/data')\"")
+          else
+            Open3.capture3(env.merge('TERM' => 'dumb', 'PATH' => "#{File.dirname(fish)}:/usr/bin:/bin"), fish, '-i', '--no-config', '-c',
+                           "source '#{data}/init.fish'; cd '#{repo}'; _wayu_update_git_info; set -l fb (status fish-path); " \
+                           "command $fb --no-config -c $_wayu_async_script -- '#{adir}' $_wayu_git_branch default 99999999 2>/dev/null; " \
+                           "echo $_wayu_git_branch (head -1 '#{adir}/data')")
+          end
+        got = out.lines.last.to_s.strip.gsub(/%[FK]\{\d+\}|%f|%k/, '')
+        want = name == 'plain' || name == 'fsm' ? "#{name}-br 1" : "#{name}-br"
+        results << "#{sh}/#{name}: #{got.inspect} want #{want.inspect} pwned=#{File.exist?(marker)} err=#{err.lines.grep_v(/warning/).join.strip[0, 120]}" unless got == want && !File.exist?(marker)
+        FileUtils.rm_f(marker)
+      end
+    end
+    check('hostile repo', results.empty?, results.join("\n  "))
+  end
+
+  # A crafted .git/HEAD can name a branch with ESC/BEL/CR/DEL (an OSC title
+  # sequence here): the prompt shows them as `?`, never raw (zsh, fish).
+  def test_prompt_branch_control_chars
+    print "Test: native prompt shows control characters in a branch as ? (zsh, fish)... "
+    home = "#{@tmp_home}/prompt_cntrl"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/repo/.git"])
+    env = clean_env(home)
+    fish = ENV['PATH'].split(':').map { |d| "#{d}/fish" }.find { |f| File.executable?(f) }
+    shells = fish ? %w[zsh fish] : %w[zsh]
+    shells.each { |sh| Open3.capture3(env.merge('SHELL' => "/bin/#{sh}"), @wayu_bin, 'init', '--shell', sh) }
+    cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[prompt]\nenabled = true\n")
+    shells.each { |sh| Open3.capture3(env, @wayu_bin, 'build', '--shell', sh) }
+    File.write("#{home}/repo/.git/HEAD", "ref: refs/heads/a\e]0;x\ab\r\x7fc\n")
+    bad = []
+    shells.each do |sh|
+      out, =
+        if sh == 'zsh'
+          Open3.capture3(env, 'zsh', '-f', '-i', '-c',
+                         "source '#{data}/init.zsh'; cd '#{home}/repo'; _wayu_update_git_info; print -r -- \"[$_WAYU_GIT_BRANCH]\"")
+        else
+          Open3.capture3(env.merge('TERM' => 'dumb'), fish, '-i', '--no-config', '-c',
+                         "source '#{data}/init.fish'; cd '#{home}/repo'; _wayu_update_git_info; echo \"[$_wayu_git_branch]\"")
+        end
+      bad << "#{sh}: #{out.inspect}" unless out.strip == '[a?]0;x?b??c]'
+    end
+    check('branch control chars', bad.empty?, bad.join(' '))
   end
 
   # OKAMI-279: with `[prompt] enabled = true`, aliases and functions named

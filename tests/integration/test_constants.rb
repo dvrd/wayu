@@ -72,18 +72,22 @@ class ConstantsIntegrationTest
   def test_protected_names_refused
     print "Test R2: Protected names (PATH, HOME, IFS, WAYU_*) exit 65; doctor flags stored ones... "
 
-    codes = %w[PATH HOME IFS SHELL ZDOTDIR WAYU_CONFIG_DIR WAYU_ANY].map do |n|
+    codes = %w[PATH HOME IFS SHELL ZDOTDIR WAYU_CONFIG_DIR WAYU_ANY PS1 PROMPT_COMMAND BASH_ENV RPROMPT fish_function_path].map do |n|
       run_wayu("const add #{n} /x")[1].exitstatus
     end
     _, secret = run_wayu("const add PATH /x --secret")
     stored_before = store_map('env')
-    write_entries(env: stored_before.merge('PATH' => '/x'))
+    write_entries(env: stored_before.merge('PATH' => '/x', 'PROMPT_COMMAND' => 'touch x'))
     doc_out, doc = run_wayu('doctor')
+    run_wayu('build')
+    core = File.read("#{@data_dir}/core.zsh")
+    skipped = core.include?('# wayu: skipping protected env name PROMPT_COMMAND') && !core.include?('export PATH=')
     _, rm = run_wayu('const rm PATH')
+    run_wayu('const rm PROMPT_COMMAND')
     report(codes.all?(65) && secret.exitstatus == 65 && !stored_before.key?('PATH') &&
            doc.exitstatus == 78 && doc_out.include?('protected environment names') &&
-           doc_out.include?('PATH') && rm.success?,
-           "codes=#{codes} secret=#{secret.exitstatus} doctor=#{doc.exitstatus} rm=#{rm.exitstatus}\n#{doc_out}")
+           doc_out.include?('PATH') && doc_out.include?('PROMPT_COMMAND') && rm.success? && skipped,
+           "codes=#{codes} secret=#{secret.exitstatus} doctor=#{doc.exitstatus} rm=#{rm.exitstatus} skipped=#{skipped}\n#{doc_out}")
   end
 
   # Regression (OKAMI-331): a value that is not UTF-8 printed two errors and

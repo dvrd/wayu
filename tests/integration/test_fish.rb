@@ -123,7 +123,7 @@ class FishIntegrationTest
     body = File.read(@init_core)
     fish_ok = body.include?('#!/usr/bin/env fish') &&
               body.include?('set -gx PATH') &&
-              body.include?("alias ll 'ls -la'")
+              body.include?("function ll --wraps 'ls -la' --description 'alias ll ls -la'")
     bash_leak = body.include?('export PATH=') || body.include?('typeset -U') ||
                 body.include?('zsh-defer') || body.include?('autoload')
     if fish_ok && !bash_leak
@@ -154,7 +154,7 @@ class FishIntegrationTest
     toml_ok = store.include?('{"name": "g", "value": "git"}') && store.include?('{"name": "EDITOR", "value": "code --wait"}') &&
               store.include?(%("dir": "#{scratch}/.cargo/bin")) && !store.include?('.npm-global') &&
               tpl_out.include?('not on this machine')
-    fish_native = init.include?("alias g 'git'") && init.include?('set -gx EDITOR') &&
+    fish_native = init.include?("function g --wraps 'git' --description 'alias g git'\n    eval 'git' (string escape -- $argv)") && init.include?('set -gx EDITOR') &&
                   init.include?('set -gx PATH')
     bash_leak  = init.include?('alias g="git"') || init.include?('export EDITOR=')
     if toml_ok && fish_native && !bash_leak
@@ -200,7 +200,7 @@ class FishIntegrationTest
     # No explicit 'build' run — core must reflect changes already.
     body = File.exist?(core) ? File.read(core) : ''
     ok = !baseline_has_alias &&
-         body.include?("alias gg 'git status'") &&
+         body.include?("function gg --wraps 'git status'") &&
          body.include?('set -gx MY_VAR "xyz"')
     if ok
       puts "✓"; @passed += 1
@@ -239,7 +239,7 @@ class FishIntegrationTest
     body = File.read(@init_core)
     fish_ok = body.include?('#!/usr/bin/env fish') &&
               body.include?('set -gx PATH') &&
-              body.include?("alias ll 'ls -la'")
+              body.include?("function ll --wraps 'ls -la' --description 'alias ll ls -la'")
     bash_leak = body.include?('export PATH=') || body.include?('typeset -U')
     no_orphan = !File.exist?("#{@data_dir}/wayu_static.fish")
     if fish_ok && !bash_leak && no_orphan
@@ -254,28 +254,42 @@ class FishIntegrationTest
   # Fish escaping: single-quoted alias bodies escape \ and ', env values stay
   # double-quoted (so $VAR expands) with " and \ escaped. Validated with
   # `fish -n` when fish is installed.
+  # Aliases are functions whose body is one escaped word run by `eval` (fish's
+  # `alias` sources the body, so `end; ...` in it ran at startup); arguments
+  # pass through literally, like a zsh/bash alias.
   def test_fish_escaping
-    print "Test 11: core.fish escapes quotes/backslashes... "
+    print "Test 11: core.fish escapes quotes/backslashes, alias bodies never run at startup... "
+    marker = "#{@tmp_home}/ALIAS_PWNED"
     write_entries(paths: store_map('paths'),
-                  aliases: store_map('aliases').merge('sq' => "echo 'it' a\\b"),
+                  aliases: store_map('aliases').merge('sq' => "echo 'it' a\\b",
+                                                      'fa' => "echo; end; touch #{marker}; function _x; echo",
+                                                      'pre' => 'echo pre'),
                   env: store_map('env').merge('FQ' => 'say "hi" $HOME'))
     run_fish('build')
     body = File.read(@init_core)
-    alias_ok = body.include?(%q{alias sq 'echo \'it\' a\\\\b'})
+    alias_ok = body.include?(%q{    eval 'echo \'it\' a\\\\b' (string escape -- $argv)})
     env_ok = body.include?(%q{set -gx FQ "say \"hi\" $HOME"})
     syntax_ok = true
+    run_ok = true
+    out = ''
     if system('command -v fish >/dev/null 2>&1')
       _, _, st = Open3.capture3('fish', '-n', @init_core)
       syntax_ok = st.success?
+      env = ENV.to_h.merge('HOME' => @tmp_home)
+      out, = Open3.capture3(env, 'fish', '--no-config', '-c',
+                            "source #{@data_dir}/init.fish; sq; pre 'a  b' '$(id)' '*'; alias | string match -e 'alias pre'")
+      run_ok = out == "it a\b\npre a  b $(id) *\nalias pre 'echo pre'\n" && !File.exist?(marker)
     end
-    if alias_ok && env_ok && syntax_ok
+    if alias_ok && env_ok && syntax_ok && run_ok
       puts "✓"; @passed += 1
     else
       puts "✗"
-      puts "  alias_ok=#{alias_ok} env_ok=#{env_ok} syntax_ok=#{syntax_ok}"
+      puts "  alias_ok=#{alias_ok} env_ok=#{env_ok} syntax_ok=#{syntax_ok} run_ok=#{run_ok} out=#{out.inspect} pwned=#{File.exist?(marker)}"
       puts body.lines.grep(/sq|FQ/).join
       @failed += 1
     end
+    write_entries(paths: store_map('paths'), aliases: store_map('aliases').reject { |k, _| k == 'fa' }, env: store_map('env'))
+    run_fish('build')
   end
   # Every generated *.fish file must parse, and init.fish must source cleanly
   # in a real fish (values from earlier tests include quotes and $HOME).

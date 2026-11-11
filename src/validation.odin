@@ -206,6 +206,14 @@ alias_name_error :: proc(name: string) -> string {
 	if name == "." {
 		return "Cannot use '.' (the source builtin) as Alias name"
 	}
+	// wayu's own helpers: an alias would hijack code parsed after the
+	// aliases are defined (path_sync.<ext> from the prompt hook, eval).
+	if strings.has_prefix(name, "_wayu") {
+		return fmt.tprintf(
+			"Alias name '%s' is reserved: names starting with _wayu belong to wayu",
+			name,
+		)
+	}
 	for reserved_word in ALIAS_REFUSED_NAMES {
 		if name == reserved_word {
 			return fmt.tprintf("Cannot use shell reserved word '%s' as Alias name", name)
@@ -231,7 +239,13 @@ stored_value_error :: proc(what: string, value: string) -> string {
 // Environment names `wayu const add` refuses (OKAMI-304): setting them from
 // wayu breaks the shell or wayu itself (`const add PATH /x` left every new
 // shell without ls). zsh ties `path`/`fpath` to PATH/FPATH. Every WAYU_*
-// name is refused too (wayu's own settings and runtime variables).
+// name is refused too (wayu's own settings and runtime variables). So are
+// names whose value a shell runs as code or loads code from: the prompts
+// (prompt-expanded, `$(...)` runs with PROMPT_SUBST / bash promptvars; PS4 on
+// every traced command, PS0 before every command), PROMPT_COMMAND, BASH_ENV
+// and ENV (sourced by every non-interactive bash / sh), and fish's function
+// and completion search paths (autoloaded code; replacing them also loses
+// fish's own functions).
 PROTECTED_ENV_NAMES :: []string {
 	"PATH",
 	"path",
@@ -247,6 +261,27 @@ PROTECTED_ENV_NAMES :: []string {
 	"ZDOTDIR",
 	"SHLVL",
 	"_",
+	"PS0",
+	"PS1",
+	"PS2",
+	"PS3",
+	"PS4",
+	"PROMPT",
+	"prompt",
+	"PROMPT2",
+	"PROMPT3",
+	"PROMPT4",
+	"RPROMPT",
+	"RPROMPT2",
+	"RPS1",
+	"RPS2",
+	"SPROMPT",
+	"PROMPT_EOL_MARK",
+	"PROMPT_COMMAND",
+	"BASH_ENV",
+	"ENV",
+	"fish_function_path",
+	"fish_complete_path",
 }
 
 // Why `name` is a protected environment name, "" when it is not.
