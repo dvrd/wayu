@@ -137,7 +137,7 @@ restrict_file_mode :: proc(path: string) {
 	}
 }
 
-// Create `dir` owner-only: missing parents with the default mode, the leaf
+// Create `dir` owner-only: missing parents via make_wayu_dir (0700), the leaf
 // with mkdir 0700 plus an explicit chmod (the umask never widens it, but a
 // pre-set umask such as 0 must not matter either). An existing dir is left
 // as it is (see private_dir_tighten). err is temp-allocated.
@@ -147,7 +147,7 @@ private_dir_make :: proc(dir: string) -> (ok: bool, err: string) {
 	}
 	parent, _ := os.split_path(dir)
 	if len(parent) > 0 && !os.exists(parent) {
-		if e := os.make_directory_all(parent); e != nil {
+		if e := make_wayu_dir(parent); e != nil {
 			return false, fmt.tprintf("cannot create %s: %v", parent, e)
 		}
 	}

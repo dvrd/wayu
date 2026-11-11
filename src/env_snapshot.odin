@@ -101,20 +101,15 @@ snapshot_aliases :: proc() -> map[string]string {
 	shell_bin := shell if len(shell) > 0 else "zsh"
 
 	args := []string{shell_bin, "-i", "-c", "alias"}
+	// An rc file that sleeps, prompts or attaches tmux must not freeze wayu
+	// (TUI or CLI): give up after a deadline, listing no external aliases.
 	output: string
-	if wayu.tui_mode {
-		// An rc file that sleeps, prompts or attaches tmux must not freeze
-		// the TUI: give up after a deadline (or on Esc), listing no
-		// external aliases.
-		r := run_command_timeout(args, ALIAS_SNAPSHOT_TUI_TIMEOUT_MS)
-		if r.ok {
-			output = r.stdout
-			r.stdout = ""
-		}
-		command_result_destroy(&r)
-	} else {
-		output = capture_command(args)
+	r := run_command_timeout(args, ALIAS_SNAPSHOT_TIMEOUT_MS)
+	if r.ok {
+		output = r.stdout
+		r.stdout = ""
 	}
+	command_result_destroy(&r)
 	defer if len(output) > 0 {
 		delete(output)
 	}
@@ -123,7 +118,7 @@ snapshot_aliases :: proc() -> map[string]string {
 	return ENV_SNAPSHOT_CACHE.aliases
 }
 
-ALIAS_SNAPSHOT_TUI_TIMEOUT_MS :: 3_000
+ALIAS_SNAPSHOT_TIMEOUT_MS :: 3_000
 
 // Parse the output of the `alias` builtin into name -> command.
 // Handles both formats:
