@@ -67,7 +67,6 @@ RcClass :: struct {
 	kind:    RcKind,
 	cmd:     string, // GENERATOR: the command (a bare name on PATH)
 	args:    string, // GENERATOR: its args, [tools] args syntax
-	argv:    []string, // GENERATOR: cmd + args as words (doctor times it)
 	prepend: []string, // PATH / FPATH: dirs put in front (left to right)
 	appends: []string, // PATH / FPATH: dirs put at the end
 	name:    string, // ALIAS / ENV
@@ -276,7 +275,6 @@ rc_generator_from_tokens :: proc(
 	ctx: RcContext,
 ) -> (
 	cmd, args: string,
-	argv: []string,
 	reason: string,
 	ok: bool,
 ) {
@@ -339,7 +337,7 @@ rc_generator_from_tokens :: proc(
 		reason = r
 		return
 	}
-	return words[0], strings.to_string(b), words[:], "", true
+	return words[0], strings.to_string(b), "", true
 }
 
 // source <(cmd args) / . <(cmd args) / eval "$(cmd args)"
@@ -383,11 +381,11 @@ rc_classify_generator :: proc(toks: []ShellToken, raw: string, ctx: RcContext) -
 	if !ctx.interactive {
 		return rc_keep("generator outside the interactive rc file")
 	}
-	cmd, args, argv, reason, ok := rc_generator_from_tokens(inner, ctx)
+	cmd, args, reason, ok := rc_generator_from_tokens(inner, ctx)
 	if !ok {
 		return rc_keep(reason)
 	}
-	return RcClass{kind = .GENERATOR, cmd = cmd, args = args, argv = argv}
+	return RcClass{kind = .GENERATOR, cmd = cmd, args = args}
 }
 
 // fish: `cmd args | source`
@@ -404,11 +402,11 @@ rc_classify_fish_generator :: proc(toks: []ShellToken, ctx: RcContext) -> RcClas
 	if !ctx.interactive {
 		return rc_keep("generator outside the interactive rc file")
 	}
-	cmd, args, argv, reason, ok := rc_generator_from_tokens(toks[:n - 2], ctx)
+	cmd, args, reason, ok := rc_generator_from_tokens(toks[:n - 2], ctx)
 	if !ok {
 		return rc_keep(reason)
 	}
-	return RcClass{kind = .GENERATOR, cmd = cmd, args = args, argv = argv}
+	return RcClass{kind = .GENERATOR, cmd = cmd, args = args}
 }
 
 // `autoload [-Uz] compinit`, `compinit [-C -i -u -d FILE]`, joined by ; / &&.
@@ -1091,6 +1089,15 @@ optimize_build_plan :: proc(shell: ShellType, store: ^EntryStore) -> OptimizePla
 		ctx.interactive = f.interactive
 		findings, loaded := rc_scan_content(string(data), &ctx, plan.loaded)
 		plan.loaded = loaded
+		// A constant wayu already keeps encrypted stays a secret (and is
+		// masked in the diff and the plan).
+		for &fd in findings {
+			if fd.class.kind == .ENV {
+				if i := entries_find(store, .ENV, fd.class.name); i >= 0 && store.env[i].secret {
+					fd.class.secret = true
+				}
+			}
+		}
 		if len(findings) > 0 {
 			append(&plan.files, OptimizeFile{f.path, string(data), findings[:]})
 		}
@@ -1153,6 +1160,8 @@ optimize_file_diff :: proc(f: OptimizeFile) -> string {
 	}
 	n := len(lines)
 	drop := make([]bool, n, context.temp_allocator)
+	// Lines of a secret constant: shown as a placeholder, never the value.
+	secret := make([]string, n, context.temp_allocator)
 	for fd in f.findings {
 		if fd.class.kind == .KEEP {
 			continue
@@ -1160,6 +1169,9 @@ optimize_file_diff :: proc(f: OptimizeFile) -> string {
 		for l in fd.first_line ..= fd.last_line {
 			if l - 1 < n {
 				drop[l - 1] = true
+				if fd.class.kind == .ENV && fd.class.secret {
+					secret[l - 1] = fd.class.name
+				}
 			}
 		}
 	}
@@ -1208,7 +1220,16 @@ optimize_file_diff :: proc(f: OptimizeFile) -> string {
 			RESET,
 		)
 		for k in start ..< end {
-			if drop[k] {
+			if drop[k] && len(secret[k]) > 0 {
+				fmt.sbprintfln(
+					&b,
+					"%s-%s  (line of secret %s, value hidden)%s",
+					get_error(),
+					SECRET_MASK,
+					secret[k],
+					RESET,
+				)
+			} else if drop[k] {
 				fmt.sbprintfln(&b, "%s-%s%s", get_error(), lines[k], RESET)
 			} else {
 				fmt.sbprintfln(&b, " %s", lines[k])
@@ -1598,6 +1619,22 @@ optimize_apply :: proc(
 	return moved, true, ""
 }
 
+// Whether the plan moves a secret constant out of an rc file.
+optimize_plan_moves_secret :: proc(plan: ^OptimizePlan) -> bool {
+	for f in plan.files {
+		for fd in f.findings {
+			if fd.class.kind == .ENV && fd.class.secret {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// After moving a secret: the rc file's backup (the undo) still holds it in
+// plaintext. wayu never deletes it on its own.
+OPTIMIZE_SECRET_BACKUP_NOTE :: "the rc file backup still holds the secret value in plaintext (it is the undo); delete it from <data>/backup/ once you no longer need it"
+
 // ============================================================================
 // `wayu optimize`
 // ============================================================================
@@ -1710,6 +1747,9 @@ handle_optimize_command :: proc(action: Action, args: []string) {
 		)
 	}
 	fmt.printfln("  (and 'wayu backup restore entries --yes' for the entries)")
+	if optimize_plan_moves_secret(&plan) {
+		print_warning("Note: %s", OPTIMIZE_SECRET_BACKUP_NOTE)
+	}
 }
 
 optimize_print_plan :: proc(plan: ^OptimizePlan) {
@@ -1892,6 +1932,9 @@ optimize_notify :: proc() {
 		"" if moved == 1 else "s",
 		strings.join(undo[:], " / ", context.temp_allocator),
 	)
+	if optimize_plan_moves_secret(&plan) {
+		fmt.eprintfln("wayu: note: %s", OPTIMIZE_SECRET_BACKUP_NOTE)
+	}
 }
 
 // ============================================================================
@@ -2193,12 +2236,8 @@ check_rc_optimize :: proc(results: ^[dynamic]CheckResult) {
 				cost = fmt.tprintf(" (~%d ms)", OPTIMIZE_COMPINIT_COST_MS)
 				total += OPTIMIZE_COMPINIT_COST_MS
 			case .GENERATOR:
-				t0 := time.now()
-				r := run_command_timeout(c.argv, 5000)
-				command_result_destroy(&r)
-				ms := int(time.duration_milliseconds(time.since(t0)))
-				cost = fmt.tprintf(" (%d ms per start)", ms)
-				total += ms
+				// Not timed: doctor never runs commands read from rc files.
+				cost = " (runs a command every start)"
 			}
 			label := optimize_describe(c, plan.shell)
 			if c.kind == .GENERATOR {
@@ -2222,10 +2261,10 @@ check_rc_optimize :: proc(results: ^[dynamic]CheckResult) {
 			name = clone_arena("startup files"),
 			status = .WARNING,
 			message = fmt.aprintf(
-				"%d line%s can move into wayu (~%d ms per start; wayu optimize): %s",
+				"%d line%s can move into wayu (%swayu optimize): %s",
 				n,
 				"" if n == 1 else "s",
-				total,
+				fmt.tprintf("compinit ~%d ms per start; ", total) if total > 0 else "",
 				strings.join(parts[:], "; ", context.temp_allocator),
 				allocator = alloc,
 			),
@@ -2259,8 +2298,11 @@ doctor_fix_rc_optimize :: proc() -> (ok: bool, message: string) {
 	}
 	optimize_touch_stamp()
 	return true, fmt.tprintf(
-		"moved %d line%s into wayu (undo: wayu backup restore <rc file>)",
+		"moved %d line%s into wayu (undo: wayu backup restore <rc file>)%s",
 		moved,
 		"" if moved == 1 else "s",
+		fmt.tprintf("; %s", OPTIMIZE_SECRET_BACKUP_NOTE) if \
+			optimize_plan_moves_secret(&plan) else \
+			"",
 	)
 }
