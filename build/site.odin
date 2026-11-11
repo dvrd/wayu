@@ -6,6 +6,7 @@
 //                                 from docs/<file> (build/markdown) into
 //                                 build/docs_shell.html
 //   docs/sitemap.xml              landing page, overview, every docs page
+//   docs/index.html               the unit test count in the trust strip
 //
 // docs/docs/docs.css and docs.js are hand-written and shared by every page.
 
@@ -87,6 +88,7 @@ sync_site :: proc(check: bool) -> bool {
 		)
 	}
 	append(&files, Site_File{"docs/sitemap.xml", render_sitemap()})
+	append(&files, Site_File{"docs/index.html", with_test_count(read_text("docs/index.html"))})
 
 	ok := true
 	for f in files {
@@ -111,7 +113,7 @@ sync_site :: proc(check: bool) -> bool {
 		bld.log_info("%s regenerated", f.path)
 	}
 	if ok && check {
-		bld.log_info("Docs pages and sitemap are current")
+		bld.log_info("Site pages, sitemap and test count are current")
 	}
 	return ok
 }
@@ -356,4 +358,61 @@ render_sitemap :: proc() -> string {
 	}
 	strings.write_string(&b, "</urlset>\n")
 	return strings.to_string(b)
+}
+
+// ---------------------------------------------------------------------------
+// Unit test count in the landing page's trust strip
+// ---------------------------------------------------------------------------
+
+// The count is written after this marker, up to the next '<'.
+TEST_COUNT_MARKER :: `data-gen="unit-tests">`
+
+// Number of @(test) procs in tests/unit, rounded down to a multiple of 10 so
+// the page only changes every tenth test ("670+ unit tests").
+unit_test_count_label :: proc() -> string {
+	dir, err := os.open(TEST_DIR)
+	if err != nil {
+		bld.log_error("Failed to open %s", TEST_DIR)
+		os.exit(1)
+	}
+	defer os.close(dir)
+	infos, read_err := os.read_all_directory(dir, context.temp_allocator)
+	if read_err != nil {
+		bld.log_error("Failed to list %s", TEST_DIR)
+		os.exit(1)
+	}
+	count := 0
+	for info in infos {
+		if !strings.has_suffix(info.name, ".odin") {
+			continue
+		}
+		src := read_text(fmt.tprintf("%s/%s", TEST_DIR, info.name))
+		for line in strings.split_lines_iterator(&src) {
+			if strings.has_prefix(strings.trim_space(line), "@(test)") {
+				count += 1
+			}
+		}
+	}
+	return fmt.tprintf("%d+ unit tests", count - count % 10)
+}
+
+with_test_count :: proc(html: string) -> string {
+	at := strings.index(html, TEST_COUNT_MARKER)
+	if at == -1 {
+		bld.log_error(
+			"docs/index.html: test count marker '%s' not found (update build/site.odin)",
+			TEST_COUNT_MARKER,
+		)
+		os.exit(1)
+	}
+	start := at + len(TEST_COUNT_MARKER)
+	end := strings.index_byte(html[start:], '<')
+	if end == -1 {
+		bld.log_error("docs/index.html: unterminated test count after '%s'", TEST_COUNT_MARKER)
+		os.exit(1)
+	}
+	return strings.concatenate(
+		{html[:start], unit_test_count_label(), html[start + end:]},
+		context.temp_allocator,
+	)
 }

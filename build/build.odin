@@ -15,7 +15,7 @@
 //   release   — test + commit + tag + atomic push of main and the tag
 //               (the push to main runs bump.yml: CI, then publish + Homebrew)
 //   docs      — sync docs/index.html + README.md version from src/main.odin and
-//               regenerate the docs pages and sitemap (site.odin)
+//               regenerate the docs pages, sitemap and test count (site.odin)
 //               (--check: verify only, exit 1 on drift)
 //   help      — show available targets
 
@@ -938,7 +938,7 @@ do_help :: proc() {
 	fmt.println("  dev       Debug build + run (extra args passed through)")
 	fmt.println("  release   Run tests, commit + tag, push to main (bump.yml publishes after CI)")
 	fmt.println(
-		"  docs      Sync site version + regenerate docs pages and sitemap [--check]",
+		"  docs      Sync site version + regenerate docs pages, sitemap, test count [--check]",
 	)
 	fmt.println("  help      Show this help")
 	fmt.println("")
