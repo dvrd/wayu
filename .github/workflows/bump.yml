@@ -55,7 +55,10 @@ jobs:
       with:
         fetch-depth: 0
         fetch-tags: true            # fetch ALL tags, including orphans whose commits aren't on main
-        token: ${{ secrets.GITHUB_TOKEN }}
+        # The write token is NOT left in .git/config for every later step
+        # (git-cliff, odin, ./build_it): only "Commit and tag" gets it, via
+        # env, for its push. Fetches are anonymous (public repo).
+        persist-credentials: false
 
     # Pinned prebuilt release, checksum-verified (was: an unpinned
     # `cargo install`, compiled from source in two jobs per release). The
@@ -120,6 +123,13 @@ jobs:
         if [ -n "$HEAD_VERSION" ] && [ "$HEAD_MSG" = "chore: release $HEAD_VERSION" ]; then
           VERSION="$HEAD_VERSION"
           MODE="republish"
+          # The tag must name what the binary reports: refuse a release
+          # commit whose src/main.odin VERSION is another version.
+          SRC_VERSION=$(sed -n 's/^VERSION :: "\([^"]*\)".*/\1/p' src/main.odin | head -1)
+          if [ "v$SRC_VERSION" != "$VERSION" ]; then
+            echo "::error::HEAD is 'chore: release $VERSION' but src/main.odin has VERSION :: \"$SRC_VERSION\". Fix VERSION (./build_it release) before releasing."
+            exit 1
+          fi
         else
           if [ -n "$BUMP_TYPE" ] && [ "$BUMP_TYPE" != "auto" ]; then
             VERSION=$(git cliff --bumped-version --bump "$BUMP_TYPE")
@@ -214,10 +224,15 @@ jobs:
       env:
         VERSION: ${{ steps.version.outputs.VERSION }}
         MODE: ${{ steps.version.outputs.MODE }}
+        # The only step with the write token (checkout persists none).
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        REPO: ${{ github.repository }}
       run: |
         set -euo pipefail
         git config user.name  "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
+        # Built here, never echoed; Actions masks the token in logs anyway.
+        PUSH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git"
 
         if [ "$MODE" = "republish" ]; then
           # Determine action verified the tag is either absent or already at HEAD.
@@ -225,7 +240,7 @@ jobs:
             echo "Tag $VERSION already at HEAD."
           else
             git tag "$VERSION"
-            git push origin "refs/tags/$VERSION"
+            git push "$PUSH_URL" "refs/tags/$VERSION"
           fi
         else
           # bump: ship commit + tag atomically. If main moved meanwhile the push
@@ -233,7 +248,7 @@ jobs:
           git add src/main.odin CHANGELOG.md README.md docs/index.html docs/UPGRADING.md
           git commit -m "chore: release $VERSION"
           git tag "$VERSION"
-          git push --atomic origin main "refs/tags/$VERSION"
+          git push --atomic "$PUSH_URL" main:refs/heads/main "refs/tags/$VERSION:refs/tags/$VERSION"
         fi
 
     # HEAD is the release tag now. Upgrade notes from its docs/UPGRADING.md
@@ -262,10 +277,10 @@ jobs:
     needs: bump
     if: needs.bump.outputs.skip == 'false'
     runs-on: ${{ matrix.os }}
+    # Read-only: the build (odin, ./build_it) never holds a token that can
+    # sign or write. The attest job signs what this job uploads.
     permissions:
       contents: read
-      id-token: write       # Sigstore signing certificate for the attestation
-      attestations: write   # store the build provenance attestation
     strategy:
       matrix:
         include:
@@ -320,27 +335,38 @@ jobs:
           *) echo "::error::binary reports '$OUT', expected $VERSION"; exit 1 ;;
         esac
 
+    # Reproducible archive: same binary → same tarball bytes. One entry,
+    # mode 0755, owner 0:0 without names, mtime = the release commit's time
+    # (SOURCE_DATE_EPOCH), ustar (no pax atime/ctime), no macOS xattrs,
+    # gzip -n (no name/timestamp in the gzip header).
     - name: Package and compute SHA256
       env:
         ARTIFACT: ${{ matrix.artifact }}
       run: |
-        tar -czf "$ARTIFACT.tar.gz" -C bin wayu
+        set -euo pipefail
+        SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+        export SOURCE_DATE_EPOCH
+        stage="$RUNNER_TEMP/package"
+        rm -rf "$stage"
+        mkdir -p "$stage"
+        cp bin/wayu "$stage/wayu"
+        chmod 0755 "$stage/wayu"
         if [[ "$RUNNER_OS" == "macOS" ]]; then
+          # bsdtar has no --mtime/--sort: set the file's mtime instead.
+          TZ=UTC touch -t "$(date -u -r "$SOURCE_DATE_EPOCH" +%Y%m%d%H%M.%S)" "$stage/wayu"
+          tar --format ustar --uid 0 --gid 0 --numeric-owner \
+            --no-mac-metadata --no-xattrs --no-acls --no-fflags \
+            -cf - -C "$stage" wayu | gzip -n -9 > "$ARTIFACT.tar.gz"
           shasum -a 256 "$ARTIFACT.tar.gz" > "$ARTIFACT.sha256"
         else
+          tar --format=ustar --sort=name --mtime="@$SOURCE_DATE_EPOCH" \
+            --owner=0 --group=0 --numeric-owner \
+            -cf - -C "$stage" wayu | gzip -n -9 > "$ARTIFACT.tar.gz"
           sha256sum "$ARTIFACT.tar.gz" > "$ARTIFACT.sha256"
         fi
+        tar -tvzf "$ARTIFACT.tar.gz"
         # "<hash>  <file>": `shasum -a 256 -c` / `sha256sum -c` accept it.
         echo "SHA256=$(awk '{print $1}' "$ARTIFACT.sha256")"
-
-    # Signed SLSA build provenance for the archive and the binary inside it:
-    # `gh attestation verify <file> --repo dvrd/wayu` (see SECURITY.md).
-    - name: Attest build provenance
-      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-      with:
-        subject-path: |
-          ${{ matrix.artifact }}.tar.gz
-          bin/wayu
 
     - name: Upload artifacts
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -350,9 +376,55 @@ jobs:
           ${{ matrix.artifact }}.tar.gz
           ${{ matrix.artifact }}.sha256
 
+  # Signed SLSA build provenance for each archive and the binary inside it:
+  # `gh attestation verify <file> --repo dvrd/wayu` (see SECURITY.md).
+  # Its own job so the signing permissions never reach the build steps; it
+  # runs no repository code, only checks and unpacks the uploaded archives.
+  attest:
+    name: Attest ${{ matrix.artifact }}
+    needs: [bump, build-release]
+    if: needs.bump.outputs.skip == 'false'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write       # Sigstore signing certificate for the attestation
+      attestations: write   # store the build provenance attestation
+    strategy:
+      matrix:
+        artifact: [wayu-linux-amd64, wayu-macos-arm64]
+
+    steps:
+    - name: Download build artifact
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: ${{ matrix.artifact }}
+        path: dist
+
+    - name: Check checksum and unpack the binary
+      working-directory: dist
+      env:
+        ARTIFACT: ${{ matrix.artifact }}
+      run: |
+        set -euo pipefail
+        sha256sum -c "$ARTIFACT.sha256"
+        [ "$(tar -tzf "$ARTIFACT.tar.gz")" = "wayu" ] || {
+          echo "::error::$ARTIFACT.tar.gz must hold exactly one entry, wayu"
+          exit 1
+        }
+        mkdir -p bin
+        tar -xzf "$ARTIFACT.tar.gz" -C bin wayu
+
+    - name: Attest build provenance
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      with:
+        subject-path: |
+          dist/${{ matrix.artifact }}.tar.gz
+          dist/bin/wayu
+
   create-release:
     name: Create GitHub Release
-    needs: [bump, build-release]
+    # Never publish an archive without its attestation.
+    needs: [bump, build-release, attest]
     if: needs.bump.outputs.skip == 'false'
     runs-on: ubuntu-24.04
     permissions:
@@ -388,6 +460,10 @@ jobs:
     needs: [bump, create-release]
     if: needs.bump.outputs.skip == 'false'
     runs-on: ubuntu-24.04
+    # TAP_GITHUB_TOKEN belongs in this environment's secrets (a fine-grained
+    # PAT: dvrd/homebrew-wayu only, Contents read/write). Until it is moved
+    # there the repository secret of the same name still applies.
+    environment: release
     permissions:
       contents: read
 
@@ -407,8 +483,9 @@ jobs:
       uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         repository: dvrd/homebrew-wayu
-        token: ${{ secrets.TAP_GITHUB_TOKEN }}
         path: tap
+        # Public repo: clone anonymously; only the push step gets the token.
+        persist-credentials: false
 
     - name: Update formula
       env:
@@ -444,7 +521,9 @@ jobs:
       working-directory: tap
       env:
         VERSION: ${{ needs.bump.outputs.version }}
+        TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
       run: |
+        set -euo pipefail
         git config user.name  "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git add Formula/wayu.rb
@@ -454,5 +533,7 @@ jobs:
           echo "Formula already up-to-date for $VERSION — nothing to push."
         else
           git commit -m "wayu $VERSION"
-          git push
+          branch=$(git symbolic-ref --short HEAD)
+          git push "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/dvrd/homebrew-wayu.git" \
+            "HEAD:refs/heads/$branch"
         fi
