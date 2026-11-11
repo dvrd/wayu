@@ -21,6 +21,24 @@ GIT_SSH_BATCH_COMMAND :: "ssh -o BatchMode=yes -o ConnectTimeout=10"
 GIT_HTTP_LOW_SPEED_LIMIT :: "1000"
 GIT_HTTP_LOW_SPEED_TIME :: "30"
 
+// Options put before every git subcommand wayu runs (in plugin checkouts
+// above all): a repo's own config could otherwise make git run programs —
+// core.fsmonitor is executed by status/checkout/merge/reset, and hooks
+// (post-checkout, post-merge, ...) by checkout, merge and clone.
+GIT_SAFE_OPTS :: [?]string{"-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"}
+
+// argv of `git <GIT_SAFE_OPTS> args...` (temp-allocated slice; the strings
+// are not copied).
+git_argv :: proc(args: ..string) -> []string {
+	out := make([]string, 1 + len(GIT_SAFE_OPTS) + len(args), context.temp_allocator)
+	out[0] = "git"
+	for o, i in GIT_SAFE_OPTS {
+		out[1 + i] = o
+	}
+	copy(out[1 + len(GIT_SAFE_OPTS):], args)
+	return out
+}
+
 // Overall deadline for a network git command: WAYU_GIT_TIMEOUT (whole
 // seconds, > 0) when set and valid, else `default_ms`.
 git_network_timeout_ms :: proc(default_ms: int) -> int {
@@ -48,10 +66,12 @@ git_network_env :: proc(repo_dir: string) -> []Env_Default {
 	if os.get_env("GIT_SSH", context.temp_allocator) == "" {
 		configured: string
 		if repo_dir == "" {
-			configured = capture_command([]string{"git", "config", "--get", "core.sshCommand"})
+			// From / (not the caller's cwd): run inside a hostile repository,
+			// `git config` would read that repo's .git/config.
+			configured = capture_command(git_argv("-C", "/", "config", "--get", "core.sshCommand"))
 		} else {
 			configured = capture_command(
-				[]string{"git", "-C", repo_dir, "config", "--get", "core.sshCommand"},
+				git_argv("-C", repo_dir, "config", "--get", "core.sshCommand"),
 			)
 		}
 		defer delete(configured)
@@ -95,7 +115,7 @@ git_clone :: proc(url: string, dest: string) -> (ok: bool, err_text: string) {
 	}
 
 	r := run_git_network(
-		[]string{"git", "clone", "--depth=1", "--quiet", "--", url, dest},
+		git_argv("clone", "--depth=1", "--quiet", "--", url, dest),
 		GIT_CLONE_TIMEOUT_MS,
 	)
 	delete(r.stdout)
@@ -125,7 +145,7 @@ git_clone_at_commit :: proc(
 	}
 
 	cloned := run_git_network(
-		[]string{"git", "clone", "--no-checkout", "--quiet", "--", url, dest},
+		git_argv("clone", "--no-checkout", "--quiet", "--", url, dest),
 		GIT_CLONE_TIMEOUT_MS,
 	)
 	delete(cloned.stdout)
@@ -135,14 +155,14 @@ git_clone_at_commit :: proc(
 	delete(cloned.stderr)
 
 	checked_out, co_err := run_command_capture_stderr(
-		[]string{"git", "-C", dest, "checkout", "--quiet", "--detach", commit},
+		git_argv("-C", dest, "checkout", "--quiet", "--detach", commit),
 	)
 	if !checked_out {
 		return false, co_err
 	}
 	delete(co_err)
 
-	head := capture_command([]string{"git", "-C", dest, "rev-parse", "HEAD"})
+	head := capture_command(git_argv("-C", dest, "rev-parse", "HEAD"))
 	defer delete(head)
 	if !strings.has_prefix(head, strings.to_lower(commit, context.temp_allocator)) {
 		return false, fmt.aprintf("checked out %s, expected %s", head, commit)
@@ -220,11 +240,11 @@ git_update :: proc(
 	tracking :=
 		ref == "HEAD" ? "refs/remotes/origin/HEAD" : fmt.tprintf("refs/remotes/origin/%s", ref)
 	head_on_remote := run_command(
-		[]string{"git", "-C", plugin_dir, "merge-base", "--is-ancestor", "HEAD", tracking},
+		git_argv("-C", plugin_dir, "merge-base", "--is-ancestor", "HEAD", tracking),
 	)
 
 	fetched := run_git_network(
-		[]string{"git", "-C", plugin_dir, "fetch", "--quiet", "origin", ref},
+		git_argv("-C", plugin_dir, "fetch", "--quiet", "origin", ref),
 		GIT_CLONE_TIMEOUT_MS,
 		plugin_dir,
 	)
@@ -235,7 +255,7 @@ git_update :: proc(
 	delete(fetched.stderr)
 
 	merged, merge_err := run_command_capture_stderr(
-		[]string{"git", "-C", plugin_dir, "merge", "--ff-only", "--quiet", "FETCH_HEAD"},
+		git_argv("-C", plugin_dir, "merge", "--ff-only", "--quiet", "FETCH_HEAD"),
 	)
 	if merged {
 		delete(merge_err)
@@ -249,7 +269,7 @@ git_update :: proc(
 		)
 	}
 	dirty := capture_command(
-		[]string{"git", "-C", plugin_dir, "status", "--porcelain", "--untracked-files=no"},
+		git_argv("-C", plugin_dir, "status", "--porcelain", "--untracked-files=no"),
 	)
 	defer delete(dirty)
 	if len(dirty) > 0 {
@@ -264,7 +284,7 @@ git_update :: proc(
 	}
 
 	reset, reset_err := run_command_capture_stderr(
-		[]string{"git", "-C", plugin_dir, "reset", "--hard", "--quiet", "FETCH_HEAD"},
+		git_argv("-C", plugin_dir, "reset", "--hard", "--quiet", "FETCH_HEAD"),
 	)
 	if !reset {
 		return .Failed, reset_err
@@ -1630,10 +1650,7 @@ get_remote_commit :: proc(url: string, branch: string) -> string {
 
 	// Output format: "<40-char-SHA>\t<ref-name>\n" per matching ref.
 	// `--` ends option parsing so the URL can never be read as an option.
-	result := run_git_network(
-		[]string{"git", "ls-remote", "--", url, ref},
-		GIT_LS_REMOTE_TIMEOUT_MS,
-	)
+	result := run_git_network(git_argv("ls-remote", "--", url, ref), GIT_LS_REMOTE_TIMEOUT_MS)
 	defer command_result_destroy(&result)
 	if !result.ok {
 		return ""

@@ -112,6 +112,7 @@ class PluginIntegrationTest
       test_offline_conflicts_reported
       test_ssh_batch_mode_and_timeout
       test_build_regenerates_plugin_loaders
+      test_offline_update_ignores_repo_hooks
     ensure
       teardown_test_env
     end
@@ -1983,6 +1984,32 @@ class PluginIntegrationTest
     check("validation", failures.empty?, failures.join("\n  "), nil)
   end
 
+  # A checkout's own config must never make wayu's git run a program:
+  # core.fsmonitor (status/merge/reset) and hooks (post-merge, ...).
+  def test_offline_update_ignores_repo_hooks
+    print "Test 63: plugin update/check ignore core.fsmonitor and repo hooks... "
+    reset_plugins
+    repo = fixture_repo("hooked")
+    _, st = run_wayu("plugin add #{fixture_url('hooked')}")
+    dir = "#{@plugins_dir}/hooked"
+    markers = %w[fsmonitor post-merge post-checkout].map { |m| "#{@tmp_home}/marker-#{m}" }
+    FileUtils.rm_f(markers)
+    hook = "#{@tmp_home}/fsmonitor-hook"
+    File.write(hook, "#!/bin/sh\ntouch '#{markers[0]}'\n")
+    File.chmod(0o755, hook)
+    git!("-C", dir, "config", "core.fsmonitor", hook)
+    { "post-merge" => markers[1], "post-checkout" => markers[2] }.each do |h, m|
+      File.write("#{dir}/.git/hooks/#{h}", "#!/bin/sh\ntouch '#{m}'\n")
+      File.chmod(0o755, "#{dir}/.git/hooks/#{h}")
+    end
+    fixture_commit(repo, "hooked.plugin.zsh", "# hooked v2\n")
+    out, st2 = run_wayu("plugin update hooked")
+    out2, = run_wayu("plugin check")
+    ran = markers.select { |m| File.exist?(m) }
+    content = File.read("#{dir}/hooked.plugin.zsh") rescue ""
+    ok = st.exitstatus == 0 && st2.exitstatus == 0 && content.include?("v2") && ran.empty?
+    check("repo hooks ran: #{ran}", ok, out + out2, st2)
+  end
 end
 
 

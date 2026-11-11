@@ -141,7 +141,7 @@ plugin_pinned_commit_problem :: proc(plugin: ^PluginMetadata) -> string {
 	if len(want) == 0 || len(plugin.installed_path) == 0 {
 		return ""
 	}
-	head := capture_command([]string{"git", "-C", plugin.installed_path, "rev-parse", "HEAD"})
+	head := capture_command(git_argv("-C", plugin.installed_path, "rev-parse", "HEAD"))
 	defer delete(head)
 	if len(head) == 0 {
 		return fmt.tprintf(
@@ -865,7 +865,7 @@ handle_plugin_add :: proc(args: []string) {
 		// Record the pin: check/update skip the plugin and `plugin check`
 		// verifies the checkout is still on this exact commit.
 		git_info.ref_type = .Commit
-		full_sha := capture_command([]string{"git", "-C", plugin_path, "rev-parse", "HEAD"})
+		full_sha := capture_command(git_argv("-C", plugin_path, "rev-parse", "HEAD"))
 		if len(full_sha) > 0 {
 			git_info.pinned_ref = full_sha
 		} else {
