@@ -1087,11 +1087,12 @@ read_path_sync_values :: proc() -> (values: [dynamic]string, sig: u64) {
 	return
 }
 
-// `_wayu_paths_apply <sig> <word>...` + newline (values expanded by the
+// `\_wayu_paths_apply <sig> <word>...` + newline (values expanded by the
 // shell, see path_value_shell_word). core.<ext> runs it at startup and
-// path_sync.<ext> holds it for the prompt hook.
+// path_sync.<ext> holds it for the prompt hook: sourced after the aliases
+// exist, so the call is backslash-escaped (no alias expansion).
 emit_path_apply_call :: proc(b: ^strings.Builder, values: []string, sig: u64) {
-	fmt.sbprintf(b, "_wayu_paths_apply %x", sig)
+	fmt.sbprintf(b, "\\_wayu_paths_apply %x", sig)
 	for v in values {
 		fmt.sbprint(b, " ")
 		fmt.sbprint(b, path_value_shell_word(v))
@@ -2720,7 +2721,7 @@ _wayu_setup_nvm_lazy() {
       "$cmd" "$@"
       _exit_code=$?
     fi
-    eval "function $cmd { _wayu_run_node_bin $cmd \"\$@\" }"
+    eval "function $cmd { \_wayu_run_node_bin $cmd \"\$@\" }"
     return $_exit_code
   }
 

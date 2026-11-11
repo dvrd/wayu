@@ -762,7 +762,7 @@ One rule for `alias add`, the TUI, templates and `entries.json`:
 | Rule | |
 |---|---|
 | Name characters | Printable ASCII except whitespace, quotes, `` ` `` `$ \ = / ^ ; & \| < > ( ) { } [ ] * ? # ~ !`; not starting with `-`. `..`, `g.st`, `1x`, `k8s-ctx` are fine |
-| Reserved names | `.` and `if then else elif fi case esac for while until do done in function time select coproc declare typeset local export readonly unset return exit cd pwd echo test true false` are refused |
+| Reserved names | Names starting with `_wayu` (wayu's helpers), `.` and `if then else elif fi case esac for while until do done in function time select coproc declare typeset local export readonly unset return exit cd pwd echo test true false` are refused |
 | Length | At most 255 characters |
 | Command | Must not be blank; no NUL byte, valid UTF-8 |
 

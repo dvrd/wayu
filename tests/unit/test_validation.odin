@@ -205,6 +205,8 @@ test_alias_name_error_shared_rule :: proc(t: ^testing.T) {
 			"export",
 			"café",
 			"a\x00b",
+			"_wayu",
+			"_wayu_paths_apply",
 		}) {
 		testing.expectf(t, wayu.alias_name_error(n) != "", "%q should be invalid", n)
 	}

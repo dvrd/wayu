@@ -206,6 +206,14 @@ alias_name_error :: proc(name: string) -> string {
 	if name == "." {
 		return "Cannot use '.' (the source builtin) as Alias name"
 	}
+	// wayu's own helpers: an alias would hijack code parsed after the
+	// aliases are defined (path_sync.<ext> from the prompt hook, eval).
+	if strings.has_prefix(name, "_wayu") {
+		return fmt.tprintf(
+			"Alias name '%s' is reserved: names starting with _wayu belong to wayu",
+			name,
+		)
+	}
 	for reserved_word in ALIAS_REFUSED_NAMES {
 		if name == reserved_word {
 			return fmt.tprintf("Cannot use shell reserved word '%s' as Alias name", name)

@@ -46,6 +46,7 @@ class GeneratedShellTest
       test_fresh_init_has_no_error_output
       test_script_path_sync_after_path_add
       test_path_sync_retries_after_bad_save
+      test_path_sync_ignores_aliases
       test_dir_overrides_produce_working_init
       test_evalcache_binary_identity
       test_bash_errexit_with_tools
@@ -638,6 +639,35 @@ class GeneratedShellTest
     end
     ok = !File.exist?(marker) && berr.include?('invalid tool name') && errs.empty?
     check('tools name', ok, "pwned=#{File.exist?(marker)} build_err=#{berr.strip[0, 200]} errs=#{errs}")
+  end
+
+  # path_sync.<ext> is sourced from the prompt hook, after aliases exist: an
+  # alias named like wayu's helper must not hijack the call (zsh, bash 3.2),
+  # and `alias add` refuses names starting with _wayu (65).
+  def test_path_sync_ignores_aliases
+    print "Test: path_sync calls wayu's helper alias-proof; _wayu* alias names refused... "
+    home = "#{@tmp_home}/sync_alias"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/bin"])
+    env = clean_env(home)
+    marker = "#{home}/PWNED"
+    errs = []
+    %w[zsh bash].each do |sh|
+      e = env.merge('SHELL' => "/bin/#{sh}")
+      Open3.capture3(e, @wayu_bin, 'init', '--shell', sh)
+      Open3.capture3(e, @wayu_bin, 'path', 'add', "#{home}/bin")
+      data = "#{home}/.local/share/wayu"
+      opt = sh == 'bash' ? 'shopt -s expand_aliases; ' : ''
+      out, err, = Open3.capture3(e, "/bin/#{sh}", '-c',
+                                 "#{opt}source '#{data}/init.#{sh}'; alias _wayu_paths_apply='touch #{marker}; :'\n" \
+                                 "source '#{data}/path_sync.#{sh}'\necho \"$PATH\"")
+      errs << "#{sh}: out=#{out.strip[0, 80]} err=#{err.strip[0, 120]}" unless out.include?("#{home}/bin") && !File.exist?(marker)
+      FileUtils.rm_f(marker)
+    end
+    _, _, st = Open3.capture3(env, @wayu_bin, 'alias', 'add', '_wayu_paths_apply', 'echo hi')
+    _, _, st2 = Open3.capture3(env, @wayu_bin, 'alias', 'add', '_wayu', 'echo hi')
+    check('path_sync aliases', errs.empty? && st.exitstatus == 65 && st2.exitstatus == 65,
+          "errs=#{errs} alias_add=#{st.exitstatus},#{st2.exitstatus}")
   end
 
   # OKAMI-349: outside a git work tree (and a versioned context) a prompt

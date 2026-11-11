@@ -108,8 +108,8 @@ printable ASCII except whitespace, quotes, `$` `` ` `` `\` `=` `/` `^` `;` `&`
 `|` `<` `>` `(` `)` `{` `}` `[` `]` `*` `?` `#` `~` `!`, not starting with `-`
 (so `..`, `g.st`, `1x`, `k8s-ctx` work). Command names may be aliased
 (`alias add cd z`); shell grammar words (`if`, `do`, `function`, ...),
-declaration builtins (`local`, `export`, `typeset`, `return`, ...) and `.` are
-refused (exit `65`). The same rule applies to names in `entries.json`.
+declaration builtins (`local`, `export`, `typeset`, `return`, ...), `.` and
+names starting with `_wayu` (wayu's own helpers) are refused (exit `65`). The same rule applies to names in `entries.json`.
 
 | Action | Arguments | |
 |---|---|---|
