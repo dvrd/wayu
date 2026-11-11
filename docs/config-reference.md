@@ -766,7 +766,11 @@ One rule for `alias add`, the TUI, templates and `entries.json`:
 | Length | At most 255 characters |
 | Command | Must not be blank; no NUL byte, valid UTF-8 |
 
-Generated code: zsh/bash `alias name='command'`, fish `alias name 'command'`.
+Generated code: zsh/bash `alias name='command'`; fish a function
+`function name --wraps 'command' --description 'alias name command'` whose body
+is `eval 'command' (string escape -- $argv)` (what fish's `alias` defines, but
+the command is never parsed as code when the function is defined; arguments
+pass through literally).
 The command is single-quoted and stored verbatim, so `$VAR` in it expands when
 the alias runs. Aliases are emitted sorted by name, last in `core.<ext>`
 (after plugins and tools), so an alias never breaks a function wayu or a

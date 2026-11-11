@@ -2993,7 +2993,15 @@ emit_env_exports_fish :: proc(b: ^strings.Builder, mask := false) {
 	}
 }
 
-// `alias name 'command'` per [aliases] entry (fully literal body).
+// One function per [aliases] entry, what fish's `alias` defines, except that
+// the body is never spliced into code: `alias` sources
+// "function NAME; BODY $argv; end", so a body holding `end; ...` ran at
+// startup. Here the body is one escaped word, run by `eval` at call time with
+// the arguments escaped (taken literally, as zsh/bash pass them after an
+// alias). As in `alias`: a body starting with NAME runs it as `command` (or
+// `builtin`) instead of recursing; --wraps (completions) unless the first or
+// last word is NAME; the description `alias NAME BODY` keeps `alias` listing
+// them.
 emit_alias_definitions_fish :: proc(b: ^strings.Builder) {
 	toml_aliases := read_alias_values()
 	defer {
@@ -3005,13 +3013,33 @@ emit_alias_definitions_fish :: proc(b: ^strings.Builder) {
 			fmt.sbprintfln(b, "# wayu: skipping invalid alias name %q", a.name)
 			continue
 		}
-		fmt.sbprintfln(
-			b,
-			`alias %s %s`,
-			a.name,
-			escape_fish_string(a.command, context.temp_allocator),
-		)
+		emit_alias_function_fish(b, a.name, a.command)
 	}
+}
+
+emit_alias_function_fish :: proc(b: ^strings.Builder, name, body: string) {
+	// fish's `alias` splits the body on whitespace (`read --list`).
+	words := strings.fields(body, context.temp_allocator)
+	first := len(words) > 0 ? words[0] : ""
+	last := len(words) > 0 ? words[len(words) - 1] : ""
+	qbody := escape_fish_string(body, context.temp_allocator)
+	fmt.sbprintf(b, "function %s", name)
+	if first != name && last != name {
+		fmt.sbprintf(b, " --wraps %s", qbody)
+	}
+	fmt.sbprintfln(
+		b,
+		" --description %s",
+		escape_fish_string(fmt.tprintf("alias %s %s", name, body), context.temp_allocator),
+	)
+	if first == name {
+		fmt.sbprintln(b, "    set -l p command")
+		fmt.sbprintfln(b, "    contains -- %s (builtin --names); and set p builtin", name)
+		fmt.sbprintfln(b, "    eval $p %s (string escape -- $argv)", qbody)
+	} else {
+		fmt.sbprintfln(b, "    eval %s (string escape -- $argv)", qbody)
+	}
+	fmt.sbprintln(b, "end")
 }
 
 // `wayu export --eval` for fish (`wayu export --eval | source`): [paths]
