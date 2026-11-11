@@ -198,6 +198,12 @@
     .hero-links a { display: inline-block; padding: 5px 0; color: var(--ink-2); text-decoration: none; }
     .hero-links a:hover { color: var(--ink); text-decoration: underline; }
 
+    .trust { margin: 28px auto 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 22px; max-width: 54rem; font: 500 0.8rem/1.4 var(--font-mono); color: var(--ink-3); }
+    .trust li { display: inline-flex; align-items: center; gap: 0.45em; min-height: 28px; }
+    .trust li::before { content: ""; flex: none; width: 4px; height: 4px; margin-right: 0.25em; border-radius: 50%; background: var(--accent-fill); opacity: 0.8; }
+    .trust a { display: inline-flex; align-items: center; min-height: 28px; color: var(--ink-2); text-decoration: none; }
+    .trust a:hover { color: var(--ink); text-decoration: underline; }
+    @media (max-width: 520px) { .trust { font-size: 0.74rem; gap: 0 16px; } }
     /* ── Install box (tabs + command + copy) ────────────────────────────── */
     .install { width: 100%; max-width: 620px; text-align: left; border-radius: var(--r-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2), var(--shadow); overflow: hidden; }
     .tabs { display: flex; gap: 2px; padding: 6px; overflow-x: auto; scrollbar-width: none; }
@@ -535,6 +541,15 @@
           <a href="https://github.com/dvrd/wayu#shell-setup"><code>wayu init</code> adds one line to your rc file</a>
           <a href="https://github.com/dvrd/wayu#quick-start">Read the quickstart →</a>
         </p>
+
+        <!-- Trust strip. Test count: "Finished N tests" from ./build_it test. -->
+        <ul class="trust" aria-label="Project facts">
+          <li><a href="https://github.com/dvrd/wayu/blob/main/LICENSE">MIT licensed</a></li>
+          <li>zsh · bash · fish</li>
+          <li>One binary, no runtime dependencies</li>
+          <li><a href="https://github.com/dvrd/wayu/tree/main/tests">676 unit tests</a> + end-to-end suites</li>
+          <li><a href="docs/?p=stability">Stable from 7.0 on</a></li>
+        </ul>
 
         <!-- ── Command → generated code (real output: wayu build in a throwaway HOME, home dir shown as /Users/ana) ── -->
         <div class="gen" role="region" aria-labelledby="gen-title">
