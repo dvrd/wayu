@@ -162,7 +162,8 @@
     .nav-links svg { width: 18px; height: 18px; }
     .nav-links .btn { margin-left: 8px; min-height: 36px; padding: 0 14px; font-size: 0.88rem; }
     @media (max-width: 860px) { .nav-links .hide-md { display: none; } }
-    @media (max-width: 520px) { .nav-links .hide-sm { display: none; } .nav-inner { gap: 6px; } .nav-links .btn { margin-left: 4px; } }
+    @media (max-width: 520px) { .nav-links .hide-sm { display: none; } .nav-inner { gap: 6px; } .nav-links .btn { margin-left: 4px; } .nav-links a:not(.btn) { padding: 0 8px; } }
+    @media (max-width: 359px) { .brand { font-size: 1.2rem; gap: 8px; } .nav-links .btn { padding: 0 10px; } .nav-links a:not(.btn) { padding: 0 6px; } .icon-btn { width: 36px; } }
     .icon-btn { position: relative; display: inline-grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); cursor: pointer; transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s var(--ease-out); }
     .icon-btn:hover { color: var(--ink); background: var(--bg-2); }
     .icon-btn:active { transform: scale(0.96); }
@@ -194,7 +195,7 @@
     .hero-sub { margin: 24px auto 0; max-width: 36em; font-size: clamp(1.04rem, 1.6vw, 1.2rem); line-height: 1.55; color: var(--ink-2); }
     .hero .install { margin: 36px auto 0; }
     .hero-links { margin-top: 16px; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 22px; font-size: 0.9rem; color: var(--ink-3); }
-    .hero-links a { color: var(--ink-2); text-decoration: none; }
+    .hero-links a { display: inline-block; padding: 5px 0; color: var(--ink-2); text-decoration: none; }
     .hero-links a:hover { color: var(--ink); text-decoration: underline; }
 
     /* ── Install box (tabs + command + copy) ────────────────────────────── */
@@ -354,7 +355,7 @@
     .bat-panel h3 { font-size: 1.35rem; letter-spacing: -0.02em; }
     .bat-panel .txt p { margin-top: 10px; color: var(--ink-2); font-size: 0.95rem; }
     .bat-panel .txt a { font-size: 0.9rem; }
-    .bat-panel .txt .more { display: inline-block; margin-top: 14px; }
+    .bat-panel .txt .more { display: inline-flex; align-items: center; min-height: 32px; margin-top: 10px; }
     .code { border-radius: var(--r-lg); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset, var(--shadow); overflow: hidden; min-width: 0; margin-top: 18px; }
     @media (min-width: 960px) { .code { margin-top: 0; } }
     .code header { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; background: var(--term-bar); font: 500 0.74rem/1 var(--font-mono); color: var(--term-dim); }
@@ -382,6 +383,19 @@
     .mk.n { color: var(--ink-3); }
     .mk.n::before { content: "\2014"; content: "\2014" / ""; font-weight: 400; }
     .cmp td .part { display: block; font-size: 0.78rem; color: var(--ink-3); }
+    @media (max-width: 640px) {
+      .cmp-wrap { overflow: visible; background: none; box-shadow: none; border-radius: 0; }
+      .cmp { min-width: 0; display: block; }
+      .cmp thead { display: none; }
+      .cmp tbody { display: grid; gap: 12px; }
+      .cmp tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border-radius: var(--r-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); overflow: hidden; }
+      .cmp tbody th { grid-column: 1 / -1; position: static; min-width: 0; box-shadow: none; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+      .cmp tbody td { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 16px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+      .cmp tbody td::before { content: attr(data-label); content: attr(data-label) / ""; font: 500 0.74rem/1.3 var(--font-mono); color: var(--ink-3); }
+      .cmp tbody td.us::before { color: var(--ink); font-weight: 600; }
+      .cmp tbody tr td:nth-last-child(-n+2), .cmp tbody tr:last-child th, .cmp tbody tr:last-child td { border-bottom: 0; }
+      .cmp tbody tr:last-child th { border-bottom: 1px solid var(--line); }
+    }
     .cmp-note { margin-top: 14px; font-size: 0.84rem; color: var(--ink-3); max-width: 52rem; }
 
     /* ── Closing CTA + footer ───────────────────────────────────────────── */
@@ -399,7 +413,9 @@
     .foot ul a { display: inline-flex; align-items: center; min-height: 34px; color: var(--ink-2); text-decoration: none; }
     .foot ul a:hover { color: var(--ink); text-decoration: underline; }
     .foot-bottom { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; font-size: 0.82rem; }
-    .foot-bottom a { color: inherit; }
+    .foot-bottom a { display: inline-flex; align-items: center; min-height: 32px; color: inherit; }
+    /* Links inside running text: a 24px+ hit area without changing the line. */
+    .demo p a, .bench-cap a, .tiles-src a, .cmp-note a, .install-note a, .foot-brand a, .faq a, .sec-head a { display: inline-block; padding: 3px 0; }
 
     /* ── Motion ─────────────────────────────────────────────────────────── */
     @media (prefers-reduced-motion: no-preference) {
@@ -424,7 +440,7 @@
       <a class="brand" href="#top" aria-label="wayu home"><span class="dot" aria-hidden="true"></span>wayu</a>
       <nav aria-label="Main" style="margin-left:auto">
         <ul class="nav-links">
-          <li class="hide-sm"><a href="docs/">Docs</a></li>
+          <li><a href="docs/">Docs</a></li>
           <li class="hide-md"><a href="docs/?p=cli">CLI reference</a></li>
           <li class="hide-md"><a href="docs/?p=upgrading">Upgrading</a></li>
           <li>
@@ -915,24 +931,24 @@ git status -sb</pre>
           <h2 id="cmp-title">What you get that an rc file can't give you.</h2>
         </div>
         <div class="cmp-wrap reveal" role="region" aria-labelledby="cmp-title" tabindex="0">
-          <table class="cmp">
-            <thead>
-              <tr>
-                <th scope="col"><span class="sr-only">Capability</span></th>
-                <th scope="col" class="us"><span><span class="dot" aria-hidden="true"></span>wayu</span></th>
-                <th scope="col">Hand-written dotfiles</th>
-                <th scope="col">oh-my-zsh</th>
-                <th scope="col">zinit / antidote</th>
+          <table class="cmp" role="table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th role="columnheader" scope="col"><span class="sr-only">Capability</span></th>
+                <th role="columnheader" scope="col" class="us"><span><span class="dot" aria-hidden="true"></span>wayu</span></th>
+                <th role="columnheader" scope="col">Hand-written dotfiles</th>
+                <th role="columnheader" scope="col">oh-my-zsh</th>
+                <th role="columnheader" scope="col">zinit / antidote</th>
               </tr>
             </thead>
-            <tbody>
-              <tr><th scope="row">PATH, aliases and env vars added by command<small>add, remove, list; no editing files</small></th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
-              <tr><th scope="row">Encrypted secrets<small>run-only secrets for a single command</small></th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
-              <tr><th scope="row">zsh, bash and fish from one set of entries</th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span><span class="part">one file per shell</span></td><td><span class="mk n"><span class="sr-only">No</span></span><span class="part">zsh only</span></td><td><span class="mk n"><span class="sr-only">No</span></span><span class="part">zsh only</span></td></tr>
-              <tr><th scope="row">Install plugins from a git URL</th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span><span class="part">clone into $ZSH_CUSTOM by hand</span></td><td><span class="mk y"><span class="sr-only">Yes</span></span></td></tr>
-              <tr><th scope="row">Preview every write, automatic backups<small>--dry-run; backup before the first write</small></th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
-              <tr><th scope="row">JSON output and sysexits exit codes</th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
-              <tr><th scope="row">Full-screen TUI for entries</th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+            <tbody role="rowgroup">
+              <tr role="row"><th scope="row" role="rowheader">PATH, aliases and env vars added by command<small>add, remove, list; no editing files</small></th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Encrypted secrets<small>run-only secrets for a single command</small></th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+              <tr role="row"><th scope="row" role="rowheader">zsh, bash and fish from one set of entries</th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span><span class="part">one file per shell</span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span><span class="part">zsh only</span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span><span class="part">zsh only</span></td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Install plugins from a git URL</th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span><span class="part">clone into $ZSH_CUSTOM by hand</span></td><td role="cell" data-label="zinit / antidote"><span class="mk y"><span class="sr-only">Yes</span></span></td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Preview every write, automatic backups<small>--dry-run; backup before the first write</small></th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+              <tr role="row"><th scope="row" role="rowheader">JSON output and sysexits exit codes</th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Full-screen TUI for entries</th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span></td></tr>
             </tbody>
           </table>
         </div>
