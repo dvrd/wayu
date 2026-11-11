@@ -50,7 +50,12 @@ jobs:
             /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
           sleep $((try * 10))
         done
-        exit 1
+        # Last resort: Homebrew's bottles come from ghcr.io, not the Ubuntu mirrors.
+        brew=/home/linuxbrew/.linuxbrew/bin/brew
+        [ -x "$brew" ] || exit 1
+        HOMEBREW_NO_AUTO_UPDATE=1 "$brew" install zsh fish || exit 1
+        sudo ln -sf "$($brew --prefix)/bin/zsh" /usr/bin/zsh
+        sudo ln -sf "$($brew --prefix)/bin/fish" /usr/bin/fish
 
     - name: Install shells (macOS)
       if: runner.os == 'macOS'
@@ -132,7 +137,12 @@ jobs:
             /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
           sleep $((try * 10))
         done
-        exit 1
+        # Last resort: Homebrew's bottles come from ghcr.io, not the Ubuntu mirrors.
+        brew=/home/linuxbrew/.linuxbrew/bin/brew
+        [ -x "$brew" ] || exit 1
+        HOMEBREW_NO_AUTO_UPDATE=1 "$brew" install zsh fish || exit 1
+        sudo ln -sf "$($brew --prefix)/bin/zsh" /usr/bin/zsh
+        sudo ln -sf "$($brew --prefix)/bin/fish" /usr/bin/fish
 
     - name: Bootstrap build script
       run: odin build build -out:build_it
