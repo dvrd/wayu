@@ -14,7 +14,8 @@
 //   dev       — debug build + run with remaining args
 //   release   — test + commit + tag + atomic push of main and the tag
 //               (the push to main runs bump.yml: CI, then publish + Homebrew)
-//   docs      — sync docs/index.html + README.md version from src/main.odin
+//   docs      — sync docs/index.html + README.md version from src/main.odin and
+//               regenerate the docs pages and sitemap (site.odin)
 //               (--check: verify only, exit 1 on drift)
 //   help      — show available targets
 
@@ -40,7 +41,7 @@ debug_path :: proc() -> string {
 }
 
 main :: proc() {
-	bld.go_rebuild_urself("build", "bld")
+	bld.go_rebuild_urself("build", "bld", "build/markdown")
 
 	target := "build"
 	if len(os.args) > 1 {
@@ -700,8 +701,10 @@ do_release :: proc() {
 	}
 	bld.log_info("Updated VERSION from %s to %s", old_version, version_bare)
 
-	// 3c. Sync version into docs/index.html and README.md
+	// 3c. Sync version into docs/index.html and README.md, and regenerate the
+	//     docs pages (UPGRADING.md's section was just renamed).
 	sync_docs_version_str(version_bare)
+	sync_site(false)
 
 	// 3d. Commit CHANGELOG.md, src/main.odin, docs, and README together
 	git_must(
@@ -711,6 +714,8 @@ do_release :: proc() {
 		"src/main.odin",
 		"docs/index.html",
 		"docs/UPGRADING.md",
+		"docs/docs",
+		"docs/sitemap.xml",
 		"README.md",
 	)
 	git_must("git commit", "commit", "-m", fmt.tprintf("chore: release %s", version))
@@ -891,9 +896,10 @@ sync_docs_version_str :: proc(new_ver: string, check := false) -> bool {
 	return ok
 }
 
-// `./build_it docs [--check]`: sync README + docs to VERSION in src/main.odin.
-// --check writes nothing and exits 1 on drift (CI "Release Readiness");
-// bump.yml runs the plain form before committing a release.
+// `./build_it docs [--check]`: sync README + docs to VERSION in src/main.odin
+// and regenerate the site's generated files (site.odin). --check writes
+// nothing and exits 1 on drift (CI "Release Readiness"); bump.yml runs the
+// plain form before committing a release.
 sync_docs_version :: proc() {
 	check := false
 	for i := 2; i < len(os.args); i += 1 {
@@ -908,7 +914,9 @@ sync_docs_version :: proc() {
 			os.exit(1)
 		}
 	}
-	if !sync_docs_version_str(read_source_version(), check) {
+	versions_ok := sync_docs_version_str(read_source_version(), check)
+	site_ok := sync_site(check)
+	if !versions_ok || !site_ok {
 		os.exit(1)
 	}
 }
@@ -930,7 +938,7 @@ do_help :: proc() {
 	fmt.println("  dev       Debug build + run (extra args passed through)")
 	fmt.println("  release   Run tests, commit + tag, push to main (bump.yml publishes after CI)")
 	fmt.println(
-		"  docs      Sync docs/index.html + README.md version from src/main.odin [--check]",
+		"  docs      Sync site version + regenerate docs pages and sitemap [--check]",
 	)
 	fmt.println("  help      Show this help")
 	fmt.println("")

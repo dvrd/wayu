@@ -199,14 +199,6 @@ jobs:
       if: steps.version.outputs.MODE == 'bump'
       uses: ./.github/actions/setup-odin
 
-    # Same sync ./build_it release does; CI's Release Readiness job fails on drift.
-    - name: Sync README + docs version
-      if: steps.version.outputs.MODE == 'bump'
-      run: |
-        odin build build -out:build_it
-        ./build_it docs
-        ./build_it docs --check
-
     - name: Generate CHANGELOG
       if: steps.version.outputs.MODE == 'bump'
       env:
@@ -219,6 +211,15 @@ jobs:
       env:
         VERSION: ${{ steps.version.outputs.VERSION }}
       run: .github/scripts/upgrading-version.sh "$VERSION"
+
+    # Same sync ./build_it release does; CI's Release Readiness job fails on
+    # drift. After the UPGRADING.md rename: the docs pages are rendered from it.
+    - name: Sync README + docs version, regenerate the docs pages
+      if: steps.version.outputs.MODE == 'bump'
+      run: |
+        odin build build -out:build_it
+        ./build_it docs
+        ./build_it docs --check
 
     - name: Commit and tag
       if: steps.version.outputs.SKIP == 'false'
@@ -246,7 +247,7 @@ jobs:
         else
           # bump: ship commit + tag atomically. If main moved meanwhile the push
           # is rejected and NEITHER ref updates; the run for the new tip retries.
-          git add src/main.odin CHANGELOG.md README.md docs/index.html docs/UPGRADING.md
+          git add src/main.odin CHANGELOG.md README.md docs/index.html docs/UPGRADING.md docs/docs docs/sitemap.xml
           git commit -m "chore: release $VERSION"
           git tag "$VERSION"
           git push --atomic "$PUSH_URL" main:refs/heads/main "refs/tags/$VERSION:refs/tags/$VERSION"

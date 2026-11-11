@@ -176,7 +176,8 @@ jobs:
     - name: Setup Odin
       uses: ./.github/actions/setup-odin
 
-    # README.md + docs/index.html must advertise VERSION from src/main.odin.
+    # README.md + docs/index.html must advertise VERSION from src/main.odin, and
+    # the generated docs pages must match docs/*.md (build/site.odin).
     # bump.yml and ./build_it release run `./build_it docs` to keep them in sync.
     - name: Check version consistency
       run: |

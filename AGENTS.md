@@ -53,6 +53,8 @@ ruby tests/integration/test_golden.rb             # compare every golden (also r
 
 Each `tests/golden/<component>_<W>x<H>.txt` needs a matching line (component + args) in `tests/golden/cases.txt`; the test fails if a golden has no case.
 
+**Website** (`docs/`, GitHub Pages at wayu.dvrd.io): `./build_it docs` renders each docs page from `docs/*.md` (`build/markdown`) into `build/docs_shell.html` as static `docs/docs/<id>/index.html`, plus the overview, `docs/sitemap.xml` and the landing page's test count (`build/site.odin`, page list in `DOC_PAGES`); `docs/docs/docs.css` / `docs.js` are hand-written. Run it after editing any of those: `./build_it docs --check` (CI) fails on a stale generated file.
+
 ## Branching & releases
 
 - **`develop` is the integration branch.** All work (features, fixes, review
