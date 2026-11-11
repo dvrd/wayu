@@ -214,3 +214,35 @@ is_symlink_nofollow :: proc(path: string) -> bool {
 	}
 	return posix.S_ISLNK(st.st_mode)
 }
+
+// Core dumps: a crash while the master key or a decrypted value is in
+// memory must not write it to disk. The soft RLIMIT_CORE goes to 0 for the
+// rest of the process (the hard limit is kept, so `secrets run` can give
+// its command the original limit back before exec).
+@(private = "file")
+_core_limit_saved: posix.rlimit
+@(private = "file")
+_core_limit_lowered: bool
+
+secrets_disable_core_dumps :: proc() {
+	if _core_limit_lowered {
+		return
+	}
+	lim: posix.rlimit
+	if posix.getrlimit(.CORE, &lim) != .OK {
+		return
+	}
+	_core_limit_saved = lim
+	_core_limit_lowered = true
+	lim.rlim_cur = 0
+	_ = posix.setrlimit(.CORE, &lim)
+}
+
+// Put back the limit secrets_disable_core_dumps lowered (before an exec).
+secrets_restore_core_limit :: proc() {
+	if !_core_limit_lowered {
+		return
+	}
+	_ = posix.setrlimit(.CORE, &_core_limit_saved)
+	_core_limit_lowered = false
+}

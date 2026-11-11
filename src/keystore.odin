@@ -444,6 +444,7 @@ keystore_load :: proc(
 	status: Key_Status,
 	msg: string,
 ) {
+	secrets_disable_core_dumps() // the key is in memory from here on
 	#partial switch secrets_backend_resolve(b) {
 	case .KEYCHAIN:
 		return keystore_load_command(
@@ -466,6 +467,7 @@ keystore_save :: proc(
 	ok: bool,
 	msg: string,
 ) {
+	secrets_disable_core_dumps() // the key is in memory from here on
 	key_hex := keystore_encode_hex(key)
 	defer crypto.zero_explicit(raw_data(key_hex), len(key_hex))
 

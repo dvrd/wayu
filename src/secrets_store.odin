@@ -1394,6 +1394,7 @@ env_store_unmark_secret :: proc(name: string) -> (ok: bool, err: string) {
 // (one trailing newline removed). Caller wipes the result.
 @(private = "file")
 read_secret_value :: proc(name: string) -> (value: string, ok: bool) {
+	secrets_disable_core_dumps()
 	tty := bool(posix.isatty(posix.STDIN_FILENO))
 	if tty {
 		fmt.eprintf("Value for %s (input hidden): ", name)
@@ -1467,6 +1468,7 @@ const_add_secret :: proc(args: []string) {
 	value: string
 	owned := false
 	if len(args) >= 2 {
+		secrets_disable_core_dumps()
 		value = strings.join(args[1:], " ")
 		owned = true
 		// argv is visible to other local users (ps) and lands in shell
@@ -2100,6 +2102,7 @@ secrets_run_command :: proc(args: []string) {
 	argv := make([]cstring, len(cmd) + 1, context.temp_allocator)
 	for a, i in cmd {argv[i] = strings.clone_to_cstring(a, context.temp_allocator)}
 	argv[len(cmd)] = nil
+	secrets_restore_core_limit() // CMD gets the caller's limit back
 	posix.execvp(argv[0], raw_data(argv))
 
 	// execvp returned: it failed.

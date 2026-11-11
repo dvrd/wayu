@@ -11,6 +11,7 @@ import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sys/posix"
 import "core:testing"
 
 @(private = "file")
@@ -705,4 +706,39 @@ test_secrets_store_file_opens_with :: proc(t: ^testing.T) {
 	_ = os.write_entire_file(path, transmute([]byte)text)
 	testing.expect(t, wayu.secrets_store_file_opens_with(path, test_key(1)), "right key")
 	testing.expect(t, !wayu.secrets_store_file_opens_with(path, test_key(2)), "wrong key")
+}
+
+// Commands holding the key or plaintext run without core dumps; the soft
+// limit comes back for `secrets run`'s exec.
+@(test)
+test_secrets_core_dumps_disabled :: proc(t: ^testing.T) {
+	orig: posix.rlimit
+	testing.expect(t, posix.getrlimit(.CORE, &orig) == .OK)
+	wayu.secrets_disable_core_dumps()
+	now: posix.rlimit
+	posix.getrlimit(.CORE, &now)
+	testing.expect_value(t, now.rlim_cur, 0)
+	testing.expect_value(t, now.rlim_max, orig.rlim_max)
+	wayu.secrets_restore_core_limit()
+	posix.getrlimit(.CORE, &now)
+	testing.expect_value(t, now.rlim_cur, orig.rlim_cur)
+}
+
+// The env snapshot copies only the variables asked for (never the whole
+// environment, exported secrets included); presence checks copy nothing.
+@(test)
+test_env_snapshot_per_name :: proc(t: ^testing.T) {
+	os.set_env("WAYU_FAKE_SNAP_A", "fake-a")
+	os.set_env("WAYU_FAKE_SNAP_SECRET", "fake-secret")
+	defer {os.unset_env("WAYU_FAKE_SNAP_A"); os.unset_env("WAYU_FAKE_SNAP_SECRET")}
+	v, ok := wayu.snapshot_env_var("WAYU_FAKE_SNAP_A").?
+	testing.expect(t, ok && v == "fake-a", "value of a set variable")
+	testing.expect(t, wayu.snapshot_env_var("WAYU_FAKE_SNAP_UNSET") == nil, "unset variable")
+	testing.expect(t, wayu.snapshot_env_has("WAYU_FAKE_SNAP_SECRET"), "presence")
+	testing.expect(t, !wayu.snapshot_env_has("WAYU_FAKE_SNAP_UNSET"), "absence")
+	testing.expect(
+		t,
+		!wayu.env_snapshot_holds("WAYU_FAKE_SNAP_SECRET"),
+		"a variable never looked up must not be copied into the snapshot",
+	)
 }

@@ -784,7 +784,11 @@ class SecretsStoreIntegrationTest
     _, err, st = w(['secrets', 'run', 'FAKE_RUN', 'FAKE_MULTI', '--', 'sh', '-c',
                     "test \"$FAKE_RUN\" = '#{RUN_ONLY}' && test \"$FAKE_MULTI\" = \"$(printf 'fake-line-1\\nfake-line-2')\""])
     _, _, st2 = w(['secrets', 'run', 'FAKE_RUN', '--', 'sh', '-c', 'test "$FAKE_RUN" = wrong'])
-    check('child did not get the values', st.success? && st2.exitstatus == 1, err)
+    # wayu runs with core dumps off (key in memory); the command gets the
+    # caller's limit back.
+    out3, err3, st3 = sh(['sh', '-c', "if ulimit -c 1024 2>/dev/null; then exec #{@wayu_bin} secrets run FAKE_RUN -- sh -c 'ulimit -c'; else echo 1024; fi"])
+    check('child did not get the values / core limit', st.success? && st2.exitstatus == 1 &&
+          st3.success? && out3.strip == '1024', "#{err} #{out3.inspect} #{err3}")
   end
 
   def test_secrets_run_exit_status
