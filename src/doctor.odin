@@ -91,7 +91,7 @@ handle_doctor_command :: proc(
 	// confirmation rule as `wayu path clean`.
 	if fix_mode && !wayu.dry_run && !wayu.yes_flag {
 		print_error(
-			"doctor --fix removes missing/duplicate PATH entries and moves startup-file lines into wayu (wayu optimize). Pass --yes to confirm, or --dry-run to preview.",
+			"doctor --fix removes missing/duplicate PATH entries, moves startup-file lines into wayu (wayu optimize) and removes group/other write from wayu dirs. Pass --yes to confirm, or --dry-run to preview.",
 		)
 		wayu_exit(EXIT_USAGE)
 	}
@@ -436,6 +436,23 @@ attempt_auto_fixes :: proc(results: []CheckResult, arena_alloc: mem.Allocator) -
 			)
 			append(&attempts, FixAttempt{name = result.name, success = fix_ok, message = fix_msg})
 
+		case DIR_MODES_CHECK:
+			fmt.printfln(
+				"  %s• Removing group/other write from wayu dirs...%s",
+				get_primary(),
+				RESET,
+			)
+			fix_ok, fix_msg := doctor_fix_dir_modes()
+			fix_msg = strings.clone(fix_msg, arena_alloc)
+			fmt.printfln(
+				"    %s%s %s%s",
+				get_success() if fix_ok else get_error(),
+				"✓" if fix_ok else "✗",
+				fix_msg,
+				RESET,
+			)
+			append(&attempts, FixAttempt{name = result.name, success = fix_ok, message = fix_msg})
+
 		case:
 			fmt.printfln("  %s• Cannot auto-fix: %s%s", get_muted(), result.name, RESET)
 		}
@@ -533,7 +550,7 @@ print_doctor_usage :: proc() {
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
 	fmt.printfln("  wayu doctor              Run all health checks")
 	fmt.printfln(
-		"  wayu doctor --fix --yes  Remove missing/duplicate PATH entries, run wayu optimize",
+		"  wayu doctor --fix --yes  Remove missing/duplicate PATH entries, run wayu optimize, tighten dir modes",
 	)
 	fmt.printfln("  wayu doctor --fix -n     Preview what --fix would change (dry run)")
 	fmt.printfln("  wayu doctor --json       Output results as JSON")
@@ -644,7 +661,8 @@ fi
 	script_path := fmt.aprintf("%s/startup_profile.zsh", wayu.data)
 	defer delete(script_path)
 
-	write_ok := os.write_entire_file_from_string(script_path, profile_script)
+	// Atomic, new file 0600 (was a truncating 0644 write).
+	write_ok := write_file_atomic(script_path, transmute([]byte)string(profile_script))
 	if write_ok != nil {
 		print_error("Failed to write profile script")
 		return
@@ -702,6 +720,7 @@ CHECKS := []CheckEntry {
 		"Secrets: store 0600, key present, values decrypt, entries.json markers paired",
 	},
 	{"rcfiles", check_rc_optimize, "Startup-file lines 'wayu optimize' would move"},
+	{"dirmodes", check_dir_modes, "wayu config/data dirs not group/other-writable"},
 }
 
 // Check 1: wayu installation. Report-only: doctor never installs a binary
@@ -1661,7 +1680,7 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 					fmt.tprintf(
 						"wayu.toml is malformed (line %d: %s) — run `wayu toml validate` or restore with `wayu backup restore toml --yes`",
 						perr.line,
-						perr.msg,
+						toml_escape_controls(perr.msg),
 					),
 				),
 				fixable = false,
@@ -1681,7 +1700,13 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 				CheckResult {
 					name = clone_arena("TOML config"),
 					status = .ERROR,
-					message = clone_arena(fmt.tprintf("wayu.toml line %d: %s", is.line, is.msg)),
+					message = clone_arena(
+						fmt.tprintf(
+							"wayu.toml line %d: %s",
+							is.line,
+							toml_escape_controls(is.msg),
+						),
+					),
 					fixable = false,
 				},
 			)
@@ -1980,4 +2005,116 @@ check_sync_status :: proc(results: ^[dynamic]CheckResult) {
 			fixable = false,
 		},
 	)
+}
+
+// Directories under the config and data dirs the dir-mode check walks: the
+// dirs themselves (depth 0), their subdirs (functions/, bin/, plugins/, ...)
+// and one level below (plugins/<name>). Symlinked entries are not followed.
+@(private = "file")
+DIR_MODES_MAX_DEPTH :: 2
+
+@(private = "file")
+DIR_MODES_CHECK :: "directory permissions"
+
+// wayu dirs (config, data and their subdirs) with group/other write, in walk
+// order (allocator). Those let another local user change code the shell runs
+// at startup, or put commands in bin/ on PATH.
+wayu_unsafe_dirs :: proc(allocator := context.allocator) -> []string {
+	walk :: proc(dir: string, depth: int, found: ^[dynamic]string, allocator: mem.Allocator) {
+		fi, err := os.stat(dir, context.temp_allocator)
+		if err != nil || fi.type != .Directory {
+			return
+		}
+		if fi.mode & WAYU_DIR_UNSAFE_BITS != {} {
+			append(found, strings.clone(dir, allocator))
+		}
+		if depth >= DIR_MODES_MAX_DEPTH {
+			return
+		}
+		infos, rerr := os.read_all_directory_by_path(dir, context.temp_allocator)
+		if rerr != nil {
+			return
+		}
+		for info in infos {
+			child := fmt.tprintf("%s/%s", dir, info.name)
+			// lstat: symlinked entries (bin/ links, stow trees) are not walked.
+			lfi, lerr := os.lstat(child, context.temp_allocator)
+			if lerr != nil || lfi.type != .Directory {
+				continue
+			}
+			walk(child, depth + 1, found, allocator)
+		}
+	}
+	found := make([dynamic]string, allocator)
+	walk(wayu.config, 0, &found, allocator)
+	if wayu.data != wayu.config {
+		walk(wayu.data, 0, &found, allocator)
+	}
+	return found[:]
+}
+
+// Check: no wayu dir is group/other-writable.
+check_dir_modes :: proc(results: ^[dynamic]CheckResult) {
+	ensure_arena_initialized()
+	unsafe := wayu_unsafe_dirs(context.temp_allocator)
+	if len(unsafe) == 0 {
+		append(
+			results,
+			CheckResult {
+				name = clone_arena(DIR_MODES_CHECK),
+				status = .OK,
+				message = clone_arena("wayu dirs are not group/other-writable"),
+			},
+		)
+		return
+	}
+	shown := make([dynamic]string, context.temp_allocator)
+	for d, i in unsafe {
+		if i == 3 {
+			append(&shown, fmt.tprintf("+%d more", len(unsafe) - 3))
+			break
+		}
+		append(&shown, doctor_tilde(d))
+	}
+	append(
+		results,
+		CheckResult {
+			name = clone_arena(DIR_MODES_CHECK),
+			status = .ERROR,
+			message = clone_arena(
+				fmt.tprintf(
+					"%d wayu dir%s group/other-writable (another user could change startup code or bin/): %s",
+					len(unsafe),
+					" is" if len(unsafe) == 1 else "s are",
+					strings.join(shown[:], ", ", context.temp_allocator),
+				),
+			),
+			fixable = true,
+		},
+	)
+}
+
+// doctor --fix: clear group/other write on every unsafe wayu dir.
+doctor_fix_dir_modes :: proc() -> (ok: bool, message: string) {
+	unsafe := wayu_unsafe_dirs(context.temp_allocator)
+	if wayu.dry_run {
+		return true, fmt.tprintf(
+			"[dry-run] would remove group/other write from %d dir(s)",
+			len(unsafe),
+		)
+	}
+	failed := 0
+	for d in unsafe {
+		if _, err := wayu_dir_tighten(d); err != nil {
+			failed += 1
+		}
+	}
+	if failed > 0 {
+		return false, fmt.tprintf(
+			"Tightened %d dir(s); %d could not be changed (not owned by you?)",
+			len(unsafe) - failed,
+			failed,
+		)
+	}
+	return true, fmt.tprintf("Removed group/other write from %d dir(s)", len(unsafe))
 }

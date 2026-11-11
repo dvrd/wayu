@@ -65,17 +65,23 @@ TomlTableKind :: enum u8 {
 
 @(private = "file")
 TomlParser :: struct {
-	src:        string,
-	pos:        int,
-	line:       int, // 0-based line of `pos`
-	doc:        ^TomlDoc,
-	root:       ^TomlValue,
-	cur:        ^TomlValue, // table receiving key/values; nil after a bad header
-	cur_header: int,
-	kinds:      map[^TomlValue]TomlTableKind,
-	err:        string, // first error of the current statement
-	err_line:   int,
+	src:         string,
+	pos:         int,
+	line:        int, // 0-based line of `pos`
+	doc:         ^TomlDoc,
+	root:        ^TomlValue,
+	cur:         ^TomlValue, // table receiving key/values; nil after a bad header
+	cur_header:  int,
+	kinds:       map[^TomlValue]TomlTableKind,
+	err:         string, // first error of the current statement
+	err_line:    int,
+	depth:       int, // open arrays / inline tables around the current value
+	line_starts: [dynamic]int, // byte offset of each line; built on first error
 }
+
+// Arrays and inline tables nest at most this deep; deeper input is a parse
+// error instead of unbounded recursion.
+TOML_MAX_NESTING :: 128
 
 // Parse `content` with every node, string and list allocated in `alloc`
 // (pass an arena and drop it in one go). Always returns the recovered
@@ -315,12 +321,7 @@ tp_statement_failed :: proc(p: ^TomlParser, sline: int, msg: string, multiline: 
 	p.err = ""
 
 	// Rewind to the start of the statement's line, then skip that line.
-	pos := 0
-	for row := 0; row < sline && pos < len(p.src); pos += 1 {
-		if p.src[pos] == '\n' {
-			row += 1
-		}
-	}
+	pos := tp_line_start(p, sline)
 	if nl := strings.index_byte(p.src[pos:], '\n'); nl >= 0 {
 		p.pos = pos + nl + 1
 	} else {
@@ -329,15 +330,26 @@ tp_statement_failed :: proc(p: ^TomlParser, sline: int, msg: string, multiline: 
 	p.line = sline + 1
 }
 
+// Byte offset where physical line `n` (0-based) starts (len(src) past the
+// end). The line index is built once, so error recovery stays linear.
+@(private = "file")
+tp_line_start :: proc(p: ^TomlParser, n: int) -> int {
+	if p.line_starts == nil {
+		p.line_starts = make([dynamic]int)
+		append(&p.line_starts, 0)
+		for i in 0 ..< len(p.src) {
+			if p.src[i] == '\n' {
+				append(&p.line_starts, i + 1)
+			}
+		}
+	}
+	return p.line_starts[n] if n < len(p.line_starts) else len(p.src)
+}
+
 // Physical line `n` (0-based) without its newline / carriage return.
 @(private = "file")
 tp_line_text :: proc(p: ^TomlParser, n: int) -> string {
-	pos := 0
-	for l := 0; l < n && pos < len(p.src); pos += 1 {
-		if p.src[pos] == '\n' {
-			l += 1
-		}
-	}
+	pos := tp_line_start(p, n)
 	if n == 0 && strings.has_prefix(p.src, "\xEF\xBB\xBF") {
 		pos = 3
 	}
@@ -565,10 +577,13 @@ tp_value :: proc(p: ^TomlParser) -> (^TomlValue, bool) {
 		} else {
 			v.str_val, ok = tp_literal_string(p)
 		}
-	case '[':
-		ok = tp_array(p, v)
-	case '{':
-		ok = tp_inline_table(p, v)
+	case '[', '{':
+		if p.depth >= TOML_MAX_NESTING {
+			return v, tp_fail(p, "arrays/inline tables nested more than %d deep", TOML_MAX_NESTING)
+		}
+		p.depth += 1
+		defer p.depth -= 1
+		ok = tp_array(p, v) if tp_peek(p) == '[' else tp_inline_table(p, v)
 	case:
 		ok = tp_scalar(p, v)
 	}
@@ -880,6 +895,9 @@ tp_basic_string :: proc(p: ^TomlParser) -> (string, bool) {
 				return "", false
 			}
 		case:
+			if tp_is_control(c) {
+				return "", tp_control_fail(p, c)
+			}
 			strings.write_byte(&b, c)
 			p.pos += 1
 		}
@@ -891,7 +909,12 @@ tp_basic_string :: proc(p: ^TomlParser) -> (string, bool) {
 tp_literal_string :: proc(p: ^TomlParser) -> (string, bool) {
 	p.pos += 1
 	start := p.pos
-	for p.pos < len(p.src) && p.src[p.pos] != '\'' && p.src[p.pos] != '\n' {p.pos += 1}
+	for p.pos < len(p.src) && p.src[p.pos] != '\'' && p.src[p.pos] != '\n' {
+		if tp_is_control(p.src[p.pos]) {
+			return "", tp_control_fail(p, p.src[p.pos])
+		}
+		p.pos += 1
+	}
 	if p.pos >= len(p.src) || p.src[p.pos] != '\'' {
 		return "", tp_fail(p, "unterminated string (missing closing \"'\")")
 	}
@@ -965,6 +988,9 @@ tp_ml_basic_string :: proc(p: ^TomlParser) -> (string, bool) {
 			}
 			continue
 		}
+		if tp_ml_control(p) {
+			return "", tp_control_fail(p, c)
+		}
 		strings.write_byte(&b, c)
 		tp_adv(p)
 	}
@@ -987,9 +1013,39 @@ tp_ml_literal_string :: proc(p: ^TomlParser) -> (string, bool) {
 				return strings.to_string(b), true
 			}
 		}
+		if tp_ml_control(p) {
+			return "", tp_control_fail(p, c)
+		}
 		strings.write_byte(&b, c)
 		tp_adv(p)
 	}
+}
+
+// TOML forbids raw control characters in strings: below 0x20 except tab,
+// and DEL (an escape such as \u0007 is the way to write one).
+@(private = "file")
+tp_is_control :: proc(c: byte) -> bool {
+	return (c < 0x20 && c != '\t') || c == 0x7f
+}
+
+// Multi-line strings may also span lines (LF or CRLF).
+@(private = "file")
+tp_ml_control :: proc(p: ^TomlParser) -> bool {
+	c := p.src[p.pos]
+	if c == '\n' || tp_at(p, "\r\n") {
+		return false
+	}
+	return tp_is_control(c)
+}
+
+@(private = "file")
+tp_control_fail :: proc(p: ^TomlParser, c: byte) -> bool {
+	return tp_fail(
+		p,
+		"control character 0x%02X in a string (write it as an escape, e.g. \\u%04X)",
+		c,
+		c,
+	)
 }
 
 // Decode the escape at p.pos (a backslash) into `b`.

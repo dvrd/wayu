@@ -223,9 +223,10 @@ run_unit_tests :: proc(names := "") -> bool {
 	// Sandbox HOME so no test can ever write into the real ~/.config/wayu
 	// (several tests swap the global config dir; a missed restore used to
 	// leak fixture plugins into the user's plugins.json).
-	test_home := fmt.tprintf("/tmp/wayu_unit_home_%d", os.get_pid())
-	os.remove_all(test_home)
-	os.make_directory_all(test_home)
+	test_home, home_ok := make_private_tmp_dir("wayu_unit_home_*")
+	if !home_ok {
+		return false
+	}
 	real_home, had_home := os.lookup_env("HOME", context.temp_allocator)
 	os.set_env("HOME", test_home)
 	// Tests put scratch files under this per-run root (tests/unit/test_tmp.odin),
@@ -238,7 +239,7 @@ run_unit_tests :: proc(names := "") -> bool {
 			os.unset_env("HOME")
 		}
 		os.unset_env("WAYU_TEST_TMPDIR")
-		os.remove_all(test_home)
+		remove_private_tmp_dir(test_home)
 	}
 	// The test runner reports progress, per-test logs, leaks and the names of
 	// failed tests on stderr, which is passed through. The tested code's own
@@ -270,6 +271,39 @@ run_unit_tests :: proc(names := "") -> bool {
 		show_test_stdout(stdout_log)
 	}
 	return ok
+}
+
+// A fresh private scratch dir: mkdtemp under $TMPDIR (else /tmp), then 0700.
+// Never a fixed, guessable /tmp name: another local user could create it
+// first (or a symlink in its place) and have our writes, or the cleanup's
+// remove_all, land on files they choose. Logs and returns false on failure.
+make_private_tmp_dir :: proc(pattern: string) -> (string, bool) {
+	dir, err := os.make_directory_temp("", pattern, context.temp_allocator)
+	if err != nil {
+		bld.log_error("Cannot create a private temp dir (%s): %v", pattern, err)
+		return "", false
+	}
+	if os.chmod(dir, os.Permissions{.Read_User, .Write_User, .Execute_User}) != nil {
+		bld.log_error("Cannot make %s private", dir)
+		remove_private_tmp_dir(dir)
+		return "", false
+	}
+	return dir, true
+}
+
+// Remove a dir made by make_private_tmp_dir, only while it is still a plain
+// directory: remove_all follows a symlink at the top, so a path swapped for a
+// link is left alone.
+remove_private_tmp_dir :: proc(dir: string) {
+	fi, err := os.lstat(dir, context.temp_allocator)
+	if err != nil {
+		return
+	}
+	if fi.type != .Directory {
+		bld.log_error("Not removing %s: no longer a plain directory", dir)
+		return
+	}
+	os.remove_all(dir)
 }
 
 // On failure: keep the tested code's stdout as bin/unit-tests.stdout.log
@@ -312,8 +346,12 @@ git_must :: proc(what: string, args: ..string) {
 
 // Run `git <args>` and return its trimmed stdout.
 git_output :: proc(args: ..string) -> (out: string, ok: bool) {
-	tmp := fmt.tprintf("/tmp/wayu_build_git_%d", os.get_pid())
-	defer os.remove(tmp)
+	tmp_dir, dir_ok := make_private_tmp_dir("wayu_build_git_*")
+	if !dir_ok {
+		return "", false
+	}
+	defer remove_private_tmp_dir(tmp_dir)
+	tmp := fmt.tprintf("%s/out", tmp_dir)
 	cmd := bld.cmd_create(context.temp_allocator)
 	bld.cmd_append(&cmd, "git")
 	bld.cmd_append(&cmd, ..args)
@@ -528,15 +566,15 @@ do_release :: proc() {
 			os.exit(1)
 		}
 		bld.log_info("Auto-detecting next version with git-cliff...")
-		tmp_file := "/tmp/wayu_next_version"
+		tmp_dir, dir_ok := make_private_tmp_dir("wayu_next_version_*")
+		if !dir_ok {
+			os.exit(1)
+		}
+		defer remove_private_tmp_dir(tmp_dir)
+		tmp_file := fmt.tprintf("%s/version", tmp_dir)
 		bump_cmd := bld.cmd_create(context.temp_allocator)
-		bld.cmd_append(
-			&bump_cmd,
-			"sh",
-			"-c",
-			fmt.tprintf("git-cliff --bumped-version > %s", tmp_file),
-		)
-		if !bld.cmd_run(&bump_cmd) {
+		bld.cmd_append(&bump_cmd, "git-cliff", "--bumped-version")
+		if !bld.cmd_run(&bump_cmd, {stdout_path = tmp_file}) {
 			bld.log_error("git-cliff --bumped-version failed")
 			os.exit(1)
 		}

@@ -52,6 +52,10 @@ they live, and which files are generated.
 - Each variable is read independently: setting one never moves the other.
   `wayu init` creates both dirs; the first command that writes creates the
   data dir if it is missing.
+- wayu creates its dirs (and missing parents) `0700` whatever the umask, and
+  `wayu init` removes group/other write from existing ones: they hold code
+  your shell runs at startup, and `bin/` is on PATH. `wayu doctor` reports a
+  group/other-writable one as an error; `wayu doctor --fix --yes` tightens it.
 - `WAYU_CONFIG_DIR` and `WAYU_DATA_DIR` must be absolute paths: a relative one
   makes every command exit `78`. A relative `XDG_DATA_HOME` is ignored (XDG
   spec), so the data dir is then `~/.local/share/wayu`.
@@ -182,7 +186,10 @@ Keys:
 | Everything else: the generator (`wayu build`, every write), the TUI (lenient) | Use what was recovered; a line that is not valid TOML is skipped |
 
 Strict-only failures: a key defined twice in one table, a table defined twice,
-an integer with leading zeros (`007`), an unquoted string.
+an integer with leading zeros (`007`), an unquoted string, a raw control
+character inside a string (anything below 0x20 but tab, and DEL; multi-line
+strings may also hold line breaks: write the others as escapes such as
+`\u001b`), arrays or inline tables nested more than 128 deep.
 
 After parsing, `wayu toml validate` also checks:
 

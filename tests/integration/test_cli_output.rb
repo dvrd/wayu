@@ -6,6 +6,7 @@
 require 'open3'
 require 'json'
 require 'fileutils'
+require 'tmpdir'
 require_relative 'test_helper'
 
 class CliOutputIntegrationTest
@@ -89,8 +90,7 @@ class CliOutputIntegrationTest
   end
 
   def test_help_without_config
-    fresh = "/tmp/wayu_cli_fresh_#{$$}"
-    FileUtils.mkdir_p(fresh)
+    fresh = Dir.mktmpdir("wayu_cli_fresh_")
     bad = []
     HELP_COMMANDS.each do |cmd|
       ['--help', 'help', '-h'].each do |h|
@@ -104,8 +104,7 @@ class CliOutputIntegrationTest
   end
 
   def test_one_error_before_init
-    fresh = "/tmp/wayu_cli_fresh2_#{$$}"
-    FileUtils.mkdir_p(fresh)
+    fresh = Dir.mktmpdir("wayu_cli_fresh2_")
     bad = []
     ['path list', 'path list --json', 'alias list', 'const list', 'search x'].each do |cmd|
       out, err, st = run_split(cmd, home: fresh)
@@ -201,8 +200,7 @@ class CliOutputIntegrationTest
   end
 
   def test_json_empty_lists
-    home = "/tmp/wayu_cli_empty_#{$$}"
-    FileUtils.mkdir_p(home)
+    home = Dir.mktmpdir("wayu_cli_empty_")
     run_split('init --yes', home: home)
     bad = []
     { 'alias list --json' => 'aliases', 'const list --json' => nil, 'plugin list --json' => 'plugins' }.each do |cmd, key|

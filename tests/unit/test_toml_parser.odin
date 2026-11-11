@@ -10,6 +10,7 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:testing"
+import "core:time"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -156,6 +157,15 @@ test_toml_parser_rejects_invalid :: proc(t: ^testing.T) {
 		{"[t]\nll = ls -la", 2},
 		{"x = 'a' 'b'", 1},
 		{"k = \"v\" junk", 1},
+		// Raw control characters (TOML: escapes only).
+		{"x = \"a\x00b\"", 1},
+		{"x = \"a\x1b[31mb\"", 1},
+		{"x = 'a\x07b'", 1},
+		{"x = \"a\x7f\"", 1},
+		{"x = \"a\rb\"", 1},
+		{"x = \"\"\"\nline\x1bb\"\"\"", 2},
+		{"x = '''\nline\x00b'''", 2},
+		{"[\"t\x1b\"]", 1},
 	}
 	for c in cases {
 		line, _, valid := first_error(c.src)
@@ -485,4 +495,66 @@ test_toml_parser_large_file_fast :: proc(t: ^testing.T) {
 	doc, ok := wayu.toml_doc_parse_alloc(strings.to_string(b), virtual.arena_allocator(&arena))
 	testing.expect(t, ok)
 	testing.expect_value(t, len(doc.entries), 6000)
+}
+
+// Tab, LF and CRLF stay legal in strings; escapes still produce controls.
+@(test)
+test_toml_parser_control_chars_allowed_forms :: proc(t: ^testing.T) {
+	for src in ([]string {
+			"x = \"a\tb\"",
+			"x = 'a\tb'",
+			"x = \"\"\"\r\na\r\nb\"\"\"",
+			"x = '''\na\nb'''",
+			"x = \"\\u001b\"",
+		}) {
+		_, msg, valid := first_error(src)
+		testing.expectf(t, valid, "%q rejected: %s", src, msg)
+	}
+	// Lenient readers recover the bad line and keep the rest.
+	content := "[a]\nbad = \"x\x1by\"\nok = \"fine\"\n"
+	kvs_equal(t, section(content, "a"), {{"bad", "x\x1by"}, {"ok", "fine"}}, "recovered [a]")
+}
+
+// Deep nesting is a parse error, not a stack overflow.
+@(test)
+test_toml_parser_nesting_cap :: proc(t: ^testing.T) {
+	deep := proc(open, close: string, n: int) -> string {
+		return strings.concatenate(
+			{
+				"x = ",
+				strings.repeat(open, n, context.temp_allocator),
+				strings.repeat(close, n, context.temp_allocator),
+				"\n[t]\nok = 1\n",
+			},
+			context.temp_allocator,
+		)
+	}
+	for src in ([]string{deep("[", "]", 20000), deep("{a=", "}", 20000)}) {
+		line, msg, valid := first_error(src)
+		testing.expect(t, !valid, "deep nesting rejected")
+		testing.expect_value(t, line, 1)
+		testing.expectf(t, strings.contains(msg, "nested"), "message: %s", msg)
+	}
+	_, msg, valid := first_error(deep("[", "]", 100))
+	testing.expectf(t, valid, "100 levels accepted: %s", msg)
+	free_all(context.temp_allocator)
+}
+
+// Error recovery stays linear: 10k bad lines parse in well under a second.
+@(test)
+test_toml_parser_many_bad_lines_fast :: proc(t: ^testing.T) {
+	b := strings.builder_make(context.temp_allocator)
+	strings.write_string(&b, "[t]\n")
+	for i in 0 ..< 10000 {fmt.sbprintfln(&b, "k_%d = ls -la", i)}
+	start := time.tick_now()
+	arena: virtual.Arena
+	_ = virtual.arena_init_growing(&arena)
+	defer virtual.arena_destroy(&arena)
+	doc, ok := wayu.toml_doc_parse_alloc(strings.to_string(b), virtual.arena_allocator(&arena))
+	elapsed := time.tick_since(start)
+	testing.expect(t, !ok)
+	testing.expect_value(t, len(doc.errors), 10000)
+	testing.expect_value(t, len(doc.entries), 10000)
+	testing.expectf(t, time.duration_seconds(elapsed) < 1, "took %v", elapsed)
+	free_all(context.temp_allocator)
 }

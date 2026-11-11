@@ -77,7 +77,9 @@ edit_extra_config :: proc(extra_file: string) {
 	// Create file if doesn't exist
 	if !os.exists(extra_file) {
 		content := "# Extra configuration - runs at end of shell initialization\n# Add custom scripts, conda initialization, etc. here\n"
-		if write_ok := os.write_entire_file_from_string(extra_file, content); write_ok != nil {
+		// 0600 like the extra.<ext> `wayu init` creates: it may hold secrets.
+		if write_ok := os.write_entire_file_from_string(extra_file, content, SECRET_FILE_PERMS);
+		   write_ok != nil {
 			print_error_simple("Failed to create extra config: %s", extra_file)
 			wayu_exit(EXIT_CANTCREAT)
 		}

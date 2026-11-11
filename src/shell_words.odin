@@ -188,29 +188,209 @@ shell_parse_statements :: proc(content: string, dialect: ShellDialect) -> [dynam
 	return out
 }
 
-// Copy a balanced `open ... close` region (used for $(...), ${...}) verbatim
-// as active bytes. `i` points at the opening byte. Returns false when the
-// region is not closed.
+// Copy a `$(...)` or `${...}` region verbatim as active bytes. `i` points
+// at the opening `(` / `{`. Quoting inside the region is honored (single,
+// double, backtick, backslash, nested `$(` / `${`), so a quoted `)` or `}`
+// does not end it. `in_dq`: the expansion sits inside double quotes. Returns
+// "" or an error: unterminated, or a construct whose end only a full shell
+// parser could find (a comment, `case` or a here-document inside `$(...)`, a
+// single quote inside a double-quoted `${...}`), so the caller treats the
+// rest as unreadable instead of guessing.
 @(private = "file")
-shell_copy_balanced :: proc(s: string, i: ^int, line: ^int, w: ^WordBuf, open, close: u8) -> bool {
-	depth := 0
+shell_copy_expansion :: proc(
+	s: string,
+	i: ^int,
+	line: ^int,
+	w: ^WordBuf,
+	dialect: ShellDialect,
+	in_dq: bool,
+	nesting := 0,
+) -> string {
+	if nesting >= SHELL_MAX_NESTING {
+		return "expansion nested too deeply"
+	}
+	brace := s[i^] == '{'
+	wb_put(w, s[i^], true)
+	i^ += 1
+	depth := 1
+	word_start := true
 	for i^ < len(s) {
 		c := s[i^]
+		if !brace && word_start {
+			if c == '#' {
+				return "comment inside $(...)"
+			}
+			if strings.has_prefix(s[i^:], "case") &&
+			   (i^ + 4 == len(s) || shell_is_blank(s[i^ + 4]) || s[i^ + 4] == '\n') {
+				return "case inside $(...)"
+			}
+		}
+		word_start = c == '\n' || shell_is_blank(c) || shell_is_op_byte(c)
+		switch c {
+		case '\n':
+			line^ += 1
+		case '\\':
+			wb_put(w, c, true)
+			i^ += 1
+			if i^ < len(s) {
+				if s[i^] == '\n' {
+					line^ += 1
+				}
+				wb_put(w, s[i^], true)
+				i^ += 1
+			}
+			continue
+		case '\'':
+			if brace && in_dq {
+				return "single quote inside a double-quoted ${...}"
+			}
+			wb_put(w, c, true)
+			i^ += 1
+			if !shell_copy_until(s, i, line, w, '\'', dialect == .FISH) {
+				return "unterminated expansion"
+			}
+			continue
+		case '"':
+			wb_put(w, c, true)
+			i^ += 1
+			if e := shell_copy_dq_raw(s, i, line, w, dialect, nesting + 1); len(e) > 0 {
+				return e
+			}
+			continue
+		case '`':
+			if dialect == .POSIX {
+				wb_put(w, c, true)
+				i^ += 1
+				if !shell_copy_until(s, i, line, w, '`', true) {
+					return "unterminated backtick"
+				}
+				continue
+			}
+		case '$':
+			wb_put(w, c, true)
+			i^ += 1
+			if i^ < len(s) && (s[i^] == '(' || (dialect == .POSIX && s[i^] == '{')) {
+				// Quoting starts afresh inside $(...); a ${...} nested in a
+				// ${...} keeps its context.
+				if e := shell_copy_expansion(s, i, line, w, dialect, brace && in_dq, nesting + 1);
+				   len(e) > 0 {
+					return e
+				}
+			}
+			continue
+		case '<':
+			if !brace && strings.has_prefix(s[i^:], "<<") {
+				if !strings.has_prefix(s[i^:], "<<<") {
+					return "here-document inside $(...)"
+				}
+				for _ in 0 ..< 3 {wb_put(w, '<', true)}
+				i^ += 3
+				continue
+			}
+		case '(':
+			if !brace {
+				depth += 1
+			}
+		case ')':
+			if !brace {
+				depth -= 1
+			}
+		case '{':
+			if brace {
+				depth += 1
+			}
+		case '}':
+			if brace {
+				depth -= 1
+			}
+		}
 		wb_put(w, c, true)
 		i^ += 1
-		if c == '\n' {
+		if depth == 0 {
+			return ""
+		}
+	}
+	return "unterminated expansion"
+}
+
+// Nesting cap for expansions inside expansions: deeper input is reported as
+// unreadable instead of recursing without bound.
+SHELL_MAX_NESTING :: 64
+
+// Copy bytes verbatim (active) up to and including `close`; `i` points just
+// past the opening byte. `escapes`: a backslash protects the next byte.
+@(private = "file")
+shell_copy_until :: proc(
+	s: string,
+	i: ^int,
+	line: ^int,
+	w: ^WordBuf,
+	close: u8,
+	escapes: bool,
+) -> bool {
+	for i^ < len(s) {
+		d := s[i^]
+		wb_put(w, d, true)
+		i^ += 1
+		if d == '\n' {
 			line^ += 1
 		}
-		if c == open {
-			depth += 1
-		} else if c == close {
-			depth -= 1
-			if depth == 0 {
-				return true
+		if escapes && d == '\\' && i^ < len(s) {
+			if s[i^] == '\n' {
+				line^ += 1
 			}
+			wb_put(w, s[i^], true)
+			i^ += 1
+			continue
+		}
+		if d == close {
+			return true
 		}
 	}
 	return false
+}
+
+// Copy a double-quoted string inside an expansion verbatim (active); `i`
+// points just past the opening quote.
+@(private = "file")
+shell_copy_dq_raw :: proc(
+	s: string,
+	i: ^int,
+	line: ^int,
+	w: ^WordBuf,
+	dialect: ShellDialect,
+	nesting: int,
+) -> string {
+	for i^ < len(s) {
+		d := s[i^]
+		wb_put(w, d, true)
+		i^ += 1
+		switch d {
+		case '"':
+			return ""
+		case '\n':
+			line^ += 1
+		case '\\':
+			if i^ < len(s) {
+				if s[i^] == '\n' {
+					line^ += 1
+				}
+				wb_put(w, s[i^], true)
+				i^ += 1
+			}
+		case '`':
+			if dialect == .POSIX && !shell_copy_until(s, i, line, w, '`', true) {
+				return "unterminated backtick"
+			}
+		case '$':
+			if i^ < len(s) && (s[i^] == '(' || (dialect == .POSIX && s[i^] == '{')) {
+				if e := shell_copy_expansion(s, i, line, w, dialect, true, nesting); len(e) > 0 {
+					return e
+				}
+			}
+		}
+	}
+	return "unterminated double quote"
 }
 
 // Read one word starting at s[i^]. Advances i past it.
@@ -264,8 +444,8 @@ shell_read_word :: proc(
 
 		case '"':
 			i^ += 1
-			if !shell_read_dq(s, i, line, &w, dialect) {
-				err = "unterminated double quote"; ok = false; break loop
+			if e := shell_read_dq(s, i, line, &w, dialect); len(e) > 0 {
+				err = e; ok = false; break loop
 			}
 
 		case '\\':
@@ -299,16 +479,16 @@ shell_read_word :: proc(
 				if dialect == .POSIX && n == '"' {
 					// $"..." (locale translation) is a double-quoted string.
 					i^ += 2
-					if !shell_read_dq(s, i, line, &w, dialect) {
-						err = "unterminated double quote"; ok = false; break loop
+					if e := shell_read_dq(s, i, line, &w, dialect); len(e) > 0 {
+						err = e; ok = false; break loop
 					}
 					continue
 				}
 				if n == '(' || (dialect == .POSIX && n == '{') {
 					wb_put(&w, '$', true)
 					i^ += 1
-					if !shell_copy_balanced(s, i, line, &w, n, n == '(' ? ')' : '}') {
-						err = "unterminated expansion"; ok = false; break loop
+					if e := shell_copy_expansion(s, i, line, &w, dialect, false); len(e) > 0 {
+						err = e; ok = false; break loop
 					}
 					continue
 				}
@@ -362,13 +542,19 @@ shell_read_word :: proc(
 
 // Body of a double-quoted string; i points just past the opening quote.
 @(private = "file")
-shell_read_dq :: proc(s: string, i: ^int, line: ^int, w: ^WordBuf, dialect: ShellDialect) -> bool {
+shell_read_dq :: proc(
+	s: string,
+	i: ^int,
+	line: ^int,
+	w: ^WordBuf,
+	dialect: ShellDialect,
+) -> string {
 	for i^ < len(s) {
 		d := s[i^]
 		switch d {
 		case '"':
 			i^ += 1
-			return true
+			return ""
 		case '\\':
 			if i^ + 1 < len(s) {
 				n := s[i^ + 1]
@@ -386,11 +572,10 @@ shell_read_dq :: proc(s: string, i: ^int, line: ^int, w: ^WordBuf, dialect: Shel
 			i^ += 1
 		case '$':
 			if i^ + 1 < len(s) && (s[i^ + 1] == '(' || (dialect == .POSIX && s[i^ + 1] == '{')) {
-				n := s[i^ + 1]
 				wb_put(w, '$', true)
 				i^ += 1
-				if !shell_copy_balanced(s, i, line, w, n, n == '(' ? ')' : '}') {
-					return false
+				if e := shell_copy_expansion(s, i, line, w, dialect, true); len(e) > 0 {
+					return e
 				}
 				continue
 			}
@@ -407,7 +592,7 @@ shell_read_dq :: proc(s: string, i: ^int, line: ^int, w: ^WordBuf, dialect: Shel
 			i^ += 1
 		}
 	}
-	return false
+	return "unterminated double quote"
 }
 
 // Body of $'...'; i points just past the opening quote. Only the escapes

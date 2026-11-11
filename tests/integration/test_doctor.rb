@@ -53,6 +53,8 @@ class DoctorIntegrationTest
       test_plugins_malformed_is_error
       test_plugins_cycle_keeps_json_valid
       test_optimize_removed
+      test_dir_modes
+      test_created_file_modes
     ensure
       FileUtils.rm_rf(@real_dir) if @real_dir
       teardown_test_env
@@ -434,6 +436,46 @@ class DoctorIntegrationTest
     out, status = run_wayu('--shell zsh doctor --optimize --no-color')
     check(status.exitstatus == 64 && File.read("#{@data_dir}/init.zsh") == "# original init\n" &&
           out.include?('removed'), "exit=#{status.exitstatus}\n#{out}")
+  end
+
+  # Group/other-writable wayu dirs (bin/ is on PATH, functions/ and plugins/
+  # are sourced at startup) are an error; --fix removes the write bits; init
+  # under umask 000 still creates 0700 dirs.
+  def test_dir_modes
+    print "Test 20: group/other-writable wayu dirs: error, --fix tightens, init makes 0700... "
+    bin = "#{@data_dir}/bin"
+    FileUtils.mkdir_p(bin)
+    File.chmod(0o777, bin)
+    jout, _, status = run_wayu_env({}, '--shell zsh doctor --json')
+    entry = (JSON.parse(jout)['checks'].find { |c| c['name'] == 'directory permissions' } rescue nil)
+    flagged = entry && entry['status'] == 'error' && entry['fixable'] && status.exitstatus == 78
+    run_wayu('--shell zsh doctor --fix --yes --no-color')
+    fixed_mode = File.stat(bin).mode & 0o777
+    fresh = Dir.mktmpdir('wayu_umask_')
+    begin
+      env = ENV.to_h.merge('HOME' => fresh)
+      Open3.capture3(env, 'sh', '-c', "umask 000; exec \"$0\" --shell zsh init --yes", @wayu_bin)
+      dirs = ["#{fresh}/.config", "#{fresh}/.config/wayu", "#{fresh}/.local/share/wayu",
+              "#{fresh}/.local/share/wayu/bin", "#{fresh}/.local/share/wayu/functions"]
+      modes = dirs.map { |d| File.directory?(d) ? (File.stat(d).mode & 0o777) : nil }
+    ensure
+      FileUtils.rm_rf(fresh)
+    end
+    check(flagged && fixed_mode & 0o022 == 0 && modes.all? { |m| m == 0o700 },
+          "entry=#{entry.inspect} exit=#{status.exitstatus} fixed=#{fixed_mode.to_s(8)} init=#{modes.map { |m| m&.to_s(8) }}")
+  end
+
+  # Files wayu creates for the user are 0600 (extra.<ext> may hold secrets,
+  # like the one `wayu init` makes), written atomically.
+  def test_created_file_modes
+    print "Test 21: doctor --profile script and config extend's extra file are 0600... "
+    profile = "#{@data_dir}/startup_profile.zsh"
+    extra = "#{@config_dir}/extra.zsh"
+    FileUtils.rm_f([profile, extra])
+    run_wayu('--shell zsh doctor --profile --no-color')
+    run_wayu_env({ 'EDITOR' => 'true', 'VISUAL' => 'true' }, '--shell zsh config extend')
+    modes = [profile, extra].map { |f| File.exist?(f) ? (File.stat(f).mode & 0o777) : nil }
+    check(modes == [0o600, 0o600], "modes=#{modes.map { |m| m&.to_s(8) }}")
   end
 end
 

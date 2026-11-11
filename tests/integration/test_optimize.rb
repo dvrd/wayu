@@ -85,6 +85,7 @@ class OptimizeIntegrationTest
     FileUtils.mkdir_p(["#{home}/.config", "#{home}/fbin", "#{home}/.grok/completions/zsh", "#{home}/.grok/bin", "#{home}/.nvm"])
     File.write("#{home}/fbin/fakegen", <<~'SH')
       #!/bin/sh
+      : > "$HOME/.fakegen_ran"
       case "$1" in
         completion) echo 'fakegen_comp=1'; echo "alias fgc='echo comp'" ;;
         init) echo 'export FAKEGEN_INIT=1'; echo 'fg_fn() { echo fn; }' ;;
@@ -126,6 +127,9 @@ class OptimizeIntegrationTest
             File.read("#{home}/.zshrc") == ZSHRC && !File.exist?("#{home}/.local/share/wayu/entries.json") ||
             (st.success? && File.read("#{home}/.zshrc") == ZSHRC && !File.read("#{home}/.local/share/wayu/entries.json").include?('fakegen')),
           "exit=#{st.exitstatus} out=#{out[0, 600]}")
+    check('Test 2b: the diff and the plan never show a secret value',
+          !out.include?('sk-test') && out.include?('(line of secret OPENAI_API_KEY, value hidden)'),
+          out[0, 1500])
     out, st = wayu(env, 'optimize', '--check')
     check('Test 3: --check lists the lines and exits 1', st.exitstatus == 1 && out.include?('9 lines can be optimized'),
           "exit=#{st.exitstatus} out=#{out}")
@@ -137,7 +141,8 @@ class OptimizeIntegrationTest
     out, st = wayu(env, 'optimize', '--yes')
     rc = File.read("#{home}/.zshrc")
     check('Test 4: --yes moves 9 lines and keeps the rest',
-          st.success? && out.include?('Moved 9 lines') && rc.include?('[ -s "$NVM_DIR/nvm.sh" ]') &&
+          st.success? && out.include?('Moved 9 lines') && out.include?('backup still holds the secret value in plaintext') &&
+            rc.include?('[ -s "$NVM_DIR/nvm.sh" ]') &&
             rc.include?('alias inside_if=yes') && !rc.include?('fakegen') && !rc.include?('compinit'),
           "exit=#{st.exitstatus} out=#{out[0, 500]} rc=#{rc}")
     store = JSON.parse(File.read("#{home}/.local/share/wayu/entries.json"))
@@ -227,16 +232,18 @@ class OptimizeIntegrationTest
 
   def test_doctor_check_and_fix
     home, env = make_home('doctor')
+    FileUtils.rm_f("#{home}/.fakegen_ran")
     out, = wayu(env, 'doctor', '--json')
+    ran = File.exist?("#{home}/.fakegen_ran")
     checks = JSON.parse(out[out.index('{')..])['checks'] rescue []
     c = checks.find { |x| x['name'] == 'startup files' }
-    check('Test 13: doctor reports the optimizable lines with a cost estimate',
+    check('Test 13: doctor reports the optimizable lines without running rc commands',
           c && c['status'] == 'warning' && c['fixable'] == true && c['message'].include?('~250 ms') &&
-            c['message'].include?('fakegen completion zsh'),
-          c.inspect)
+            c['message'].include?('fakegen completion zsh (runs a command every start)') && !ran,
+          "ran=#{ran} #{c.inspect}")
     out, = wayu(env, 'doctor', '--fix', '--yes')
     check('Test 14: doctor --fix --yes runs optimize',
-          out.include?('moved 9 lines into wayu') && !File.read("#{home}/.zshrc").include?('fakegen'), out[-800..] || out)
+          out.include?('moved 9 lines into wayu') && out.include?('still holds the secret value in plaintext') && !File.read("#{home}/.zshrc").include?('fakegen'), out[-800..] || out)
   end
 
   # Audit fixes in `config scan`: ZDOTDIR is honoured, `# >>>` blocks are

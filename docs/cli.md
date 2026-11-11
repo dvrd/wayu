@@ -322,13 +322,17 @@ parse), scripts (error: two sources for one name or a CRLF shebang; warning:
 stale or broken builds), script bin entries (`bin/` entries without a script;
 `--fix` removes them),
 turbo file, dependencies, startup files (lines `wayu optimize` would move,
-with an estimated cost per shell start: each generator command is timed once,
-a second `compinit` counts ~250 ms). Exits `78` when any
+a second `compinit` counts ~250 ms; generator commands are listed, never
+run: doctor does not execute rc file content), directory permissions (a config/data
+dir, or a subdir of them two levels deep, symlinks not followed, that is
+group- or other-writable is an error: another user could change startup code
+or put commands in `bin/`; wayu creates its dirs `0700` whatever the umask).
+Exits `78` when any
 check reports an error (warnings don't), so it can gate CI. Supports `--json`.
 
 | Flag | |
 |---|---|
-| `--fix` | Remove missing / duplicate PATH entries and run `wayu optimize` (`--yes`, or `--dry-run` to preview) |
+| `--fix` | Remove missing / duplicate PATH entries, run `wayu optimize`, remove group/other write from wayu dirs (`--yes`, or `--dry-run` to preview) |
 | `--profile` | Write a zsh startup profiler script to `<data>/startup_profile.zsh` (see also `wayu build profile`); exits `64` with `--json` or `--fix` |
 | `--optimize` | Removed; prints a pointer to `wayu build` / `wayu export` and exits `64` |
 
@@ -534,10 +538,12 @@ reproduce exactly stays untouched.
 | `alias name=value` (fish also `alias name value`) | An alias; the value must not expand when defined (`alias x="cd $HOME"` stays) |
 | `export NAME=value`; fish `set -gx NAME value` | A constant; a secret-looking name or value is stored encrypted (`const add --secret`). Values may use `$HOME`, `$USER`, `~/` and constants wayu already has |
 
-Without `--yes` it prints a unified diff per file and the list of what moves,
+Without `--yes` it prints a unified diff per file (a secret constant's lines
+show as a placeholder, never the value) and the list of what moves,
 then exits `64`; `--dry-run` prints the same and exits `0`. With `--yes` each
 changed file is backed up (`wayu backup restore .zshrc --yes` undoes it;
-entries.json is backed up too), rewritten atomically, entries.json updated
+entries.json is backed up too; a moved secret stays in plaintext in that rc
+backup, which wayu says and never deletes on its own), rewritten atomically, entries.json updated
 under the config lock and the init files regenerated. A second run finds
 nothing and exits `0`.
 
