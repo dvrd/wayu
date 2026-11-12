@@ -133,6 +133,10 @@ jobs:
         if-no-files-found: ignore
 
     - name: Run integration tests (incl. golden)
+      # The candidate was built and verified above. Reuse that exact binary
+      # instead of recompiling it in every suite (the ASan job does the same).
+      env:
+        WAYU_BIN: bin/wayu
       run: |
         mkdir -p evidence
         ruby tests/integration/run_all.rb 2>&1 | tee evidence/integration.txt
