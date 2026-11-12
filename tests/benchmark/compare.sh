@@ -68,6 +68,9 @@ KEEP=${KEEP:-0}
 JSON=${JSON:-}
 PYTHON_EXE=$(command -v python3)
 SHELDON_BIN=${SHELDON_BIN:-}
+TIMED_RUNNER=$PWD/tests/benchmark/run_with_timeout.py
+BENCHMARK_TIMEOUT=${BENCHMARK_TIMEOUT:-300}
+RAW_DIR=${RAW_DIR:-}
 
 # Pinned third-party commits (2026-11-08).
 OMZ_REPO=https://github.com/ohmyzsh/ohmyzsh.git                      OMZ_SHA=cca3bdfbef8c52ef8939ce7911ff68852b949daa
@@ -86,7 +89,15 @@ GIT_EXE=$(command -v git) || { echo "git not found" >&2; exit 1; }
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/wayu-compare.XXXXXX")
 work=$(cd "$work" && pwd -P)
-[ "$KEEP" = 1 ] && echo "work dir: $work" || trap 'chmod -R u+w "$work" 2>/dev/null; rm -rf "$work"' EXIT
+cleanup() {
+  if [ -n "$RAW_DIR" ]; then
+    mkdir -p "$RAW_DIR"
+    cp -R "$work/results/." "$RAW_DIR/"
+  fi
+  if [ "$KEEP" != 1 ]; then chmod -R u+w "$work" 2>/dev/null; rm -rf "$work"; fi
+}
+trap cleanup EXIT
+if [ "$KEEP" = 1 ]; then echo "work dir: $work"; fi
 mkdir -p "$work/src" "$work/bin" "$work/results"
 ln -s "$WAYU_BIN" "$work/bin/wayu"
 ln -s "$GIT_EXE" "$work/bin/git"
@@ -379,16 +390,17 @@ bench() { # $1 = contender
 	local h out
 	h=$(new_home "$1")
 	setup "$1" "$h"
+	in_home "$h" "$ZSH_EXE" -fc 'autoload -Uz compaudit; compaudit' > "$work/results/$1.audit" 2>&1 || true
 	# A single cold process-exit diagnostic, kept separate from PTY latency.
-	in_home "$h" "$PYTHON_EXE" -c 'import subprocess,sys,time; t=time.perf_counter(); subprocess.run(sys.argv[1:],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); print((time.perf_counter()-t)*1000)' "$ZSH_EXE" -lic exit > "$work/results/$1.cold"
+	in_home "$h" "$PYTHON_EXE" "$TIMED_RUNNER" --seconds 30 --elapsed "$ZSH_EXE" -lic exit > "$work/results/$1.cold" 2> "$work/results/$1.cold.err"
 	# Warm: dumps, .zwc, bundles, zinit's compiled plugins.
-	in_home "$h" "$ZSH_EXE" -lic exit </dev/null >/dev/null 2>&1 || true
+	in_home "$h" "$PYTHON_EXE" "$TIMED_RUNNER" --seconds 30 "$ZSH_EXE" -lic 'print -r -- "BENCH_READY comps=${+functions[compdef]} suggest=${+_ZSH_AUTOSUGGEST_BIND_COUNTS} highlight=${+ZSH_HIGHLIGHT_VERSION}"' </dev/null > "$work/results/$1.startup" 2>&1
 	sleep 1
-	in_home "$h" "$ZSH_EXE" -lic exit </dev/null >/dev/null 2>&1 || true
+	in_home "$h" "$PYTHON_EXE" "$TIMED_RUNNER" --seconds 30 "$ZSH_EXE" -lic exit </dev/null >> "$work/results/$1.startup" 2>&1
 	sleep 1
 	out=$work/results/$1.raw
 	printf '%-18s' "$1"
-	if ! in_home "$h" "$ZSH_EXE" "$work/src/zsh-bench/zsh-bench" --raw --iters "$ITERS" --git no </dev/null >"$out" 2>"$out.err"; then
+	if ! in_home "$h" "$PYTHON_EXE" "$TIMED_RUNNER" --seconds "$BENCHMARK_TIMEOUT" "$ZSH_EXE" "$work/src/zsh-bench/zsh-bench" --raw --iters "$ITERS" --git no </dev/null >"$out" 2>"$out.err"; then
 		echo "zsh-bench failed:"; cat "$out.err"; return 1
 	fi
 	printf '%9s %9s %9s %9s %9s   %s%s%s\n' \

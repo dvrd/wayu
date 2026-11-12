@@ -32,6 +32,16 @@ begin
     abort 'invalid benchmark samples were accepted' if status.success?
   end
   puts 'PASS benchmark report: samples, medians, provenance and invalid/incomplete data rejection (synthetic data only)'
+  out, status = Open3.capture2e('python3', 'tests/benchmark/run_with_timeout.py', '--seconds', '5', '--elapsed',
+                              'python3', '-c', 'pass')
+  abort 'elapsed timing failed' unless status.success? && Float(out) >= 0
+  _, status = Open3.capture2e('python3', 'tests/benchmark/run_with_timeout.py', '--seconds', '0.1',
+                            'python3', '-c', 'import time; time.sleep(10)')
+  abort 'benchmark deadline was not enforced' unless status.exitstatus == 124
+  _, status = Open3.capture2e('python3', 'tests/benchmark/run_with_timeout.py', '--seconds', '5',
+                            'python3', '-c', 'raise SystemExit(7)')
+  abort 'benchmark exit status was lost' unless status.exitstatus == 7
+  puts 'PASS benchmark execution: elapsed timing, timeout and failure propagation'
 ensure
   FileUtils.rm_rf(root)
 end

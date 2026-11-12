@@ -46,6 +46,11 @@ and the checksum manifest for macOS and Linux. Reports from different machines
 should be compared as separate experiments; cloud-runner noise and hardware
 differences do not support a universal speed claim.
 
+Each contender has a bounded execution time (`BENCHMARK_TIMEOUT`, default
+300 seconds). `RAW_DIR` retains raw output, stderr, startup state and compaudit
+diagnostics even on failure. The workflow's quick mode runs floor/plain with
+one iteration to diagnose setup problems; it is not performance evidence.
+
 Use at least 32 iterations for a report you publish, repeat the experiment,
 and report distributions and feature flags. Shorter runs are tooling smoke
 checks. zsh-bench requires PTY support; a machine unable to allocate a PTY

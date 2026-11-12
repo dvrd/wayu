@@ -9,12 +9,26 @@ on:
       benchmarks:
         type: boolean
         default: false
+      quick:
+        type: boolean
+        default: false
+      platform:
+        type: string
+        default: both
   workflow_dispatch:
     inputs:
       benchmarks:
         description: Run comparative benchmarks as well as smoke tests
         type: boolean
         default: true
+      quick:
+        description: Diagnose the floor/plain setup with one iteration (not publishable evidence)
+        type: boolean
+        default: false
+      platform:
+        type: choice
+        options: [both, linux, macos]
+        default: both
   schedule:
     - cron: '23 8 * * 1'
 
@@ -28,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        os: ${{ fromJSON(inputs.platform == 'linux' && '["ubuntu-24.04"]' || inputs.platform == 'macos' && '["macos-15"]' || '["ubuntu-24.04","macos-15"]') }}
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
@@ -61,8 +75,11 @@ jobs:
       if: github.event_name == 'schedule' || inputs.benchmarks
       env:
         SHELDON_BIN: ${{ runner.temp }}/wayu-ecosystem/bin/sheldon
-        ONLY: floor plain wayu wayu-native oh-my-zsh antidote zinit sheldon sheldon-static wayu-defer antidote-defer zinit-turbo
-        ITERS: '32'
+        ONLY: ${{ inputs.quick && 'floor plain' || 'floor plain wayu wayu-native oh-my-zsh antidote zinit sheldon sheldon-static wayu-defer antidote-defer zinit-turbo' }}
+        ITERS: ${{ inputs.quick && '1' || '32' }}
+        SCENARIOS: ${{ inputs.quick && 'stack' || 'stack optimize' }}
+        BENCHMARK_TIMEOUT: ${{ inputs.quick && '60' || '300' }}
+        RAW_DIR: evidence/raw
         JSON: evidence/benchmark.json
       run: tests/benchmark/compare.sh | tee evidence/benchmark.txt
     - name: Keep evidence
