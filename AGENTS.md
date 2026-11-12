@@ -241,8 +241,10 @@ tests/
 ├── integration/   # Ruby, end-to-end CLI behavior (run_all.rb; fixtures/init-prev.zsh = previous release's init.zsh; test_exit_codes.rb runs docs/cli.md's exit code table)
 ├── tui/           # TUI tests (Python/pyte: test_responsive.py) + gen_rune_width.py
 ├── release/       # Pre-ship checks, run by hand (macOS): upgrade_from_release.sh (previous tag → this build), fresh_shells.sh (clean install, zsh/bash/fish), bash_trial.sh
-└── benchmark/     # startup.sh: shell startup timing (hyperfine)
+└── benchmark/     # startup.sh: shell startup timing (hyperfine); compare.sh: vs other zsh setups (zsh-bench); budget.sh: CI startup budget
 ```
+
+**Startup budget** (`tests/benchmark/budget.sh`, CI workflow `startup-budget.yml`, ubuntu + macOS): fixed config in a temp HOME (PATH entries, aliases, constants, a file-backend secret, one `[tools]` entry, native prompt), median of interleaved `zsh -i -c exit` / `bash -i -c exit` runs with wayu vs an empty rc; fails when wayu adds more than max(30 ms, 2x the empty shell). Run it locally with `./build_it && tests/benchmark/budget.sh` before merging anything that touches generated shell code; the header has the calibration. Raise the budget only with numbers.
 
 Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_tmp(name)` (`tests/unit/test_tmp.odin`, per-process root) — never a fixed `/tmp/...` path: other worktrees run the suite concurrently. Process-lifetime caches in `src/` allocate from `runtime.heap_allocator()`, or the first test to fill them reports a leak. Integration tests spawn the compiled binary and check stdout/stderr/exit codes.
 

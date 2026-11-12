@@ -1,0 +1,64 @@
+name: Startup budget
+
+# How much time wayu adds to `zsh -i -c exit` / `bash -i -c exit` with a fixed
+# representative config, against an empty rc in the same job. Fails when the
+# added time exceeds the budget in tests/benchmark/budget.sh (its header has
+# the numbers and the calibration). The table goes to the job summary.
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: startup-budget-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  budget:
+    name: Startup budget on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+    - name: Setup Odin
+      uses: ./.github/actions/setup-odin
+
+    # macOS ships zsh and bash (3.2); Ubuntu has bash only.
+    - name: Install zsh (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        for try in 1 2 3; do
+          if sudo apt-get -o Acquire::Retries=3 update -qq &&
+             sudo apt-get -o Acquire::Retries=3 install -y -qq zsh; then
+            exit 0
+          fi
+          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' \
+            /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+          sleep $((try * 10))
+        done
+        exit 1
+
+    - name: Build wayu
+      run: |
+        odin build build -out:build_it
+        ./build_it build
+        ./bin/wayu --version
+
+    # Median of 100 interleaved runs per side; see the script for the budget.
+    - name: Measure startup against the budget
+      env:
+        RUNS: '100'
+      run: tests/benchmark/budget.sh
