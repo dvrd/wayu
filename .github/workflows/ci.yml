@@ -120,6 +120,7 @@ jobs:
     # ./build_it test sandboxes HOME and the tests' scratch dirs (per run),
     # same as local runs. Leaks / bad frees (tracking allocator) fail it.
     - name: Run unit tests
+      shell: bash
       run: |
         mkdir -p evidence
         ./build_it test 2>&1 | tee evidence/unit-tests.txt
@@ -133,6 +134,7 @@ jobs:
         if-no-files-found: ignore
 
     - name: Run integration tests (incl. golden)
+      shell: bash
       # The candidate was built and verified above. Reuse that exact binary
       # instead of recompiling it in every suite (the ASan job does the same).
       env:
@@ -142,6 +144,7 @@ jobs:
         ruby tests/integration/run_all.rb 2>&1 | tee evidence/integration.txt
 
     - name: Run TUI layout tests (pyte)
+      shell: bash
       run: |
         python3 -m venv "$RUNNER_TEMP/tui-venv"
         "$RUNNER_TEMP/tui-venv/bin/pip" install --quiet --require-hashes \

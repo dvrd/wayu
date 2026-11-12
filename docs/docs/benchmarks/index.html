@@ -160,7 +160,11 @@ differences do not support a universal speed claim.</p>
 <p>Each contender has a bounded execution time (<code class="nw">BENCHMARK_TIMEOUT</code>, default
 300 seconds). <code class="nw">RAW_DIR</code> retains raw output, stderr, startup state and compaudit
 diagnostics even on failure. The workflow&#39;s quick mode runs floor/plain with
-one iteration to diagnose setup problems; it is not performance evidence.</p>
+one iteration to diagnose setup problems; it is not performance evidence.
+The preflight refuses insecure completion directories so a <code class="nw">compinit</code>
+confirmation cannot consume the PTY handshake. The Linux workflow removes
+group/other write permission from the runner&#39;s system completion directories;
+it keeps the security audit enabled for all contenders.</p>
 <p>Use at least 32 iterations for a report you publish, repeat the experiment,
 and report distributions and feature flags. Shorter runs are tooling smoke
 checks. zsh-bench requires PTY support; a machine unable to allocate a PTY

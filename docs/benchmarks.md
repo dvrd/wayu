@@ -50,6 +50,10 @@ Each contender has a bounded execution time (`BENCHMARK_TIMEOUT`, default
 300 seconds). `RAW_DIR` retains raw output, stderr, startup state and compaudit
 diagnostics even on failure. The workflow's quick mode runs floor/plain with
 one iteration to diagnose setup problems; it is not performance evidence.
+The preflight refuses insecure completion directories so a `compinit`
+confirmation cannot consume the PTY handshake. The Linux workflow removes
+group/other write permission from the runner's system completion directories;
+it keeps the security audit enabled for all contenders.
 
 Use at least 32 iterations for a report you publish, repeat the experiment,
 and report distributions and feature flags. Shorter runs are tooling smoke

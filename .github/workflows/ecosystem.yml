@@ -54,6 +54,11 @@ jobs:
     - name: Install shells (Linux)
       if: runner.os == 'Linux'
       run: .github/scripts/apt-install.sh zsh fish
+    # Hosted images can ship group-writable completion directories. Keep
+    # compinit's security audit enabled for every contender; fix the image.
+    - name: Secure system completion directories (Linux)
+      if: runner.os == 'Linux'
+      run: sudo chmod go-w /usr/share/zsh /usr/share/zsh/vendor-completions
     - name: Install fish (macOS)
       if: runner.os == 'macOS'
       run: brew install fish
@@ -64,6 +69,7 @@ jobs:
     - name: Fetch checksum and commit pinned upstreams
       run: python3 tests/ecosystem/fetch.py "$RUNNER_TEMP/wayu-ecosystem"
     - name: Exercise actual upstream integrations
+      shell: bash
       env:
         WAYU_ECOSYSTEM_DIR: ${{ runner.temp }}/wayu-ecosystem
         WAYU_BIN: bin/wayu
@@ -72,6 +78,7 @@ jobs:
         ruby tests/ecosystem/smoke.rb | tee evidence/ecosystem.txt
         cp "$RUNNER_TEMP/wayu-ecosystem/tools.json" evidence/tools.json
     - name: Compare equal workloads
+      shell: bash
       if: github.event_name == 'schedule' || inputs.benchmarks
       env:
         SHELDON_BIN: ${{ runner.temp }}/wayu-ecosystem/bin/sheldon

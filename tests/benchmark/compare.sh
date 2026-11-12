@@ -118,6 +118,14 @@ in_home() {
 		PATH="$BASE_PATH" "$@")
 }
 
+# A compinit confirmation prompt consumes zsh-bench's PTY handshake. Refuse
+# insecure system completion paths before fetching sources or timing anything.
+if ! in_home "$work" "$ZSH_EXE" -fc 'autoload -Uz compaudit; compaudit' > "$work/results/preflight.audit" 2>&1; then
+  cat "$work/results/preflight.audit" >&2
+  echo 'Secure the reported completion directories before benchmarking; compinit auditing remains enabled.' >&2
+  exit 78
+fi
+
 # fetch <url> <sha> <dest>: a shallow checkout of exactly <sha>.
 fetch() {
 	git init -q "$3"
