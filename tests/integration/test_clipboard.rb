@@ -61,6 +61,23 @@ class ClipboardTest
       abort "background clipboard owner delayed wayu: #{elapsed}s" unless
         status.success? && elapsed < 3 && (out + err).include?('URL copied to clipboard')
       puts 'PASS clipboard: a background owner does not delay foreground completion'
+
+      # Some owners fork before consuming input. Foreground exit alone
+      # must not truncate the transfer to that background reader.
+      FileUtils.rm_f("#{@tmp_home}/copied")
+      %w[pbcopy xclip xsel].each do |name|
+        File.write("#{fake_bin}/#{name}", "#!/bin/sh\n(sleep 0.05; cat > \"$WAYU_CLIP_FIXTURE\") <&0 >/dev/null 2>&1 &\nexit 0\n")
+      end
+      out, err, status = Open3.capture3(env, @wayu_bin, 'plugin', 'get', 'demo')
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
+      until File.exist?("#{@tmp_home}/copied") && File.size("#{@tmp_home}/copied") == url.bytesize
+        break if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+        sleep 0.01
+      end
+      abort "background reader received incomplete input: #{status}" unless
+        status.success? && (out + err).include?('URL copied to clipboard') &&
+        File.binread("#{@tmp_home}/copied") == url
+      puts 'PASS clipboard: a background reader receives the complete URL'
     ensure
       teardown_test_env
     end

@@ -648,7 +648,10 @@ run_command_timeout :: proc(
 		// EOF on both pipes says nothing about process lifetime: a child
 		// can redirect its output and keep running. Keep the same deadline
 		// and cancellation checks active until it actually exits.
-		if open_count == 0 {
+		// A foreground clipboard helper may exit while its background
+		// owner is still reading stdin. Finish that transfer before reaping
+		// the foreground process, keeping its pid reserved for guard signals.
+		if open_count == 0 && fds[2].fd < 0 {
 			waited := posix.waitpid(pid, &status, {.NOHANG})
 			if waited == pid {
 				reaped = true
