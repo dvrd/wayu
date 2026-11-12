@@ -57,6 +57,13 @@ class FailureCampaign
     raise 'healthy mutation did not persist' unless run!(env, 'alias', 'get', 'recovered').strip == 'echo healthy'
   end
 
+  def reported_write_failure!(status, err)
+    # Entry persistence I/O errors use EXIT_IOERR. A usage error, sanitizer
+    # exit or signal death must not count as a handled filesystem failure.
+    raise "unexpected write-failure outcome: #{status}: #{err}" unless
+      status.exited? && status.exitstatus == 74 && !err.empty?
+  end
+
   def run
     # A small old store can be backed up; the larger replacement exceeds
     # the kernel's per-file limit during the atomic temp-file write.
@@ -70,11 +77,15 @@ class FailureCampaign
       ensure
         Signal.trap('XFSZ', previous)
       end
-      raise "write failure was not reported: #{status}: #{err}" if status.success? || status.signaled?
+      reported_write_failure!(status, err)
       assert_unchanged(data, before)
       raise 'runtime changed after failed store write' unless File.binread("#{data}/core.zsh") == core_before
       raise 'atomic temp file leaked after handled failure' unless Dir.glob("#{data}/.entries.json.tmp.*").empty?
       recover!(env)
+      # Positive control: the exact payload is valid without the resource
+      # limit, so a validation rejection cannot make the fault test pass.
+      run!(env, 'alias', 'add', 'too_big', 'x' * 8192)
+      raise 'large payload failed without the limit' unless run!(env, 'alias', 'get', 'too_big').strip == 'x' * 8192
     end
 
     raise 'Permission denial cannot be tested as root' if Process.euid == 0
@@ -83,7 +94,7 @@ class FailureCampaign
       begin
         File.chmod(0500, data)
         _, err, status = Open3.capture3(env, @binary, 'alias', 'add', 'blocked', 'echo blocked', unsetenv_others: true)
-        raise "read-only write succeeded: #{err}" if status.success?
+        reported_write_failure!(status, err)
         assert_unchanged(data, before)
       ensure
         File.chmod(0700, data)
@@ -159,8 +170,8 @@ class FailureCampaign
           # This is a real ENOSPC, distinct from the portable EFBIG case.
         end
         begin
-          _, _, status = Open3.capture3(env, @binary, 'alias', 'add', 'blocked', 'echo blocked', unsetenv_others: true)
-          raise 'full-disk mutation succeeded' if status.success?
+          _, err, status = Open3.capture3(env, @binary, 'alias', 'add', 'blocked', 'echo blocked', unsetenv_others: true)
+          reported_write_failure!(status, err)
           assert_unchanged(data, before)
         ensure
           FileUtils.rm_f(filler)
