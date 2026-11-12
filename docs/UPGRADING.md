@@ -24,6 +24,17 @@ releases, so they are listed here too.
 - `wayu doctor` warns when `secret.key` / `identity.key` sits in a git work
   tree without being ignored, and about sync-conflict copies of
   `secrets.json` (`secrets.sync-conflict-*.json`, `secrets 2.json`).
+- A new machine never trusts a data key by itself: after `recipient add`
+  (which prints the key's fingerprint) and a sync, run `wayu secrets adopt
+  --yes` there and compare the fingerprint it prints. Until then it exits
+  `78` naming that command (at shell start: one `secrets not loaded` line).
+- A machine that has read version 2 keeps what it verified with its cached
+  key (in the same keychain item or `secret.key`; wayu 7.0 cannot read that
+  item). From then on a version 1 `secrets.json` (downgrade) or one under a
+  key it replaced (rollback) exits `78` naming the fix, and a rotation that
+  lists a machine it saw removed is not adopted automatically.
+- `recipient add` / `recovery add` no longer name this machine after an
+  empty or IP-address hostname: they exit `64` asking for `--name`.
 
 **`secrets.json` from a newer wayu: "upgrade wayu", not "malformed"**
 

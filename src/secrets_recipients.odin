@@ -26,10 +26,12 @@
 // Pinning: every machine caches the data key it verified in the existing
 // master-key item (keystore.odin). Shell start uses it while its key_id
 // matches (no public-key operation). A different key_id is taken from this
-// machine's stanza only when a rotation chain from the cached key proves it;
-// with no cached key it is trusted on first use and its fingerprint printed.
-// Anything else is a hard error (EXIT_CONFIG) naming `wayu secrets adopt
-// --yes`.
+// machine's stanza only when a rotation chain from the cached key proves it
+// (and lists no recipient this machine saw removed). A machine with no
+// cached key takes one only with `wayu secrets adopt --yes`, which prints
+// the fingerprint to compare. Anything else is a hard error (EXIT_CONFIG)
+// naming the fix. What a machine verified (local state, below) makes a
+// version 1 file (downgrade) or an older key (rollback) an error.
 //
 // Version 1 stays valid: a store becomes version 2 only on opt-in (the first
 // `recipient add` / `recovery add`), with a backup, a verify step and a
@@ -174,30 +176,77 @@ secrets_recipient_name_valid :: proc(name: string) -> bool {
 }
 
 // This machine's default recipient name: `hostname -s` (gethostname up to
-// the first dot), invalid characters replaced by '-'. Temp-allocated.
-secrets_default_recipient_name :: proc() -> string {
+// the first dot). ok = false when the hostname gives none (empty, an IP
+// address): the caller asks for --name. Temp-allocated.
+secrets_default_recipient_name :: proc() -> (name: string, ok: bool) {
 	buf: [256]byte
 	if posix.gethostname(raw_data(buf[:]), len(buf) - 1) != .OK {
-		return "this-machine"
+		return "", false
 	}
-	h := string(cstring(raw_data(buf[:])))
+	return secrets_recipient_name_from_host(string(cstring(raw_data(buf[:]))))
+}
+
+// The default name for hostname `host`: up to the first dot, invalid
+// characters replaced by '-'; none for an empty or IP-like hostname
+// (digits and dots, or a ':'). Temp-allocated.
+secrets_recipient_name_from_host :: proc(host: string) -> (name: string, ok: bool) {
+	if len(host) == 0 || strings.contains_rune(host, ':') {
+		return "", false
+	}
+	ip_like := true
+	for i in 0 ..< len(host) {
+		if !((host[i] >= '0' && host[i] <= '9') || host[i] == '.') {
+			ip_like = false
+		}
+	}
+	if ip_like {
+		return "", false
+	}
+	h := host
 	if i := strings.index_byte(h, '.'); i >= 0 {
 		h = h[:i]
+	}
+	if len(h) == 0 {
+		return "", false
 	}
 	b := strings.builder_make(context.temp_allocator)
 	for i in 0 ..< min(len(h), SECRETS_RECIPIENT_NAME_MAX) {
 		c := h[i]
-		ok :=
+		valid :=
 			(c >= 'a' && c <= 'z') ||
 			(c >= 'A' && c <= 'Z') ||
 			(c >= '0' && c <= '9') ||
 			c == '.' ||
 			c == '_' ||
 			c == '-'
-		strings.write_byte(&b, c if ok else '-')
+		strings.write_byte(&b, c if valid else '-')
 	}
-	name := strings.to_string(b)
-	return name if len(name) > 0 else "this-machine"
+	return strings.to_string(b), true
+}
+
+// The default name, or "NAME" (for a command shown to the user).
+@(private = "file")
+default_name_or_placeholder :: proc() -> string {
+	n, ok := secrets_default_recipient_name()
+	return n if ok else "NAME"
+}
+
+// This machine's name for a stored entry: `flag`, else the default; exits
+// EXIT_USAGE asking for --name when the hostname gives none.
+@(private = "file")
+self_name_or_exit :: proc(flag, usage: string) -> string {
+	if len(flag) > 0 {
+		return flag
+	}
+	n, ok := secrets_default_recipient_name()
+	if !ok {
+		print_error_simple(
+			"this machine's hostname gives no recipient name (empty or an IP address): name it with --name NAME, e.g.: %s",
+			usage,
+		)
+		wayu_exit(EXIT_USAGE)
+	}
+	return n
 }
 
 // ---------------------------------------------------------------------------
@@ -285,16 +334,31 @@ secrets_rotation_chain_verify :: proc(
 	from_key, to_key: [SECRETS_KEY_SIZE]byte,
 	max_steps := SECRETS_MAX_ROTATIONS,
 ) -> bool {
+	_, ok := secrets_rotation_chain_path(rotations, from_key, to_key, max_steps)
+	return ok
+}
+
+// secrets_rotation_chain_verify, also returning the key ids the chain
+// leaves behind (from_key's first; temp-allocated).
+secrets_rotation_chain_path :: proc(
+	rotations: []Secret_Rotation,
+	from_key, to_key: [SECRETS_KEY_SIZE]byte,
+	max_steps := SECRETS_MAX_ROTATIONS,
+) -> (
+	path: []string,
+	ok: bool,
+) {
+	ids := make([dynamic]string, context.temp_allocator)
 	cur_id := secrets_key_id(from_key)
 	cur_vk := secrets_rotation_vk(from_key)
 	target_id := secrets_key_id(to_key)
 	target_vk := secrets_rotation_vk(to_key)
 	for steps := 0;; steps += 1 {
 		if cur_id == target_id {
-			return crypto.compare_constant_time(cur_vk[:], target_vk[:]) == 1
+			return ids[:], crypto.compare_constant_time(cur_vk[:], target_vk[:]) == 1
 		}
 		if steps >= max_steps {
-			return false
+			return nil, false
 		}
 		advanced := false
 		for r in rotations {
@@ -311,18 +375,19 @@ secrets_rotation_chain_verify :: proc(
 			}
 			pub: ed25519.Public_Key
 			if !ed25519.public_key_set_bytes(&pub, cur_vk[:]) {
-				return false
+				return nil, false
 			}
 			if !ed25519.verify(&pub, rotation_message(r.from, r.to, raw[:32]), raw[32:]) {
 				continue
 			}
+			append(&ids, cur_id)
 			cur_id = r.to
 			copy(cur_vk[:], raw[:32])
 			advanced = true
 			break
 		}
 		if !advanced {
-			return false
+			return nil, false
 		}
 	}
 }
@@ -408,13 +473,22 @@ secrets_stanza_open :: proc(
 	return key, true
 }
 
+// Constant-time equality of two stanza texts (lengths are public).
+@(private = "file")
+stanza_equal :: proc(a, b: string) -> bool {
+	return(
+		len(a) == len(b) &&
+		crypto.compare_constant_time(transmute([]byte)a, transmute([]byte)b) == 1 \
+	)
+}
+
 // The first recipient (or "recovery") whose stanza is not the one `key`
 // gives: "" when all match. A mismatch means the entry was not written by
 // wayu with this key (injected, renamed, swapped).
 secrets_recipients_check :: proc(s: ^Secrets_Store, key: [SECRETS_KEY_SIZE]byte) -> string {
 	for r in s.recipients {
 		want, ok := secrets_stanza_make(key, r.name, r.recipient)
-		same := ok && want == r.stanza
+		same := ok && stanza_equal(want, r.stanza)
 		delete(want)
 		if !same {
 			return r.name
@@ -422,7 +496,7 @@ secrets_recipients_check :: proc(s: ^Secrets_Store, key: [SECRETS_KEY_SIZE]byte)
 	}
 	if len(s.recovery.recipient) > 0 {
 		want, ok := secrets_stanza_make(key, RECOVERY_LABEL, s.recovery.recipient)
-		same := ok && want == s.recovery.stanza
+		same := ok && stanza_equal(want, s.recovery.stanza)
 		delete(want)
 		if !same {
 			return "recovery"
@@ -677,6 +751,29 @@ secrets_recovery_unlock :: proc(
 	return k, true, false
 }
 
+// Are the stored argon2id parameters the ones wayu writes? Salt and
+// parameters are not authenticated (a changed salt only makes the
+// passphrase fail), so `recovery unlock` refuses any other cost: a synced
+// file must not make it allocate a gigabyte or spin for seconds.
+secrets_recovery_params_ok :: proc(r: ^Secret_Recovery) -> bool {
+	p := SECRETS_RECOVERY_PARAMS
+	return r.m == p.memory_size && r.t == p.passes && r.p == p.parallelism
+}
+
+secrets_recovery_params_error :: proc(r: ^Secret_Recovery) -> string {
+	p := SECRETS_RECOVERY_PARAMS
+	return fmt.tprintf(
+		"%s: the recovery entry's argon2id parameters (m=%d t=%d p=%d) are not the ones wayu writes (m=%d t=%d p=%d): the recovery entry was modified; nothing was tried. On a machine that reads the secrets run: wayu secrets recovery rm --yes && wayu secrets recovery add",
+		secrets_store_path(),
+		r.m,
+		r.t,
+		r.p,
+		p.memory_size,
+		p.passes,
+		p.parallelism,
+	)
+}
+
 // ---------------------------------------------------------------------------
 // secrets.json version 2 header
 // ---------------------------------------------------------------------------
@@ -921,6 +1018,334 @@ secrets_store_format_header :: proc(b: ^strings.Builder, s: ^Secrets_Store) {
 }
 
 // ---------------------------------------------------------------------------
+// Local state: what this machine verified (kept with the cached data key)
+// ---------------------------------------------------------------------------
+//
+// The master-key item holds, after the 64 hex digits of the cached key
+// (keystore_decode_item), this machine's own record; it is never synced
+// and never in secrets.json:
+//
+//   ;v=2;r=NAME:age1…,…;x=NAME:age1…,…;s=KEYID,…
+//
+//   v=2  this machine has read a version 2 store: a version 1 file is a
+//        downgrade from then on (secrets_downgrade_error).
+//   r    the recipients it last verified (adopted or wrote).
+//   x    recipients it saw removed: a rotation that lists one again is not
+//        adopted automatically.
+//   s    data keys it replaced: a store under one of them is a rollback,
+//        and neither `adopt` nor `recovery unlock` takes it.
+//
+// A plain key (version 1, every 7.0 item) has no state. Reading it costs
+// nothing extra: it comes with the key.
+
+SECRETS_LOCAL_MAX :: 32 // entries kept in x and s (oldest dropped)
+
+Local_Recipient :: struct {
+	name:      string,
+	recipient: string,
+}
+
+// Temp-allocated.
+Secrets_Local :: struct {
+	multi:      bool,
+	recipients: []Local_Recipient,
+	removed:    []Local_Recipient,
+	superseded: []string,
+}
+
+@(private = "file")
+local_find :: proc(list: []Local_Recipient, recipient: string) -> int {
+	for r, i in list {
+		if r.recipient == recipient {
+			return i
+		}
+	}
+	return -1
+}
+
+@(private = "file")
+local_recipients_parse :: proc(v: string) -> (out: []Local_Recipient, ok: bool) {
+	list := make([dynamic]Local_Recipient, context.temp_allocator)
+	rest := v
+	for item in strings.split_iterator(&rest, ",") {
+		c := strings.index_byte(item, ':')
+		if c < 0 {
+			return nil, false
+		}
+		name, recipient := item[:c], item[c + 1:]
+		if !secrets_recipient_name_valid(name) {
+			return nil, false
+		}
+		if _, rerr := age_recipient_decode(recipient); len(rerr) > 0 {
+			return nil, false
+		}
+		append(&list, Local_Recipient{name, recipient})
+	}
+	return list[:], true
+}
+
+// Parse the state text after the key ("" = none). ok = false: malformed.
+secrets_local_parse :: proc(text: string) -> (l: Secrets_Local, ok: bool) {
+	if len(text) == 0 {
+		return {}, true
+	}
+	if text[0] != ';' {
+		return {}, false
+	}
+	rest := text[1:]
+	for field in strings.split_iterator(&rest, ";") {
+		eq := strings.index_byte(field, '=')
+		if eq < 0 {
+			return {}, false
+		}
+		k, v := field[:eq], field[eq + 1:]
+		switch k {
+		case "v":
+			if v != "2" {
+				return {}, false
+			}
+			l.multi = true
+		case "r", "x":
+			list := local_recipients_parse(v) or_return
+			if k == "r" {
+				l.recipients = list
+			} else {
+				l.removed = list
+			}
+		case "s":
+			ids := make([dynamic]string, context.temp_allocator)
+			vr := v
+			for id in strings.split_iterator(&vr, ",") {
+				if !key_id_valid(id) {
+					return {}, false
+				}
+				append(&ids, id)
+			}
+			l.superseded = ids[:]
+		case:
+			return {}, false
+		}
+	}
+	return l, l.multi
+}
+
+// The state text for `l` ("" when !multi; temp-allocated).
+secrets_local_encode :: proc(l: Secrets_Local) -> string {
+	if !l.multi {
+		return ""
+	}
+	b := strings.builder_make(context.temp_allocator)
+	strings.write_string(&b, ";v=2")
+	lists := [2]struct {
+		k:    string,
+		list: []Local_Recipient,
+	}{{"r", l.recipients}, {"x", l.removed}}
+	for f in lists {
+		fmt.sbprintf(&b, ";%s=", f.k)
+		for r, i in f.list {
+			fmt.sbprintf(&b, "%s%s:%s", "," if i > 0 else "", r.name, r.recipient)
+		}
+	}
+	strings.write_string(&b, ";s=")
+	for id, i in l.superseded {
+		fmt.sbprintf(&b, "%s%s", "," if i > 0 else "", id)
+	}
+	return strings.to_string(b)
+}
+
+// The recipients of `s` as local entries (temp-allocated).
+@(private = "file")
+local_recipients_of :: proc(s: ^Secrets_Store) -> []Local_Recipient {
+	out := make([]Local_Recipient, len(s.recipients), context.temp_allocator)
+	for r, i in s.recipients {
+		out[i] = {
+			strings.clone(r.name, context.temp_allocator),
+			strings.clone(r.recipient, context.temp_allocator),
+		}
+	}
+	return out
+}
+
+// The state after this machine verified (or wrote) `s`: its recipients,
+// the ones `prev` knew that are gone (plus `removed_now`) added to the
+// removed list, `replaced` key ids added to the superseded list.
+secrets_local_next :: proc(
+	prev: Secrets_Local,
+	s: ^Secrets_Store,
+	replaced: []string,
+	removed_now: []Local_Recipient = nil,
+) -> Secrets_Local {
+	cur := local_recipients_of(s)
+	removed := make([dynamic]Local_Recipient, context.temp_allocator)
+	for group in ([3][]Local_Recipient{prev.removed, prev.recipients, removed_now}) {
+		for r in group {
+			if local_find(cur, r.recipient) < 0 && local_find(removed[:], r.recipient) < 0 {
+				append(&removed, r)
+			}
+		}
+	}
+	sup := make([dynamic]string, context.temp_allocator)
+	for group in ([2][]string{prev.superseded, replaced}) {
+		for id in group {
+			if id != s.key_id && !slice.contains(sup[:], id) {
+				append(&sup, id)
+			}
+		}
+	}
+	r0 := max(0, len(removed) - SECRETS_LOCAL_MAX)
+	s0 := max(0, len(sup) - SECRETS_LOCAL_MAX)
+	return {multi = true, recipients = cur, removed = removed[r0:], superseded = sup[s0:]}
+}
+
+// "+name, -name" between what `prev` verified and the recipients of `s`
+// ("unchanged" when equal; temp-allocated).
+secrets_local_diff :: proc(prev: Secrets_Local, s: ^Secrets_Store) -> string {
+	parts := make([dynamic]string, context.temp_allocator)
+	for r in s.recipients {
+		if local_find(prev.recipients, r.recipient) < 0 {
+			append(&parts, fmt.tprintf("+%s", r.name))
+		}
+	}
+	for r in prev.recipients {
+		if secrets_recipient_find_key(s, r.recipient) < 0 {
+			append(&parts, fmt.tprintf("-%s", r.name))
+		}
+	}
+	if len(parts) == 0 {
+		return "unchanged"
+	}
+	return strings.join(parts[:], ", ", context.temp_allocator)
+}
+
+// Does `s` list other recipients than `list`?
+@(private = "file")
+local_set_differs :: proc(list: []Local_Recipient, s: ^Secrets_Store) -> bool {
+	if len(list) != len(s.recipients) {
+		return true
+	}
+	for r in s.recipients {
+		if local_find(list, r.recipient) < 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// The cached key and this machine's state. A malformed state is INVALID,
+// naming `adopt`, which rewrites it.
+secrets_key_load_local :: proc(
+	backend: Secrets_Backend,
+) -> (
+	key: [SECRETS_KEY_SIZE]byte,
+	local: Secrets_Local,
+	status: Key_Status,
+	msg: string,
+) {
+	text: string
+	key, text, status, msg = secrets_key_load_item(backend)
+	if status != .OK {
+		return
+	}
+	l, ok := secrets_local_parse(text)
+	if !ok {
+		crypto.zero_explicit(&key, size_of(key))
+		return key, {}, .INVALID, fmt.tprintf(
+			"the state wayu keeps with this machine's cached key (%s) is malformed: run 'wayu secrets adopt --yes' to rewrite it",
+			SECRETS_BACKEND_NAMES[secrets_backend_resolve(backend)],
+		)
+	}
+	return key, l, .OK, ""
+}
+
+// Cache `key` with state `local`. A create (!replace) that loses a race to
+// another wayu process is fine when that process stored the same key.
+secrets_key_pin :: proc(
+	backend: Secrets_Backend,
+	key: [SECRETS_KEY_SIZE]byte,
+	local: Secrets_Local,
+	replace: bool,
+) -> (
+	ok: bool,
+	msg: string,
+) {
+	state := secrets_local_encode(local)
+	ok, msg = keystore_save_item(backend, key, state, replace)
+	if ok || replace {
+		return
+	}
+	other, _, st, _ := keystore_load_item(backend)
+	k := key
+	same := st == .OK && crypto.compare_constant_time(other[:], k[:]) == 1
+	crypto.zero_explicit(&other, size_of(other))
+	crypto.zero_explicit(&k, size_of(k))
+	if same {
+		return keystore_save_item(backend, key, state, true)
+	}
+	return
+}
+
+// The key item states (old, new) for a rotation of `s` from old_key (`s`
+// already re-wrapped to the new key).
+secrets_local_states_for_rotation :: proc(
+	backend: Secrets_Backend,
+	s: ^Secrets_Store,
+	old_key: [SECRETS_KEY_SIZE]byte,
+	removed_now: []Local_Recipient,
+) -> (
+	old_state, new_state: string,
+) {
+	_, text, status, _ := secrets_key_load_item(backend)
+	prev: Secrets_Local
+	if status == .OK {
+		prev, _ = secrets_local_parse(text)
+		old_state = text
+	}
+	return old_state, secrets_local_encode(
+		secrets_local_next(prev, s, {secrets_key_id(old_key)}, removed_now),
+	)
+}
+
+// Save this machine's state after a header change it wrote to `s` under
+// `key` (unchanged). Exits when the keystore write fails.
+secrets_local_record :: proc(
+	backend: Secrets_Backend,
+	s: ^Secrets_Store,
+	key: [SECRETS_KEY_SIZE]byte,
+) {
+	if wayu.dry_run {
+		return
+	}
+	_, prev, _, _ := secrets_key_load_local(backend)
+	if ok, err := secrets_key_pin(backend, key, secrets_local_next(prev, s, nil), true); !ok {
+		exit_with_secret_error(
+			fmt.tprintf(
+				"%s was written, but this machine's record of it could not be saved (%s): run: wayu secrets adopt --yes",
+				secrets_store_path(),
+				err,
+			),
+		)
+	}
+}
+
+// secrets.json went back to version 1 on a machine that read version 2.
+secrets_downgrade_error :: proc() -> string {
+	return fmt.tprintf(
+		"%s is version 1, but this machine has read version 2 of it (multi-machine): a downgrade, refused (an old copy synced back, or a tampered file); nothing was changed. Get the version 2 file back from a machine that reads the secrets (sync it again). If you went back to one machine on purpose, run: wayu secrets adopt --yes",
+		secrets_store_path(),
+	)
+}
+
+// The store is under a data key this machine replaced.
+secrets_rollback_error :: proc(s: ^Secrets_Store, current: string) -> string {
+	return fmt.tprintf(
+		"%s is older than this machine's data key: it is under data key %s, which this machine replaced (it uses %s now). An old copy was synced back or restored: get the current secrets.json from a machine that reads the secrets (sync it again); nothing was changed",
+		secrets_store_path(),
+		s.key_id,
+		current,
+	)
+}
+
+// ---------------------------------------------------------------------------
 // Data key of a version 2 store (pinning)
 // ---------------------------------------------------------------------------
 
@@ -937,7 +1362,7 @@ not_recipient_error :: proc(recipient: string) -> string {
 		"this machine is not a recipient of %s; run on a machine that is: wayu secrets recipient add %s --name %s",
 		secrets_store_path(),
 		recipient,
-		secrets_default_recipient_name(),
+		default_name_or_placeholder(),
 	)
 }
 
@@ -970,7 +1395,7 @@ secrets_key_from_own_stanza :: proc(
 	k, uok := secrets_stanza_open(id, s.recipients[i].stanza)
 	if !uok {
 		return key, name, false, fmt.tprintf(
-			"this machine is listed in %s as %s but cannot unwrap its stanza (a tampered or corrupt file): restore it with 'wayu backup restore entries --yes', or on another machine run: wayu secrets recipient rm %s --yes && wayu secrets recipient add %s --name %s",
+			"this machine is listed in %s as %s but cannot unwrap its stanza (a tampered or corrupt file): get the file again from a machine that reads the secrets (sync it again), or on that machine run: wayu secrets recipient rm %s --yes && wayu secrets recipient add %s --name %s",
 			secrets_store_path(),
 			name,
 			name,
@@ -981,10 +1406,13 @@ secrets_key_from_own_stanza :: proc(
 	if got := secrets_key_id(k); got != s.key_id {
 		crypto.zero_explicit(&k, size_of(k))
 		return key, name, false, fmt.tprintf(
-			"%s: this machine's stanza holds data key %s, not key_id %s (a tampered or corrupt file): restore it with 'wayu backup restore entries --yes'",
+			"%s: this machine's stanza holds data key %s, not key_id %s (a tampered or corrupt file): get the file again from a machine that reads the secrets (sync it again), or on that machine run: wayu secrets recipient rm %s --yes && wayu secrets recipient add %s --name %s",
 			secrets_store_path(),
 			got,
 			s.key_id,
+			name,
+			s.recipients[i].recipient,
+			name,
 		)
 	}
 	return k, name, true, ""
@@ -992,8 +1420,10 @@ secrets_key_from_own_stanza :: proc(
 
 // The data key of a version 2 store. The cached key while its id matches
 // key_id (no X25519); else this machine's stanza, adopted (and cached) only
-// when a rotation chain from the cached key proves it, or on first use when
-// nothing is cached. Under --dry-run nothing is cached.
+// when a rotation chain from the cached key proves it and lists no
+// recipient this machine saw removed. No cached key, a key this machine
+// replaced, or anything unproven is an error naming the fix. Under
+// --dry-run nothing is cached.
 secrets_key_multi :: proc(
 	s: ^Secrets_Store,
 ) -> (
@@ -1002,33 +1432,41 @@ secrets_key_multi :: proc(
 	err: string,
 ) {
 	backend := secrets_backend_active()
-	cached, status, msg := secrets_key_load(backend)
+	cached, local, status, msg := secrets_key_load_local(backend)
 	defer crypto.zero_explicit(&cached, size_of(cached))
 	if status == .OK && secrets_key_id(cached) == s.key_id {
+		// Record the recipients when they changed (or, for a key cached
+		// before this machine read version 2, that it did): one keystore
+		// write per change, never on an unchanged store. Only stanzas this
+		// key wrote count; best effort (the key itself is right).
+		if !wayu.dry_run &&
+		   (!local.multi || local_set_differs(local.recipients, s)) &&
+		   len(secrets_recipients_check(s, cached)) == 0 {
+			_, _ = secrets_key_pin(backend, cached, secrets_local_next(local, s, nil), true)
+		}
 		return cached, true, ""
 	}
 	if status == .UNAVAILABLE || status == .INVALID {
 		return key, false, msg
+	}
+	if status == .OK && slice.contains(local.superseded, s.key_id) {
+		return key, false, secrets_rollback_error(s, secrets_key_id(cached))
 	}
 	k, _, sok, serr := secrets_key_from_own_stanza(s, backend)
 	if !sok {
 		return key, false, serr
 	}
 	if status == .MISSING {
-		if !wayu.dry_run {
-			if saved, sv := keystore_save(backend, k, false); !saved {
-				crypto.zero_explicit(&k, size_of(k))
-				return key, false, sv
-			}
-		}
-		fmt.eprintfln(
-			"wayu: adopted data key %s (first use on this machine; compare it with 'wayu secrets recipient list' on another machine)",
+		crypto.zero_explicit(&k, size_of(k))
+		return key, false, fmt.tprintf(
+			"this machine has not adopted data key %s of %s yet: check that this fingerprint is the one 'wayu secrets recipient add' printed (or 'wayu secrets recipient list' shows on a machine that reads the secrets), then run: wayu secrets adopt --yes",
 			s.key_id,
+			secrets_store_path(),
 		)
-		return k, true, ""
 	}
 	old_id := secrets_key_id(cached)
-	if !secrets_rotation_chain_verify(s.rotations[:], cached, k) {
+	path, chained := secrets_rotation_chain_path(s.rotations[:], cached, k)
+	if !chained {
 		crypto.zero_explicit(&k, size_of(k))
 		return key, false, fmt.tprintf(
 			"%s: data key %s is not proven by a rotation from this machine's key %s (the file was tampered with, or the key rotated more than %d times while this machine was offline); compare %s with 'wayu secrets recipient list' on another machine, then run: wayu secrets adopt --yes",
@@ -1039,13 +1477,37 @@ secrets_key_multi :: proc(
 			s.key_id,
 		)
 	}
+	back := make([dynamic]string, context.temp_allocator)
+	for r in s.recipients {
+		if local_find(local.removed, r.recipient) >= 0 {
+			append(&back, r.name)
+		}
+	}
+	if len(back) > 0 {
+		crypto.zero_explicit(&k, size_of(k))
+		return key, false, fmt.tprintf(
+			"%s: data key %s (a verified rotation from %s) lists %s again, which this machine saw removed (a removed machine taking access back?): nothing was adopted. If it was re-added on purpose, compare %s with 'wayu secrets recipient list' on a machine that reads the secrets, then run: wayu secrets adopt --yes",
+			secrets_store_path(),
+			s.key_id,
+			old_id,
+			strings.join(back[:], ", ", context.temp_allocator),
+			s.key_id,
+		)
+	}
+	diff := secrets_local_diff(local, s)
 	if !wayu.dry_run {
-		if saved, sv := keystore_save(backend, k, true); !saved {
+		if saved, sv := secrets_key_pin(backend, k, secrets_local_next(local, s, path), true);
+		   !saved {
 			crypto.zero_explicit(&k, size_of(k))
 			return key, false, sv
 		}
 	}
-	fmt.eprintfln("wayu: adopted data key %s (rotation from %s verified)", s.key_id, old_id)
+	fmt.eprintfln(
+		"wayu: adopted data key %s (rotation from %s verified); recipients: %s",
+		s.key_id,
+		old_id,
+		diff,
+	)
 	return k, true, ""
 }
 
@@ -1145,6 +1607,10 @@ identity_load_or_create :: proc(
 	crypto.rand_bytes(id[:])
 	if ok, serr := keystore_identity_save(backend, id); !ok {
 		crypto.zero_explicit(&id, size_of(id))
+		// Another wayu process created it first: use that one.
+		if other, st, _ := keystore_identity_load(backend); st == .OK {
+			return other, false
+		}
 		exit_keystore_save_error(backend, serr)
 	}
 	return id, true
@@ -1318,7 +1784,7 @@ secrets_identity_command :: proc(args: []string) {
 	name, rest := take_name_flag(args)
 	no_extra_args(rest, "wayu secrets identity [--name NAME]")
 	if len(name) == 0 {
-		name = secrets_default_recipient_name()
+		name = default_name_or_placeholder()
 	}
 	secrets_multi_notice()
 	backend := secrets_backend_active()
@@ -1457,10 +1923,19 @@ secrets_recipient_add :: proc(args: []string) {
 			)
 			wayu_exit(EXIT_USAGE)
 		}
-		name = secrets_default_recipient_name()
+		name = self_name_or_exit(
+			"",
+			fmt.tprintf("wayu secrets recipient add %s --name NAME", recipient),
+		)
 	}
 	migrating := !secrets_store_is_multi(&s)
-	self_name := name if is_self else secrets_default_recipient_name()
+	self_name := name
+	if !is_self && migrating {
+		self_name = self_name_or_exit(
+			"",
+			"wayu secrets recipient add \"$(wayu secrets identity)\" --name NAME (this machine first)",
+		)
+	}
 	if migrating && !is_self && self_name == name {
 		print_error_simple(
 			"%s is this machine's name (its hostname), which the upgrade adds as a recipient: pick another --name for %s",
@@ -1475,6 +1950,13 @@ secrets_recipient_add :: proc(args: []string) {
 			name,
 			s.recipients[i].recipient,
 			name,
+		)
+		wayu_exit(EXIT_DATAERR)
+	}
+	if len(s.recovery.recipient) > 0 && s.recovery.recipient == recipient {
+		print_error_simple(
+			"%s is the recovery passphrase's own key, not a machine's: use 'wayu secrets identity' on that machine",
+			recipient,
 		)
 		wayu_exit(EXIT_DATAERR)
 	}
@@ -1537,14 +2019,19 @@ secrets_recipient_add :: proc(args: []string) {
 	} else {
 		secrets_store_save_verified(&s, &snap, key, id)
 	}
+	secrets_local_record(backend, &s, key)
 	if migrating {
 		upgrade_notice()
 	}
-	print_success(
-		"Recipient added: %s (%s). Sync secrets.json; that machine's next shell reads the secrets.",
-		name,
-		recipient,
-	)
+	print_success("Recipient added: %s (%s)", name, recipient)
+	fmt.printfln("data key fingerprint: %s", s.key_id)
+	if !is_self {
+		fmt.printfln(
+			"Sync secrets.json, then on %s run 'wayu secrets adopt --yes' and check that it shows fingerprint %s.",
+			name,
+			s.key_id,
+		)
+	}
 }
 
 // `wayu secrets recipient rm NAME --yes`: drop the stanza, then rotate.
@@ -1604,21 +2091,37 @@ secrets_recipient_rm :: proc(args: []string) {
 		exit_with_secret_error(kerr)
 	}
 	defer crypto.zero_explicit(&old_key, size_of(old_key))
-	secrets_recipients_check_or_exit(&s, old_key)
 
+	// Drop the target first: its stanza may be the tampered one the check
+	// below (and its error) is about.
 	r := s.recipients[i]
+	gone := Local_Recipient {
+		strings.clone(r.name, context.temp_allocator),
+		strings.clone(r.recipient, context.temp_allocator),
+	}
 	delete(r.name)
 	delete(r.recipient)
 	delete(r.stanza)
 	ordered_remove(&s.recipients, i)
-	secrets_rotate_and_commit(&s, backend, old_key)
+	secrets_recipients_check_or_exit(&s, old_key)
+	secrets_rotate_and_commit(&s, backend, old_key, {gone})
 	print_success(
-		"Removed recipient %s; new data key %s wrapped to %d recipient(s). %s already decrypted the old values: rotate those credentials upstream.",
+		"Removed recipient %s; new data key %s wrapped to %d recipient(s).",
 		name,
 		s.key_id,
 		len(s.recipients),
+	)
+	fmt.printfln(
+		"%s already decrypted the old values: rotate those credentials upstream. Machines that have not synced since keep trusting %s until they do (it can still sign a rotation from the old key).",
+		name,
 		name,
 	)
+	if len(s.recovery.recipient) > 0 {
+		fmt.printfln(
+			"If %s knew the recovery passphrase, replace it: wayu secrets recovery rm --yes && wayu secrets recovery add",
+			name,
+		)
+	}
 }
 
 // New data key for `s` (values re-encrypted, stanzas re-wrapped, proof
@@ -1628,6 +2131,7 @@ secrets_rotate_and_commit :: proc(
 	s: ^Secrets_Store,
 	backend: Secrets_Backend,
 	old_key: [SECRETS_KEY_SIZE]byte,
+	removed_now: []Local_Recipient = nil,
 ) {
 	new_key := secrets_new_key()
 	defer crypto.zero_explicit(&new_key, size_of(new_key))
@@ -1637,7 +2141,8 @@ secrets_rotate_and_commit :: proc(
 	if ok, err := secrets_store_rewrap_rotate(s, old_key, new_key); !ok {
 		exit_with_secret_error(err)
 	}
-	secrets_store_commit_new_key(s, backend, old_key, new_key)
+	old_state, new_state := secrets_local_states_for_rotation(backend, s, old_key, removed_now)
+	secrets_store_commit_new_key(s, backend, old_key, new_key, old_state, new_state)
 }
 
 // `wayu secrets recipient rename OLD NEW`.
@@ -1696,7 +2201,9 @@ secrets_recipient_rename :: proc(args: []string) {
 }
 
 // `wayu secrets adopt --yes`: take the data key from this machine's
-// stanza without a rotation proof.
+// stanza without a rotation proof (first use, or after comparing the
+// fingerprint). Never a key this machine replaced. On a version 1 store
+// that this machine knew as version 2: go back to one machine.
 @(private = "file")
 secrets_adopt_command :: proc() {
 	need_yes("adopt")
@@ -1705,20 +2212,87 @@ secrets_adopt_command :: proc() {
 	defer config_lock_release()
 	s, _ := secrets_store_load_or_exit()
 	defer secrets_store_destroy(&s)
-	if !secrets_store_is_multi(&s) {
-		print_error_simple(
-			"Nothing to adopt: secrets.json is version 1 (one machine; its key is the master key)",
-		)
-		wayu_exit(EXIT_DATAERR)
-	}
 	backend := secrets_backend_active()
+	cached, local, status, msg := secrets_key_load_local(backend)
+	defer crypto.zero_explicit(&cached, size_of(cached))
+	if status == .UNAVAILABLE {
+		exit_with_secret_error(msg)
+	}
+	if !secrets_store_is_multi(&s) {
+		secrets_adopt_single(&s, backend)
+		return
+	}
+	// A malformed state (INVALID) is rewritten from scratch.
+	if status == .OK && slice.contains(local.superseded, s.key_id) {
+		exit_with_secret_error(secrets_rollback_error(&s, secrets_key_id(cached)))
+	}
 	key, name, ok, err := secrets_key_from_own_stanza(&s, backend)
 	if !ok {
 		exit_with_secret_error(err)
 	}
 	defer crypto.zero_explicit(&key, size_of(key))
+	replaced: []string
+	if status == .OK && secrets_key_id(cached) != s.key_id {
+		replaced = {secrets_key_id(cached)}
+	}
+	diff := secrets_local_diff(local, &s) if local.multi else ""
 	if wayu.dry_run {
 		print_info("[dry-run] Would adopt data key %s (from %s's stanza)", s.key_id, name)
+		return
+	}
+	if saved, serr := secrets_key_pin(
+		backend,
+		key,
+		secrets_local_next(local, &s, replaced),
+		status != .MISSING,
+	); !saved {
+		exit_keystore_save_error(backend, serr)
+	}
+	secrets_cache_invalidate()
+	print_success("Adopted data key %s from this machine's stanza (%s)", s.key_id, name)
+	fmt.printfln("data key fingerprint: %s", s.key_id)
+	if len(diff) > 0 {
+		fmt.printfln("recipients since this machine's last check: %s", diff)
+	}
+	names := make([dynamic]string, context.temp_allocator)
+	for r in s.recipients {append(&names, r.name)}
+	fmt.printfln(
+		"recipients: %s. Compare the fingerprint with 'wayu secrets recipient list' on another machine.",
+		strings.join(names[:], ", ", context.temp_allocator),
+	)
+}
+
+// `adopt` on a version 1 store: only when this machine knew it as version 2
+// (a downgrade it refuses) and every value opens with its cached key; the
+// cached key becomes a plain one-machine key again.
+@(private = "file")
+secrets_adopt_single :: proc(s: ^Secrets_Store, backend: Secrets_Backend) {
+	key, kst, kmsg := keystore_load(backend) // the key, whatever state follows it
+	defer crypto.zero_explicit(&key, size_of(key))
+	if kst == .UNAVAILABLE {
+		exit_with_secret_error(kmsg)
+	}
+	_, local, lst, _ := secrets_key_load_local(backend)
+	if kst != .OK || (lst == .OK && !local.multi) {
+		print_error_simple(
+			"Nothing to adopt: secrets.json is version 1 (one machine; its key is the master key)",
+		)
+		wayu_exit(EXIT_DATAERR)
+	}
+	for e in s.entries {
+		v, dok := secrets_open(key, e.name, e.blob, run_only = e.run_only)
+		if !dok {
+			exit_with_secret_error(
+				fmt.tprintf(
+					"%s does not decrypt with this machine's key: this version 1 file is not one this machine wrote; nothing was changed. Get the version 2 file back from a machine that reads the secrets (sync it again)",
+					e.name,
+				),
+			)
+		}
+		secrets_wipe(v)
+	}
+	if wayu.dry_run {
+		print_info("[dry-run] Would go back to one machine (version 1) with this machine's key")
 		return
 	}
 	if saved, serr := keystore_save(backend, key, true); !saved {
@@ -1726,9 +2300,8 @@ secrets_adopt_command :: proc() {
 	}
 	secrets_cache_invalidate()
 	print_success(
-		"Adopted data key %s from this machine's stanza (%s); compare it with 'wayu secrets recipient list' on another machine",
-		s.key_id,
-		name,
+		"Back to one machine: %s is version 1 and this machine's key reads it (multi-machine secrets: wayu secrets recipient add)",
+		secrets_store_path(),
 	)
 }
 
@@ -1768,15 +2341,15 @@ read_recovery_passphrase :: proc(confirm: bool) -> string {
 secrets_recovery_add :: proc(args: []string) {
 	self_name, rest := take_name_flag(args)
 	no_extra_args(rest, "wayu secrets recovery add [--name NAME]")
-	if len(self_name) == 0 {
-		self_name = secrets_default_recipient_name()
-	}
 	secrets_multi_notice()
 	config_lock_acquire_or_exit()
 	defer config_lock_release()
 	s, _ := secrets_store_load_or_exit()
 	defer secrets_store_destroy(&s)
 	migrating := !secrets_store_is_multi(&s)
+	if migrating {
+		self_name = self_name_or_exit(self_name, "wayu secrets recovery add --name NAME")
+	}
 	if wayu.dry_run {
 		print_info(
 			"[dry-run] Would %s the recovery passphrase%s (passphrase not read)",
@@ -1822,6 +2395,7 @@ secrets_recovery_add :: proc(args: []string) {
 		secrets_store_snapshot_restore(&snap)
 		exit_with_secret_error(err)
 	}
+	secrets_local_record(backend, &s, key)
 	if migrating {
 		upgrade_notice()
 	}
@@ -1857,8 +2431,9 @@ secrets_recovery_rm :: proc(args: []string) {
 		exit_with_secret_error(kerr)
 	}
 	defer crypto.zero_explicit(&old_key, size_of(old_key))
-	secrets_recipients_check_or_exit(&s, old_key)
+	// Drop it first: it may be the tampered entry the check is about.
 	secrets_recovery_destroy(&s.recovery)
+	secrets_recipients_check_or_exit(&s, old_key)
 	secrets_rotate_and_commit(&s, backend, old_key)
 	print_success("Recovery passphrase removed; new data key %s", s.key_id)
 }
@@ -1880,18 +2455,32 @@ secrets_recovery_unlock_command :: proc(args: []string) {
 		)
 		wayu_exit(EXIT_DATAERR)
 	}
+	backend := secrets_backend_active()
+	cached, local, status, msg := secrets_key_load_local(backend)
+	defer crypto.zero_explicit(&cached, size_of(cached))
+	if status == .UNAVAILABLE {
+		exit_with_secret_error(msg)
+	}
+	if status == .OK && slice.contains(local.superseded, s.key_id) {
+		exit_with_secret_error(secrets_rollback_error(&s, secrets_key_id(cached)))
+	}
+	if !secrets_recovery_params_ok(&s.recovery) {
+		exit_with_secret_error(secrets_recovery_params_error(&s.recovery))
+	}
 	pass := read_recovery_passphrase(false)
 	defer secrets_wipe(pass)
 	key, ok, wrong := secrets_recovery_unlock(&s.recovery, pass)
 	defer crypto.zero_explicit(&key, size_of(key))
 	if !ok {
 		if wrong {
-			print_error_simple("Wrong recovery passphrase: nothing was changed")
+			print_error_simple(
+				"Wrong recovery passphrase, or the recovery entry was modified: nothing was changed",
+			)
 			wayu_exit(EXIT_DATAERR)
 		}
 		exit_with_secret_error(
 			fmt.tprintf(
-				"%s: the recovery stanza is broken (a tampered or corrupt file): restore it with 'wayu backup restore entries --yes'",
+				"%s: the recovery entry is broken (a tampered or corrupt file): on a machine that reads the secrets run: wayu secrets recovery rm --yes && wayu secrets recovery add",
 				secrets_store_path(),
 			),
 		)
@@ -1910,19 +2499,27 @@ secrets_recovery_unlock_command :: proc(args: []string) {
 		print_info("[dry-run] Would make data key %s this machine's key", s.key_id)
 		return
 	}
-	backend := secrets_backend_active()
-	if saved, serr := keystore_save(backend, key, true); !saved {
+	replaced: []string
+	if status == .OK && secrets_key_id(cached) != s.key_id {
+		replaced = {secrets_key_id(cached)}
+	}
+	if saved, serr := secrets_key_pin(
+		backend,
+		key,
+		secrets_local_next(local, &s, replaced),
+		status != .MISSING,
+	); !saved {
 		exit_keystore_save_error(backend, serr)
 	}
 	secrets_cache_invalidate()
 	print_success("Unlocked data key %s with the recovery passphrase", s.key_id)
-	id, status, _ := keystore_identity_load(backend)
+	id, istatus, _ := keystore_identity_load(backend)
 	defer crypto.zero_explicit(&id, size_of(id))
-	if status != .OK ||
+	if istatus != .OK ||
 	   secrets_recipient_find_key(&s, age_recipient_encode(age_identity_public(id))) < 0 {
 		fmt.eprintfln(
 			"Make this machine a recipient: wayu secrets recipient add \"$(wayu secrets identity)\" --name %s",
-			secrets_default_recipient_name(),
+			default_name_or_placeholder(),
 		)
 	}
 }
@@ -1972,21 +2569,30 @@ check_secrets_multi :: proc(
 			),
 		)
 	}
-	cached, status, msg := secrets_key_load(backend)
+	if len(s.recovery.recipient) > 0 && !secrets_recovery_params_ok(&s.recovery) {
+		add(results, "secrets recipients", .ERROR, secrets_recovery_params_error(&s.recovery))
+	}
+	cached, local, status, msg := secrets_key_load_local(backend)
 	defer crypto.zero_explicit(&cached, size_of(cached))
+	back := false
+	for r in s.recipients {
+		back ||= local_find(local.removed, r.recipient) >= 0
+	}
 	switch {
 	case status == .OK && secrets_key_id(cached) == s.key_id:
+	case status == .OK && slice.contains(local.superseded, s.key_id):
+		add(results, "secrets backend", .ERROR, secrets_rollback_error(s, secrets_key_id(cached)))
 	case status == .MISSING:
 		add(
 			results,
 			"secrets backend",
 			.ERROR,
 			fmt.tprintf(
-				"data key %s is not cached on this machine yet: compare it with 'wayu secrets recipient list' on another machine, then run: wayu secrets adopt --yes",
+				"this machine has not adopted data key %s yet: compare it with 'wayu secrets recipient list' on another machine, then run: wayu secrets adopt --yes",
 				s.key_id,
 			),
 		)
-	case status == .OK && secrets_rotation_chain_verify(s.rotations[:], cached, key):
+	case status == .OK && !back && secrets_rotation_chain_verify(s.rotations[:], cached, key):
 		add(
 			results,
 			"secrets backend",
@@ -2003,7 +2609,7 @@ check_secrets_multi :: proc(
 			"secrets backend",
 			.ERROR,
 			fmt.tprintf(
-				"data key %s is not proven by a rotation from the cached key %s: compare it with 'wayu secrets recipient list' on another machine, then run: wayu secrets adopt --yes",
+				"data key %s is not proven by a rotation from the cached key %s (or lists a recipient this machine saw removed): compare it with 'wayu secrets recipient list' on another machine, then run: wayu secrets adopt --yes",
 				s.key_id,
 				secrets_key_id(cached),
 			),

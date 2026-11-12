@@ -184,6 +184,22 @@ secrets_open :: proc(
 	return string(dst), true
 }
 
+// "NAME does not decrypt …" for a value of `s` (temp-allocated).
+secrets_decrypt_error :: proc(s: ^Secrets_Store, name: string) -> string {
+	if secrets_store_is_multi(s) {
+		return fmt.tprintf(
+			"%s does not decrypt with data key %s (a concurrent rekey on another machine, or a tampered store): re-add it with 'wayu const add %s --secret'",
+			name,
+			s.key_id,
+			name,
+		)
+	}
+	return fmt.tprintf(
+		"%s does not decrypt with the current master key (wrong key or tampered store)",
+		name,
+	)
+}
+
 // Overwrite then free a decrypted value.
 secrets_wipe :: proc(s: string, allocator := context.allocator) {
 	if len(s) == 0 {
@@ -239,7 +255,22 @@ secrets_store_parse :: proc(text: string) -> (store: Secrets_Store, err: string)
 			SECRETS_VERSION_MAX,
 		)
 	}
-	multi := v_ok && version == SECRETS_VERSION_MULTI
+	if !v_ok {
+		return {}, fmt.tprintf(
+			"unsupported version: \"version\" must be the integer %d or %d",
+			SECRETS_VERSION,
+			SECRETS_VERSION_MULTI,
+		)
+	}
+	if version != SECRETS_VERSION && version != SECRETS_VERSION_MULTI {
+		return {}, fmt.tprintf(
+			"unsupported version %v (expected %d or %d)",
+			version,
+			SECRETS_VERSION,
+			SECRETS_VERSION_MULTI,
+		)
+	}
+	multi := version == SECRETS_VERSION_MULTI
 	for k in doc {
 		switch k {
 		case "version", "cipher", "values", "run_only":
@@ -250,14 +281,6 @@ secrets_store_parse :: proc(text: string) -> (store: Secrets_Store, err: string)
 		case:
 			return {}, fmt.tprintf("unknown field %q", k)
 		}
-	}
-	if !v_ok || (version != SECRETS_VERSION && version != SECRETS_VERSION_MULTI) {
-		return {}, fmt.tprintf(
-			"unsupported version %v (expected %d or %d)",
-			doc["version"],
-			SECRETS_VERSION,
-			SECRETS_VERSION_MULTI,
-		)
 	}
 	cipher, c_ok := doc["cipher"].(json.String)
 	if !c_ok || cipher != SECRETS_CIPHER {
@@ -565,7 +588,21 @@ secrets_key_load :: proc(
 	status: Key_Status,
 	msg: string,
 ) {
-	key, status, msg = keystore_load(backend)
+	key, _, status, msg = secrets_key_load_item(backend)
+	return
+}
+
+// secrets_key_load, plus the local state stored after the key
+// (keystore_decode_item; "" for a moved 6.0 key).
+secrets_key_load_item :: proc(
+	backend: Secrets_Backend,
+) -> (
+	key: [SECRETS_KEY_SIZE]byte,
+	state: string,
+	status: Key_Status,
+	msg: string,
+) {
+	key, state, status, msg = keystore_load_item(backend)
 	if status != .MISSING {
 		return
 	}
@@ -585,7 +622,7 @@ secrets_key_load :: proc(
 		return
 	}
 	if saved, serr := keystore_save(backend, old, false); !saved {
-		return key, .UNAVAILABLE, fmt.tprintf(
+		return key, "", .UNAVAILABLE, fmt.tprintf(
 			"could not move the wayu 6.0 master key to account %s: %s",
 			keystore_account(),
 			serr,
@@ -596,7 +633,7 @@ secrets_key_load :: proc(
 		keystore_account(),
 		keystore_legacy_delete_hint(backend),
 	)
-	return old, .OK, ""
+	return old, "", .OK, ""
 }
 
 // Key to decrypt the values of `s`. Every failure is an error. A version 2
@@ -612,9 +649,13 @@ secrets_key_for_read :: proc(
 		return secrets_key_multi(s)
 	}
 	backend := secrets_backend_active()
-	k, status, msg := secrets_key_load(backend)
+	k, local, status, msg := secrets_key_load_local(backend)
 	switch status {
 	case .OK:
+		if local.multi {
+			crypto.zero_explicit(&k, size_of(k))
+			return key, false, secrets_downgrade_error()
+		}
 		return k, true, ""
 	case .MISSING:
 		return key, false, fmt.tprintf(
@@ -645,9 +686,13 @@ secrets_key_for_write :: proc(
 	}
 	store_has_values := len(s.entries) > 0
 	backend := secrets_backend_active()
-	k, status, msg := secrets_key_load(backend)
+	k, local, status, msg := secrets_key_load_local(backend)
 	switch status {
 	case .OK:
+		if local.multi {
+			crypto.zero_explicit(&k, size_of(k))
+			return key, false, secrets_downgrade_error()
+		}
 		return k, true, ""
 	case .MISSING:
 		if store_has_values {
@@ -759,10 +804,7 @@ secrets_get :: proc(
 	defer crypto.zero_explicit(&key, size_of(key))
 	v, dok := secrets_open(key, name, s.entries[i].blob, allocator, s.entries[i].run_only)
 	if !dok {
-		return "", true, false, fmt.tprintf(
-			"%s does not decrypt with the current master key (wrong key or tampered store)",
-			name,
-		)
+		return "", true, false, secrets_decrypt_error(&s, name)
 	}
 	return v, true, true, ""
 }
@@ -1095,13 +1137,7 @@ secrets_cache_write_once :: proc(
 			}
 			v, dok := secrets_open(key, e.name, e.blob)
 			if !dok {
-				return path,
-					false,
-					fmt.tprintf(
-						"%s does not decrypt with the current master key (wrong key or tampered store)",
-						e.name,
-					),
-					false
+				return path, false, secrets_decrypt_error(&s, e.name), false
 			}
 			append(&names, e.name)
 			append(&values, v)
@@ -1904,12 +1940,14 @@ secrets_rekey :: proc() {
 	if rok, rerr := secrets_store_reencrypt(&s, old_key, new_key); !rok {
 		exit_with_secret_error(rerr)
 	}
+	old_state, new_state: string
 	if multi {
 		if wok, werr := secrets_store_rewrap_rotate(&s, old_key, new_key); !wok {
 			exit_with_secret_error(werr)
 		}
+		old_state, new_state = secrets_local_states_for_rotation(backend, &s, old_key, nil)
 	}
-	secrets_store_commit_new_key(&s, backend, old_key, new_key)
+	secrets_store_commit_new_key(&s, backend, old_key, new_key, old_state, new_state)
 	if multi {
 		print_success(
 			"Re-encrypted %d secret(s) with a new data key %s, wrapped to %d recipient(s)",
@@ -1965,13 +2003,15 @@ secrets_store_commit_new_key :: proc(
 	s: ^Secrets_Store,
 	backend: Secrets_Backend,
 	old_key, new_key: [SECRETS_KEY_SIZE]byte,
+	old_state := "",
+	new_state := "",
 ) {
 	pending := strings.clone(secrets_rekey_pending_path(), context.temp_allocator)
 	if wok, werr := secrets_store_write_to(pending, s); !wok {
 		os.remove(pending)
 		exit_with_secret_error(werr)
 	}
-	if saved, serr := keystore_save(backend, new_key, true); !saved {
+	if saved, serr := keystore_save_item(backend, new_key, new_state, true); !saved {
 		os.remove(pending)
 		exit_with_secret_error(serr)
 	}
@@ -1983,7 +2023,7 @@ secrets_store_commit_new_key :: proc(
 			// Put the old key back so the unchanged store stays readable.
 			// If that fails too, the pending store stays: it matches the
 			// saved new key, and the next load moves it into place.
-			if restored, _ := keystore_save(backend, old_key, true); restored {
+			if restored, _ := keystore_save_item(backend, old_key, old_state, true); restored {
 				os.remove(pending)
 			}
 			exit_with_secret_error(
@@ -2131,12 +2171,16 @@ check_secrets :: proc(results: ^[dynamic]CheckResult) {
 		check_secrets_cache_dir(results, add)
 		return
 	}
-	key, status, msg := secrets_key_load(backend)
+	key, local, status, msg := secrets_key_load_local(backend)
 	defer crypto.zero_explicit(&key, size_of(key))
 	if status != .OK {
 		// A MISSING message already names the account.
 		label := SECRETS_BACKEND_NAMES[backend] if status == .MISSING else bname
 		add(results, "secrets backend", .ERROR, fmt.tprintf("%s: %s", label, msg))
+		return
+	}
+	if local.multi {
+		add(results, "secrets store", .ERROR, secrets_downgrade_error())
 		return
 	}
 	bad := make([dynamic]string, context.temp_allocator)
@@ -2236,12 +2280,7 @@ secrets_run_command :: proc(args: []string) {
 		v, dok := secrets_open(key, e.name, e.blob, run_only = e.run_only)
 		if !dok {
 			crypto.zero_explicit(&key, size_of(key))
-			exit_with_secret_error(
-				fmt.tprintf(
-					"%s does not decrypt with the current master key (wrong key or tampered store)",
-					n,
-				),
-			)
+			exit_with_secret_error(secrets_decrypt_error(&s, n))
 		}
 		cname := strings.clone_to_cstring(n, context.temp_allocator)
 		cval := strings.clone_to_cstring(v, context.temp_allocator)

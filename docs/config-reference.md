@@ -699,16 +699,36 @@ reading a newer version exits `78` naming the upgrade.
 - `rotations` (at most 16, oldest dropped): each new data key's
   verification key and an Ed25519 signature by the previous data key
   (both derived from the keys). A machine that cached an older key accepts
-  the new one only through this chain. The proof does not reveal the new
-  key to holders of the old one, but a removed machine that can still write
-  the synced file could sign a key of its own: after `recipient rm`, rotate
-  the credentials upstream.
+  the new one only through this chain, and not when it lists a machine
+  this one saw removed. The proof does not reveal the new key to holders of
+  the old one, but a removed machine that can still write the synced file
+  can sign a key of its own from the old key: a machine that has not synced
+  since the `recipient rm` accepts it (it prints the recipient changes) and
+  stays exposed until it syncs the real file. After `recipient rm`, rotate
+  the real credentials upstream.
 - `recovery` (optional, wayu-only): a random X25519 identity sealed with
   ChaCha20-Poly1305 under argon2id(passphrase, `salt`; `m` KiB, `t` passes,
   `p` lanes, bounded to 1 GiB / 16 / 16), and the data key wrapped to it.
+  `salt` and the parameters are not authenticated: `recovery unlock` uses
+  only the parameters wayu writes (`m` 65536, `t` 3, `p` 4) and refuses
+  others (`78`); a changed salt fails like a wrong passphrase. The recovery
+  passphrase is not machine-bound: `recipient rm` does not change it, so
+  replace it (`recovery rm --yes`, `recovery add`) when the removed machine
+  knew it.
 - Strict like version 1: unknown fields (at any level), duplicate keys,
   names or recipients, a bad `key_id`, an empty recipient list or more than
   16 rotations make the file malformed (`78`).
+
+What each machine verified is kept after the cached key in its master-key
+item (the backend's item, or `secret.key`), never in `secrets.json`:
+`;v=2;r=NAME:age1…,…;x=NAME:age1…,…;s=KEYID,…` — it has read version 2,
+the recipients it last verified, the ones it saw removed and the data keys
+it replaced (32 kept). From then on a version 1 `secrets.json` (a
+downgrade) and a store under a replaced key (a rollback) are errors (`78`)
+naming the fix, and wayu 7.0 cannot read that item (it reads only the key
+of a one-machine item, which has no state). Not detected: an older copy of
+individual values under the *same* data key (a value rolled back by a
+synced older file), and anything on a machine before it first adopts a key.
 
 This machine's identity (`AGE-SECRET-KEY-1…`) is kept by the backend:
 keychain / Secret Service account `wayu-<id>-identity` (same service as the
@@ -722,6 +742,12 @@ proven rotation of it), that every value decrypts with it (a concurrent
 `rekey` on two machines leaves values under the losing key: doctor names
 them), that every stanza is wayu's, and warns about sync-conflict copies
 next to the store (`secrets.sync-conflict-*.json`, `secrets 2.json`).
+
+The session cache is sourced while it is newer than `secrets.json` (a
+`-nt` test, no fork). Every wayu write deletes it, but a `secrets.json`
+replaced by a sync tool that keeps an older mtime (e.g. `rsync -t`) is not
+noticed: the shell keeps the cached values until the next wayu write,
+`wayu secrets lock`, or `wayu secrets cache` (which always rewrites it).
 
 `wayu backup restore entries` over a version 2 store keeps its recipients:
 the backup's `secrets.json` values are restored under the current header

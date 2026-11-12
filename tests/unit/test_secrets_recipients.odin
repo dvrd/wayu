@@ -557,24 +557,70 @@ test_secrets_pinning :: proc(t: ^testing.T) {
 	s := make_v2_store(k0, id)
 	defer wayu.secrets_store_destroy(&s)
 
-	// TOFU: nothing cached → the stanza's key, cached.
-	got, kok, kerr := wayu.secrets_key_multi(&s)
-	testing.expectf(t, kok && got == k0, "TOFU: %s", kerr)
-	cached, status, _ := wayu.keystore_load(.FILE)
-	testing.expect(t, status == .OK && cached == k0, "TOFU caches the key")
+	// Nothing cached: no trust on first use; the error names `adopt` and
+	// nothing is cached.
+	_, kok, kerr := wayu.secrets_key_multi(&s)
+	testing.expectf(
+		t,
+		!kok &&
+		strings.contains(kerr, "wayu secrets adopt --yes") &&
+		strings.contains(kerr, s.key_id),
+		"first use must need adopt: %q",
+		kerr,
+	)
+	_, status, _ := wayu.keystore_load(.FILE)
+	testing.expect(t, status == .MISSING, "first use caches nothing")
 
-	// Fast path: the cached key matches key_id.
+	// What `adopt` does: cache the key with this machine's state.
+	pinned, perr := wayu.secrets_key_pin(.FILE, k0, wayu.secrets_local_next({}, &s, nil), false)
+	testing.expectf(t, pinned, "pin: %s", perr)
+	got: [32]byte
 	got, kok, _ = wayu.secrets_key_multi(&s)
 	testing.expect(t, kok && got == k0, "cached key")
 
-	// Rotation with a proof: adopted and cached.
+	// Rotation with a proof: adopted and cached; k0 is superseded.
 	k1 := fill_key(2)
 	wayu.secrets_store_reencrypt(&s, k0, k1)
 	wayu.secrets_store_rewrap_rotate(&s, k0, k1)
 	got, kok, kerr = wayu.secrets_key_multi(&s)
 	testing.expectf(t, kok && got == k1, "adopt with proof: %s", kerr)
-	cached, status, _ = wayu.keystore_load(.FILE)
-	testing.expect(t, cached == k1, "the proven key is cached")
+	cached, local, lstatus, _ := wayu.secrets_key_load_local(.FILE)
+	testing.expect(t, lstatus == .OK && cached == k1, "the proven key is cached")
+	testing.expect(t, local.multi && len(local.recipients) == 1, "state: multi, one recipient")
+	testing.expect(
+		t,
+		len(local.superseded) == 1 && local.superseded[0] == wayu.secrets_key_id(k0),
+		"state: k0 superseded",
+	)
+
+	// Rollback to the store under k0: refused as a rollback, not "adopt".
+	back := make_v2_store(k0, id)
+	defer wayu.secrets_store_destroy(&back)
+	_, kok, kerr = wayu.secrets_key_multi(&back)
+	testing.expectf(
+		t,
+		!kok &&
+		strings.contains(kerr, "older than this machine's data key") &&
+		!strings.contains(kerr, "adopt"),
+		"rollback: %q",
+		kerr,
+	)
+
+	// Downgrade: a version 1 file once this machine read version 2.
+	v1: wayu.Secrets_Store
+	defer wayu.secrets_store_destroy(&v1)
+	append(
+		&v1.entries,
+		wayu.Secret_Entry {
+			name = strings.clone("FAKE_A"),
+			blob = wayu.secrets_seal(k1, "FAKE_A", "x"),
+		},
+	)
+	v1.version = 1
+	_, kok, kerr = wayu.secrets_key_for_read(&v1)
+	testing.expectf(t, !kok && strings.contains(kerr, "downgrade"), "downgrade read: %q", kerr)
+	_, kok, kerr = wayu.secrets_key_for_write(&v1)
+	testing.expectf(t, !kok && strings.contains(kerr, "downgrade"), "downgrade write: %q", kerr)
 
 	// An attacker's key wrapped to this machine, no proof: refused with the
 	// fix command, the cache untouched.
@@ -590,6 +636,30 @@ test_secrets_pinning :: proc(t: ^testing.T) {
 	cached, status, _ = wayu.keystore_load(.FILE)
 	testing.expect(t, cached == k1, "a refused key is not cached")
 
+	// A verified rotation that lists a recipient this machine saw removed
+	// again is not adopted.
+	gone := wayu.Local_Recipient{"desk", recipient_of(fill_key(91))}
+	pinned, perr = wayu.secrets_key_pin(
+		.FILE,
+		k1,
+		wayu.secrets_local_next(local, &s, nil, {gone}),
+		true,
+	)
+	testing.expectf(t, pinned, "pin: %s", perr)
+	wayu.secrets_recipient_put(&s, k1, "desk", gone.recipient)
+	k2 := fill_key(4)
+	wayu.secrets_store_reencrypt(&s, k1, k2)
+	wayu.secrets_store_rewrap_rotate(&s, k1, k2)
+	_, kok, kerr = wayu.secrets_key_multi(&s)
+	testing.expectf(
+		t,
+		!kok && strings.contains(kerr, "saw removed") && strings.contains(kerr, "desk"),
+		"re-added recipient: %q",
+		kerr,
+	)
+	cached, status, _ = wayu.keystore_load(.FILE)
+	testing.expect(t, cached == k1, "not adopted")
+
 	// Not a recipient: names the fix.
 	other := make_v2_store(k1, fill_key(140))
 	defer wayu.secrets_store_destroy(&other)
@@ -603,5 +673,97 @@ test_secrets_pinning :: proc(t: ^testing.T) {
 		strings.contains(kerr, "recipient add age1"),
 		"not a recipient: %q",
 		kerr,
+	)
+}
+
+@(test)
+test_secrets_local_state_round_trip :: proc(t: ^testing.T) {
+	key := fill_key(1)
+	s := make_v2_store(key, fill_key(50), fill_key(90))
+	defer wayu.secrets_store_destroy(&s)
+	l := wayu.secrets_local_next(
+		{},
+		&s,
+		{"0123456789abcdef"},
+		{{"gone", recipient_of(fill_key(91))}},
+	)
+	text := wayu.secrets_local_encode(l)
+	testing.expect(
+		t,
+		strings.has_prefix(text, ";v=2;r=") && !strings.contains_any(text, " \t\n"),
+		text,
+	)
+	back, ok := wayu.secrets_local_parse(text)
+	testing.expect(t, ok && back.multi, "parses")
+	testing.expect_value(t, len(back.recipients), 2)
+	testing.expect_value(t, len(back.removed), 1)
+	testing.expect(
+		t,
+		len(back.superseded) == 1 && back.superseded[0] == "0123456789abcdef",
+		"superseded",
+	)
+	testing.expect_value(t, wayu.secrets_local_encode(back), text)
+	// The item: key, then state; 7.0 items (no state) still read.
+	k, st, iok := wayu.keystore_decode_item(
+		strings.concatenate(
+			{strings.repeat("ab", 32, context.temp_allocator), text, "\n"},
+			context.temp_allocator,
+		),
+	)
+	testing.expect(t, iok && st == text && k[0] == 0xab, "item with state")
+	_, st, iok = wayu.keystore_decode_item(strings.repeat("ab", 32, context.temp_allocator))
+	testing.expect(t, iok && st == "", "plain item")
+	_, _, iok = wayu.keystore_decode_item(
+		strings.concatenate(
+			{strings.repeat("ab", 32, context.temp_allocator), "x"},
+			context.temp_allocator,
+		),
+	)
+	testing.expect(t, !iok, "garbage after the key")
+	for bad in ([]string{";v=3", ";v=2;q=1", ";v=2;r=nocolon", ";v=2;s=XYZ", ";r=", "v=2"}) {
+		_, pok := wayu.secrets_local_parse(bad)
+		testing.expectf(t, !pok, "malformed state accepted: %q", bad)
+	}
+	// Removed recipients that come back leave the removed list.
+	again := wayu.secrets_local_next(back, &s, nil)
+	testing.expect_value(t, len(again.removed), 1)
+	testing.expect_value(t, wayu.secrets_local_diff(back, &s), "unchanged")
+}
+
+@(test)
+test_secrets_recipient_name_from_host :: proc(t: ^testing.T) {
+	cases := []struct {
+		host, name: string,
+		ok:         bool,
+	} {
+		{"laptop.local", "laptop", true},
+		{"my box", "my-box", true},
+		{"", "", false},
+		{"192.168.1.20", "", false},
+		{"10", "", false},
+		{"fe80::1", "", false},
+		{".hidden", "", false},
+	}
+	for c in cases {
+		n, ok := wayu.secrets_recipient_name_from_host(c.host)
+		testing.expectf(t, ok == c.ok && n == c.name, "%q -> %q %v", c.host, n, ok)
+	}
+}
+
+@(test)
+test_secrets_recovery_params_fixed :: proc(t: ^testing.T) {
+	p := wayu.SECRETS_RECOVERY_PARAMS
+	r := wayu.Secret_Recovery {
+		m = p.memory_size,
+		t = p.passes,
+		p = p.parallelism,
+	}
+	testing.expect(t, wayu.secrets_recovery_params_ok(&r), "wayu's own parameters")
+	r.m = 1024 * 1024
+	testing.expect(t, !wayu.secrets_recovery_params_ok(&r), "1 GiB refused")
+	testing.expect(
+		t,
+		strings.contains(wayu.secrets_recovery_params_error(&r), "recovery rm --yes"),
+		"names the fix",
 	)
 }

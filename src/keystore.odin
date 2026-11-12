@@ -389,13 +389,19 @@ keystore_load_legacy :: proc(
 ) {
 	#partial switch secrets_backend_resolve(b) {
 	case .KEYCHAIN:
-		return keystore_load_command(
+		key, _, status, msg = keystore_load_command(
 			keychain_legacy_load_argv(),
 			"macOS keychain",
 			KEYCHAIN_NOT_FOUND_EXIT,
 		)
+		return
 	case .SECRET_SERVICE:
-		return keystore_load_command(secret_service_legacy_load_argv(), "Secret Service", 1)
+		key, _, status, msg = keystore_load_command(
+			secret_service_legacy_load_argv(),
+			"Secret Service",
+			1,
+		)
+		return
 	}
 	return key, .MISSING, ""
 }
@@ -440,6 +446,32 @@ keystore_decode_hex :: proc(text: string) -> (key: [SECRETS_KEY_SIZE]byte, ok: b
 	return key, true
 }
 
+// The text of a master-key item: the 64-hex key, then (multi-machine
+// secrets, secrets_recipients.odin) this machine's local state, which
+// starts with ';' and holds no whitespace. state is "" for a plain key
+// (every 7.0 item) and temp-allocated otherwise.
+keystore_decode_item :: proc(
+	text: string,
+) -> (
+	key: [SECRETS_KEY_SIZE]byte,
+	state: string,
+	ok: bool,
+) {
+	t := strings.trim_space(text)
+	if len(t) < 2 * SECRETS_KEY_SIZE {
+		return
+	}
+	rest := t[2 * SECRETS_KEY_SIZE:]
+	if len(rest) > 0 && rest[0] != ';' {
+		return
+	}
+	key, ok = keystore_decode_hex(t[:2 * SECRETS_KEY_SIZE])
+	if !ok {
+		return
+	}
+	return key, strings.clone(rest, context.temp_allocator), true
+}
+
 // Hex text of a key (lowercase, temp-allocated). Caller wipes it.
 keystore_encode_hex :: proc(key: [SECRETS_KEY_SIZE]byte) -> []byte {
 	k := key
@@ -451,6 +483,20 @@ keystore_load :: proc(
 	b: Secrets_Backend,
 ) -> (
 	key: [SECRETS_KEY_SIZE]byte,
+	status: Key_Status,
+	msg: string,
+) {
+	key, _, status, msg = keystore_load_item(b)
+	return
+}
+
+// Load the master key and the local state stored after it (see
+// keystore_decode_item; temp-allocated, "" when none).
+keystore_load_item :: proc(
+	b: Secrets_Backend,
+) -> (
+	key: [SECRETS_KEY_SIZE]byte,
+	state: string,
 	status: Key_Status,
 	msg: string,
 ) {
@@ -477,8 +523,27 @@ keystore_save :: proc(
 	ok: bool,
 	msg: string,
 ) {
+	return keystore_save_item(b, key, "", replace)
+}
+
+// Store `key` followed by the local state `state` ("" or ";…", no
+// whitespace: keystore_decode_item).
+keystore_save_item :: proc(
+	b: Secrets_Backend,
+	key: [SECRETS_KEY_SIZE]byte,
+	state: string,
+	replace: bool,
+) -> (
+	ok: bool,
+	msg: string,
+) {
 	secrets_disable_core_dumps() // the key is in memory from here on
-	key_hex := keystore_encode_hex(key)
+	assert(len(state) == 0 || (state[0] == ';' && !strings.contains_any(state, " \t\r\n")))
+	hex_only := keystore_encode_hex(key)
+	key_hex := make([]byte, len(hex_only) + len(state), context.temp_allocator)
+	copy(key_hex, hex_only)
+	copy(key_hex[len(hex_only):], state)
+	crypto.zero_explicit(raw_data(hex_only), len(hex_only))
 	defer crypto.zero_explicit(raw_data(key_hex), len(key_hex))
 
 	#partial switch secrets_backend_resolve(b) {
@@ -544,6 +609,7 @@ keystore_load_command :: proc(
 	not_found_exit: int,
 ) -> (
 	key: [SECRETS_KEY_SIZE]byte,
+	state: string,
 	status: Key_Status,
 	msg: string,
 ) {
@@ -553,14 +619,14 @@ keystore_load_command :: proc(
 	if status != .OK {
 		return
 	}
-	k, ok := keystore_decode_hex(string(text))
+	k, st, ok := keystore_decode_item(string(text))
 	if !ok {
-		return key, .INVALID, fmt.tprintf(
+		return key, "", .INVALID, fmt.tprintf(
 			"the wayu master key in the %s is not 64 hex characters",
 			label,
 		)
 	}
-	return k, .OK, ""
+	return k, st, .OK, ""
 }
 
 // Wipe and free a secret read by keystore_load_command_text /
@@ -632,6 +698,7 @@ keystore_load_file :: proc(
 	path: string,
 ) -> (
 	key: [SECRETS_KEY_SIZE]byte,
+	state: string,
 	status: Key_Status,
 	msg: string,
 ) {
@@ -641,11 +708,11 @@ keystore_load_file :: proc(
 	if status != .OK {
 		return
 	}
-	k, ok := keystore_decode_hex(string(data))
+	k, st, ok := keystore_decode_item(string(data))
 	if !ok {
-		return key, .INVALID, fmt.tprintf("%s is not 64 hex characters", path)
+		return key, "", .INVALID, fmt.tprintf("%s is not 64 hex characters", path)
 	}
-	return k, .OK, ""
+	return k, st, .OK, ""
 }
 
 // Read a key file: a regular file owned by us with no group/other bits

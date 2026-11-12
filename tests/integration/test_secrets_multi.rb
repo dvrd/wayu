@@ -49,6 +49,13 @@ class SecretsMultiIntegrationTest
       test_doctor_v2_rows
       test_doctor_git_and_conflict_warnings
       test_keychain_identity_off_argv
+      test_downgrade_to_v1_refused
+      test_rm_drops_tampered_entry_first
+      test_broken_own_stanza_guidance
+      test_removed_recipient_back_not_adopted
+      test_rollback_refused_not_adoptable
+      test_recovery_rm_note_and_params
+      test_wording
     ensure
       teardown_test_env
     end
@@ -125,13 +132,41 @@ class SecretsMultiIntegrationTest
     [out.chomp, err, st]
   end
 
+  # wayu's default recipient name for this host, nil when the hostname gives
+  # none (empty or an IP address: wayu then asks for --name).
   def host_name
-    h = Socket.gethostname.split('.').first.to_s.gsub(/[^A-Za-z0-9._-]/, '-')[0, 64]
-    h.empty? ? 'this-machine' : h
+    full = Socket.gethostname.to_s
+    return nil if full.empty? || full.include?(':') || full.match?(/\A[0-9.]+\z/)
+    h = full.split('.').first.to_s.gsub(/[^A-Za-z0-9._-]/, '-')[0, 64]
+    h.empty? ? nil : h
   end
 
-  def recipient(name)
-    out, err, st = w(name, 'secrets identity')
+  # The name a machine has as a recipient of its own store.
+  def self_name(name)
+    host_name || "self#{name.downcase}"
+  end
+
+  # First recipient add on a version 1 store (the upgrade). With a hostname
+  # that gives no default name, this machine is added by name first.
+  def first_add(name, rcp, as, bin: nil, extra: {})
+    errs = ''
+    if host_name.nil?
+      _, e, st = w(name, ['secrets', 'recipient', 'add', recipient(name, bin: bin, extra: extra), '--name', self_name(name)],
+                   bin: bin, extra: extra)
+      raise "self add #{name}: #{e}" unless st.success?
+      errs += e
+    end
+    out, e, st = w(name, ['secrets', 'recipient', 'add', rcp, '--name', as], bin: bin, extra: extra)
+    [out, errs + e, st]
+  end
+
+  # The fingerprint a command printed ("data key fingerprint: …").
+  def fingerprint(out)
+    out[/data key fingerprint: (\h{16})/, 1]
+  end
+
+  def recipient(name, bin: nil, extra: {})
+    out, err, st = w(name, 'secrets identity', bin: bin, extra: extra)
     raise "identity #{name}: #{err}" unless st.success?
     out.strip
   end
@@ -164,7 +199,7 @@ class SecretsMultiIntegrationTest
     ok = st.success? && ist.success? && out.strip.start_with?('age1') && lst.success? && jst.success? &&
          File.binread(store('A')) == before && doc('A')['version'] == 1 &&
          lout.include?('version 1') && j == { 'recipients' => [], 'key_id' => '', 'recovery' => false } &&
-         ierr.include?("wayu secrets recipient add #{out.strip} --name #{host_name}") &&
+         ierr.include?("wayu secrets recipient add #{out.strip} --name #{host_name || 'NAME'}") &&
          (File.stat(idfile('A')).mode & 0o777) == 0o600 &&
          File.read(idfile('A')).include?("# public key: #{out.strip}")
     check('v1 store changed or identity wrong', ok, "#{err}#{ierr} #{lout} #{jout}")
@@ -179,7 +214,11 @@ class SecretsMultiIntegrationTest
     fake = recipient('C')
     before = File.binread(store('A'))
     nb = entries_backups('A').size
-    out, aerr, ast = w('A', "secrets recipient add #{fake} --name boxc --dry-run")
+    out, aerr, ast = if host_name
+                       w('A', "secrets recipient add #{fake} --name boxc --dry-run")
+                     else
+                       w('A', "secrets recipient add #{recipient('A')} --name #{self_name('A')} --dry-run")
+                     end
     ok = st.success? && no_id && marker && !Dir.exist?("#{rb_dir}/identity.key") && ast.success? &&
          out.include?('[dry-run]') && out.include?('version 2') && File.binread(store('A')) == before &&
          entries_backups('A').size == nb && err.include?('experimental')
@@ -199,14 +238,21 @@ class SecretsMultiIntegrationTest
     @rb = recipient('B')
     v1 = File.read(store('A'))
     nb = entries_backups('A').size
-    _, err, st = w('A', "secrets recipient add #{@rb} --name boxb")
+    guard = true
+    if host_name.nil?
+      # An IP hostname gives no name for this machine: 64, nothing written.
+      _, gerr, gst = w('A', "secrets recipient add #{@rb} --name boxb")
+      guard = gst.exitstatus == 64 && gerr.include?('--name NAME') && File.read(store('A')) == v1
+    end
+    @add_out, err, st = first_add('A', @rb, 'boxb')
     d = doc('A')
     v2 = File.read(store('A'))
     value_lines = v1.lines.select { |l| l.start_with?('    "FAKE_') }
     comp = companions('A').map { |f| File.read(f) }
-    nb_after = entries_backups('A').size
+    nb_after = entries_backups('A').size - (host_name ? 0 : 1)
     _, err2, st2 = w('A', ['const', 'add', 'FAKE_A2', 'fake-a2-0002', '--secret'])
-    ok = st.success? && d['version'] == 2 && d['recipients'].map { |r| r['name'] }.sort == ['boxb', host_name].sort &&
+    ok = guard && st.success? && d['version'] == 2 && d['recipients'].map { |r| r['name'] }.sort == ['boxb', self_name('A')].sort &&
+         fingerprint(@add_out) == d['key_id'] && @add_out.include?('wayu secrets adopt --yes') &&
          d['recipients'].any? { |r| r['recipient'] == @rb } && d['key_id'].match?(/\A\h{16}\z/) &&
          !value_lines.empty? && value_lines.all? { |l| v2.include?(l) } &&
          nb_after == nb + 1 && comp.include?(v1) &&
@@ -216,18 +262,23 @@ class SecretsMultiIntegrationTest
   end
 
   def test_second_machine_reads
-    print 'Test 5: B (synced) reads the values; first use adopts the key once... '
+    print 'Test 5: B (synced): no trust on first use (78, adopt), adopt --yes shows the same fingerprint, then reads... '
     sync('A', 'B')
+    _, ferr, fst = get('B', 'FAKE_A1')
+    no_key = !File.exist?(keyfile('B'))
+    aout, aerr, ast = w('B', 'secrets adopt --yes')
     out, err, st = get('B', 'FAKE_A1')
     out2, err2, st2 = get('B', 'FAKE_A2')
-    ok = st.success? && out == 'fake-a1-0001' && err.include?('adopted data key') && err.include?(doc('A')['key_id']) &&
-         st2.success? && out2 == 'fake-a2-0002' && !err2.include?('adopted') &&
+    ok = fst.exitstatus == 78 && ferr.include?('has not adopted data key') && ferr.include?('wayu secrets adopt --yes') && no_key &&
+         ast.success? && fingerprint(aout) == fingerprint(@add_out) && fingerprint(aout) == doc('A')['key_id'] &&
+         st.success? && out == 'fake-a1-0001' && !err.include?('adopted') &&
+         st2.success? && out2 == 'fake-a2-0002' &&
          File.exist?(keyfile('B')) && (File.stat(keyfile('B')).mode & 0o777) == 0o600
-    check('B cannot read', ok, "#{st.exitstatus} #{err} | #{err2}")
+    check('B cannot read', ok, "#{fst.exitstatus} #{ferr} | #{aout} #{aerr} | #{err} | #{err2}")
   end
 
   def test_shell_start_adopts_once
-    print 'Test 6: shell start on a fresh machine: not a recipient message; after add: values... '
+    print 'Test 6: shell start on a fresh machine: not a recipient; after add: adopt needed (one line); after adopt: values... '
     sync('A', 'E')
     w('E', 'build')
     zsh = lambda do
@@ -241,8 +292,11 @@ class SecretsMultiIntegrationTest
     w('A', "secrets recipient add #{re} --name boxe")
     sync('A', 'E')
     out2, err2, = zsh.call
+    _, _, ast = w('E', 'secrets adopt --yes')
     out3, err3, = zsh.call
-    ok = not_recipient && out2.include?('<fake-a1-0001>') && err2.scan('adopted data key').size == 1 &&
+    ok = not_recipient && out2.include?('<unset>') && err2.lines.size == 1 &&
+         err2.include?('secrets not loaded: this machine has not adopted data key') &&
+         err2.include?('wayu secrets adopt --yes') && ast.success? &&
          out3.include?('<fake-a1-0001>') && err3.empty?
     check('shell start wrong', ok, "#{out}#{err} | #{out2}#{err2} | #{out3}#{err3}")
   end
@@ -273,7 +327,7 @@ class SecretsMultiIntegrationTest
     codes[:bad_name] = w('A', "secrets recipient add #{recipient('C')} --name a/b")[2].exitstatus
     codes[:rm_noyes] = w('A', 'secrets recipient rm boxb')[2].exitstatus
     codes[:rm_unknown] = w('A', 'secrets recipient rm nobody --yes')[2].exitstatus
-    codes[:rm_self] = w('A', "secrets recipient rm #{host_name} --yes")[2].exitstatus
+    codes[:rm_self] = w('A', "secrets recipient rm #{self_name('A')} --yes")[2].exitstatus
     codes[:adopt_noyes] = w('A', 'secrets adopt')[2].exitstatus
     want = { bad: 65, pq: 65, dup_name: 65, dup_key: 65, no_name: 64, bad_name: 65, rm_noyes: 64,
              rm_unknown: 65, rm_self: 65, adopt_noyes: 64 }
@@ -337,7 +391,7 @@ class SecretsMultiIntegrationTest
     saved_key = File.binread(keyfile('A'))
     # Machine C: its own key, its own v1 store, then wrapped to A's recipient.
     w('C', ['const', 'add', 'FAKE_A1', 'attacker-0004', '--secret'])
-    _, cerr, cst = w('C', "secrets recipient add #{recipient('A')} --name victim")
+    _, cerr, cst = first_add('C', recipient('A'), 'victim')
     sync('C', 'A')
     tampered = File.binread(store('A'))
     _, gerr, gst = get('A', 'FAKE_A1')
@@ -391,7 +445,7 @@ class SecretsMultiIntegrationTest
     _, uerr, ust = w('D', 'secrets recovery unlock', stdin: "#{PASS}\n")
     out, gerr, gst = get('D', 'FAKE_A1')
     _, rerr, rst = w('A', 'secrets recovery rm')
-    ok = sst.exitstatus == 65 && st.success? && has && wst.exitstatus == 65 && werr.include?('Wrong recovery passphrase') &&
+    ok = sst.exitstatus == 65 && st.success? && has && wst.exitstatus == 65 && werr.include?('Wrong recovery passphrase, or the recovery entry was modified') &&
          ust.success? && uerr.include?('wayu secrets recipient add') && gst.success? && out == 'fake-a1-0001' &&
          rst.exitstatus == 64 && !(err + uerr).include?(PASS)
     check('recovery wrong', ok, "#{serr} | #{err} | #{werr} | #{uerr} | #{gerr} | #{rerr}")
@@ -407,7 +461,7 @@ class SecretsMultiIntegrationTest
     fixture = File.binread("#{FIXTURE}/secrets.json")
     out, _, st = get('F', 'FAKE_V1_TOKEN')
     untouched = File.binread(store('F')) == fixture
-    _, err, ast = w('F', "secrets recipient add #{@rb} --name boxb")
+    _, err, ast = first_add('F', @rb, 'boxb')
     d = doc('F')
     backup_ok = companions('F').any? { |f| File.binread(f) == fixture }
     run_out, = Open3.capture3(env_for('F'), @wayu_bin, 'secrets', 'run', 'FAKE_V1_RUN', '--', 'sh', '-c', 'printf %s "$FAKE_V1_RUN"',
@@ -510,13 +564,197 @@ class SecretsMultiIntegrationTest
     # A full round trip through the keychain: K adds a fresh machine G.
     machine('G')
     w('K', ['const', 'add', 'FAKE_K', 'fake-k-0006', '--secret'], bin: bin, extra: kenv)
-    _, aerr, ast = w('K', "secrets recipient add #{recipient('G')} --name boxg", bin: bin, extra: kenv)
+    _, aerr, ast = first_add('K', recipient('G'), 'boxg', bin: bin, extra: kenv)
     sync('K', 'G')
+    w('G', 'secrets adopt --yes')
     out, = get('G', 'FAKE_K')
     ok = s1.success? && s2.success? && r1 == r2 && r1.start_with?('age1') && item && item.match?(/\Awayu-\h{16}-identity\z/) &&
          secret.start_with?('AGE-SECRET-KEY-1') && !log.include?(secret) && !log.include?('AGE-SECRET-KEY') &&
          ast.success? && out == 'fake-k-0006'
     check('keychain identity wrong', ok, "#{e1} | #{items.inspect} | #{aerr} | #{out}")
+  end
+  # ---------------------------------------------------------------------
+  # Review findings (each attack fails before the fix)
+
+  # Fresh machines a (writer) and b (reader) sharing a version 2 store
+  # with FAKE_T, b adopted.
+  def pair(a, b)
+    [a, b].each { |m| machine(m) }
+    w(a, ['const', 'add', 'FAKE_T', 'fake-t-0007', '--secret'])
+    _, err, st = first_add(a, recipient(b), "box#{b.downcase}")
+    raise "pair #{a} #{b}: #{err}" unless st.success?
+    sync(a, b)
+    _, err, st = w(b, 'secrets adopt --yes')
+    raise "adopt #{b}: #{err}" unless st.success?
+  end
+
+  def write_doc(name, d)
+    File.write(store(name), JSON.pretty_generate(d) + "\n")
+  end
+
+  def test_downgrade_to_v1_refused
+    print 'Test 19: v2 -> v1 downgrade: 78 everywhere (get, add, rekey, doctor), store untouched; sync or adopt --yes fix it... '
+    pair('P1', 'P2')
+    d = doc('P1')
+    write_doc('P1', { 'version' => 1, 'cipher' => d['cipher'], 'values' => d['values'] })
+    down = File.binread(store('P1'))
+    _, gerr, gst = get('P1', 'FAKE_T')
+    _, aerr, ast = w('P1', ['const', 'add', 'FAKE_NEW', 'fake-new-0008', '--secret'])
+    _, _, rst = w('P1', 'secrets rekey')
+    rows = doctor_rows('P1')
+    untouched = File.binread(store('P1')) == down
+    # The fix it names: sync the version 2 file again.
+    sync('P2', 'P1')
+    out, _, sst = get('P1', 'FAKE_T')
+    # The other fix: back to one machine on purpose.
+    write_doc('P2', { 'version' => 1, 'cipher' => d['cipher'], 'values' => d['values'] })
+    _, yerr, yst = w('P2', 'secrets adopt --yes')
+    one, _, ost = get('P2', 'FAKE_T')
+    ok = gst.exitstatus == 78 && gerr.include?('downgrade') && gerr.include?('wayu secrets adopt --yes') &&
+         ast.exitstatus == 78 && rst.exitstatus == 78 && untouched &&
+         rows.any? { |r| r['status'] == 'error' && r['message'].include?('downgrade') } &&
+         sst.success? && out == 'fake-t-0007' && yst.success? && yerr.empty? && ost.success? && one == 'fake-t-0007'
+    check('downgrade accepted', ok, "#{gst.exitstatus} #{gerr} | #{ast.exitstatus} #{aerr} | #{rst.exitstatus} | #{yerr}")
+  end
+
+  def test_rm_drops_tampered_entry_first
+    print 'Test 20: injected recipient / tampered recovery: the error names rm, and that rm works... '
+    pair('Q1', 'Q2')
+    machine('Q3')
+    machine('Q4')
+    d = doc('Q1')
+    d['recipients'] << { 'name' => 'intruder', 'recipient' => recipient('Q4'), 'stanza' => d['recipients'][0]['stanza'] }
+    write_doc('Q1', d)
+    _, aerr, ast = w('Q1', "secrets recipient add #{recipient('Q3')} --name q3")
+    _, rerr, rst = w('Q1', 'secrets recipient rm intruder --yes')
+    _, a2err, a2st = w('Q1', "secrets recipient add #{recipient('Q3')} --name q3")
+    w('Q1', 'secrets recovery add', stdin: "#{PASS}\n")
+    d = doc('Q1')
+    d['recovery']['stanza'] = d['recipients'][0]['stanza'] if d['recovery']
+    write_doc('Q1', d)
+    _, berr, bst = w('Q1', 'secrets rekey')
+    _, cerr, cst = w('Q1', 'secrets recovery rm --yes')
+    sync('Q1', 'Q2')
+    out, = get('Q2', 'FAKE_T')
+    ok = ast.exitstatus == 78 && aerr.include?('wayu secrets recipient rm intruder --yes') &&
+         rst.success? && a2st.success? &&
+         bst.exitstatus == 78 && berr.include?('wayu secrets recovery rm --yes') && cst.success? &&
+         !doc('Q1').key?('recovery') && out == 'fake-t-0007'
+    check('guidance does not work', ok, "#{aerr} | #{rst.exitstatus} #{rerr} | #{a2err} | #{berr} | #{cst.exitstatus} #{cerr}")
+  end
+
+  def test_broken_own_stanza_guidance
+    print 'Test 21: a machine whose stanza was tampered with: the rm + add it names (on another machine) works... '
+    pair('R1', 'R2')
+    machine('R3')
+    w('R1', "secrets recipient add #{recipient('R3')} --name r3")
+    # The synced file itself carries the broken stanza.
+    d = doc('R1')
+    mine = d['recipients'].find { |r| r['name'] == 'r3' }
+    mine['stanza'] = d['recipients'].find { |r| r['name'] == 'boxr2' }['stanza']
+    write_doc('R1', d)
+    sync('R1', 'R3')
+    _, err, st = w('R3', 'secrets adopt --yes')
+    fix = err.strip[/run: (wayu secrets recipient rm .*)\z/, 1].to_s
+    steps = fix.split(' && ').map { |c| c.split(' ').drop(1) }
+    results = steps.map { |argv| w('R1', argv) }
+    sync('R1', 'R3')
+    _, _, ast = w('R3', 'secrets adopt --yes')
+    out, = get('R3', 'FAKE_T')
+    ok = st.exitstatus == 78 && !err.include?('backup restore') && steps.size == 2 &&
+         results.all? { |r| r[2].success? } && ast.success? && out == 'fake-t-0007'
+    check('own-stanza guidance wrong', ok, "#{err} | #{results.map { |r| r[1] }.join(' | ')}")
+  end
+
+  def test_removed_recipient_back_not_adopted
+    print 'Test 22: a verified rotation that lists a machine this one saw removed: 78, diff printed; adopt --yes takes it... '
+    pair('S1', 'S2')
+    machine('S3')
+    s3 = recipient('S3')
+    w('S1', "secrets recipient add #{s3} --name s3")
+    sync('S1', 'S2')
+    get('S2', 'FAKE_T')
+    w('S1', 'secrets recipient rm s3 --yes')
+    sync('S1', 'S2')
+    _, derr, dst = get('S2', 'FAKE_T') # adopts the rotation, sees s3 removed
+    w('S1', "secrets recipient add #{s3} --name s3")
+    w('S1', 'secrets rekey')
+    sync('S1', 'S2')
+    _, berr, bst = get('S2', 'FAKE_T')
+    aout, _, ast = w('S2', 'secrets adopt --yes')
+    out, = get('S2', 'FAKE_T')
+    ok = dst.success? && derr.include?('rotation from') && derr.include?('recipients: -s3') &&
+         bst.exitstatus == 78 && berr.include?('saw removed') && berr.include?('s3') && berr.include?('wayu secrets adopt --yes') &&
+         ast.success? && aout.include?('+s3') && out == 'fake-t-0007'
+    check('re-added machine adopted silently', ok, "#{derr} | #{bst.exitstatus} #{berr} | #{aout}")
+  end
+
+  def test_rollback_refused_not_adoptable
+    print 'Test 23: rollback to a key this machine replaced: own error (no adopt), adopt and recovery unlock refuse it... '
+    pair('U1', 'U2')
+    machine('U3')
+    w('U1', "secrets recipient add #{recipient('U3')} --name u3")
+    w('U1', 'secrets recovery add', stdin: "#{PASS}\n")
+    sync('U1', 'U2')
+    old = File.binread(store('U1'))
+    w('U1', 'secrets recipient rm u3 --yes')
+    sync('U1', 'U2')
+    get('U2', 'FAKE_T')
+    File.binwrite(store('U2'), old)
+    _, gerr, gst = get('U2', 'FAKE_T')
+    _, aerr, ast = w('U2', 'secrets adopt --yes')
+    _, uerr, ust = w('U2', 'secrets recovery unlock', stdin: "#{PASS}\n")
+    _, cerr, cst = w('U2', 'secrets cache')
+    sync('U1', 'U2')
+    out, = get('U2', 'FAKE_T')
+    ok = gst.exitstatus == 78 && gerr.include?("older than this machine's data key") && !gerr.include?('adopt') &&
+         ast.exitstatus == 78 && aerr.include?('older than') && ust.exitstatus == 78 && uerr.include?('older than') &&
+         cst.exitstatus == 78 && cerr.lines.size == 1 && out == 'fake-t-0007'
+    check('rollback adoptable', ok, "#{gerr} | #{ast.exitstatus} #{aerr} | #{ust.exitstatus} #{uerr} | #{cerr}")
+  end
+
+  def test_recovery_rm_note_and_params
+    print 'Test 24: recovery key refused as a machine (65); rm says to replace the passphrase; a 1 GiB argon2id entry is refused at once (78)... '
+    pair('V1', 'V2')
+    machine('V3')
+    w('V1', "secrets recipient add #{recipient('V3')} --name v3")
+    w('V1', 'secrets recovery add', stdin: "#{PASS}\n")
+    before = File.binread(store('V1'))
+    _, kerr, kst = w('V1', "secrets recipient add #{doc('V1')['recovery']['recipient']} --name rec")
+    rec_refused = kst.exitstatus == 65 && kerr.include?("recovery passphrase's own key") && File.binread(store('V1')) == before
+    rout, _, rst = w('V1', 'secrets recipient rm v3 --yes')
+    machine('V4')
+    d = doc('V1')
+    d['recovery'].merge!('m' => 1_048_576, 't' => 16, 'p' => 16)
+    write_doc('V4', d)
+    FileUtils.cp("#{@machines['V1'][:data]}/entries.json", "#{@machines['V4'][:data]}/entries.json")
+    t0 = Time.now
+    _, uerr, ust = w('V4', 'secrets recovery unlock', stdin: "#{PASS}\n")
+    secs = Time.now - t0
+    rows = doctor_rows('V1')
+    ok = rec_refused && rst.success? && rout.include?('wayu secrets recovery rm --yes && wayu secrets recovery add') &&
+         rout.include?('have not synced') &&
+         ust.exitstatus == 78 && uerr.include?('recovery entry was modified') && uerr.include?('recovery rm --yes') &&
+         secs < 3 && rows.none? { |r| r['name'].start_with?('secrets') && r['status'] == 'error' }
+    check('recovery note / params wrong', ok, "#{rout} | #{ust.exitstatus} #{uerr} #{secs}")
+  end
+
+  def test_wording
+    print 'Test 25: wording: "version": 2.0 is an invalid version; v2 decrypt errors name the data key, not the master key... '
+    pair('W1', 'W2')
+    w('W1', ['const', 'add', 'FAKE_U', 'fake-u-0009', '--secret'])
+    good = File.read(store('W1'))
+    File.write(store('W1'), good.sub('"version": 2,', '"version": 2.0,'))
+    _, verr, vst = get('W1', 'FAKE_T')
+    d = JSON.parse(good)
+    d['values']['FAKE_T'], d['values']['FAKE_U'] = d['values']['FAKE_U'], d['values']['FAKE_T']
+    write_doc('W1', d)
+    _, derr, dst = get('W1', 'FAKE_T')
+    File.write(store('W1'), good)
+    ok = vst.exitstatus == 78 && verr.include?('unsupported version') && !verr.include?('unknown field') &&
+         dst.exitstatus == 78 && derr.include?("data key #{d['key_id']}") && !derr.include?('master key') &&
+         derr.include?('wayu const add FAKE_T --secret')
+    check('wording wrong', ok, "#{verr} | #{derr}")
   end
 end
 

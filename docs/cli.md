@@ -502,9 +502,9 @@ Service, or `secret.key` in the config dir). `const get` decrypts,
 | `rekey` | | New master key, re-encrypt every secret, drop the session cache |
 | `lock` | | Delete the decrypted session cache from every dir it was written to (next shell decrypts again) |
 | `run` | `<NAME>... -- <cmd> [args...]` | Run `cmd` with these secrets in its environment |
-| `identity` | `[--name NAME]` | (experimental) Print this machine's age recipient (`age1…`) on stdout, creating its identity the first time; stderr shows the `recipient add` command to run on a machine that reads the secrets (`--name`: the name in that command, default `hostname -s`) |
+| `identity` | `[--name NAME]` | (experimental) Print this machine's age recipient (`age1…`) on stdout, creating its identity the first time; stderr shows the `recipient add` command to run on a machine that reads the secrets (`--name`: the name in that command, default `hostname -s`; `NAME` when the hostname is empty or an IP address) |
 | `recipient` | `list` (`ls`) `[--json]` · `add <age1…> [--name NAME]` · `rm <NAME> --yes` · `rename <OLD> <NEW>` | (experimental) Machines that can read the secrets (see below) |
-| `adopt` | `--yes` | (experimental) Accept the data key in this machine's stanza without a rotation proof (prints its fingerprint) |
+| `adopt` | `--yes` | (experimental) Accept the data key in this machine's stanza without a rotation proof: a new machine's first step (prints the fingerprint to compare). Never a key this machine replaced. On a version 1 file this machine knew as version 2: back to one machine |
 | `recovery` | `add [--name NAME]` · `rm --yes` · `unlock` | (experimental) Recovery passphrase (read from stdin, never argv) |
 | `help` | | |
 
@@ -551,7 +551,9 @@ a one-time notice on stderr.
 
 ```bash
 wayu secrets identity                              # on the new machine B: prints age1…
-wayu secrets recipient add age1… --name linux-box  # on machine A, then sync secrets.json
+wayu secrets recipient add age1… --name linux-box  # on machine A: prints the data key fingerprint
+# sync secrets.json (and entries.json) to B, then on B:
+wayu secrets adopt --yes                           # prints the same fingerprint: compare them
 ```
 
 - `recipient add <age1…> [--name NAME]` needs the data key. The first one
@@ -559,7 +561,11 @@ wayu secrets recipient add age1… --name linux-box  # on machine A, then sync s
   a one-time notice says wayu 7.0 cannot read it): the master key becomes the
   data key unchanged, this machine is added as `hostname -s`, value lines are
   untouched. `--name` is required for another machine's key (default
-  `hostname -s` for this machine's own). `65`: bad or reserved recipient
+  `hostname -s` for this machine's own; when the hostname is empty or an IP
+  address there is no default: `64`, add this machine first with
+  `wayu secrets recipient add "$(wayu secrets identity)" --name NAME`). It
+  prints the data key's fingerprint (`data key fingerprint: …`) and, for
+  another machine, the `adopt` step to run there. `65`: bad or reserved recipient
   (post-quantum `age1pq1…` is reserved, not supported), bad name, duplicate
   name or recipient. `64`: missing `--name` for another machine.
 - `recipient rm <NAME> --yes` drops the machine and always rotates: a new
@@ -567,21 +573,39 @@ wayu secrets recipient add age1… --name linux-box  # on machine A, then sync s
   a rotation proof appended, the session cache and backup copies of
   `secrets.json` dropped. The removed machine can no longer read values
   stored from then on (it already decrypted the old ones: rotate those
-  credentials upstream). Removing this machine or the last recipient is
-  refused (`65`). Without `--yes`: `64`.
+  credentials upstream). Machines that have not synced since the `rm` are
+  exposed until they do: the removed machine still holds the old key and
+  can sign a rotation from it, which such a machine accepts. The recovery
+  passphrase survives `rm`: if the removed machine knew it, replace it
+  (`recovery rm --yes`, then `recovery add`; `rm` says so). Removing this
+  machine or the last recipient is refused (`65`). Without `--yes`: `64`.
+  An entry that fails the stanza check is dropped before the check runs on
+  the rest, so the `rm` an error names always works.
 - `recipient rename <OLD> <NEW>`, `recipient list [--json]` (marks this
   machine; also prints the data key's fingerprint).
 - `rekey` on a version 2 store makes a new data key, wraps it to every
   recipient and appends a rotation proof.
 - Each machine caches the data key it verified in the backend's existing
-  master-key item. Shell start uses it while its fingerprint (`key_id`)
-  matches: no public-key operation, no extra fork. A different key is taken
-  from this machine's stanza only when the rotation proofs (at most 16)
-  chain it to the cached key; with nothing cached (a new machine) it is
-  trusted on first use and its fingerprint printed (`adopted data key …`).
-  Anything else is an error (`78`) that names `wayu secrets adopt --yes`:
+  master-key item, with what it verified (local state: that it read
+  version 2, the recipients, the ones it saw removed, the keys it
+  replaced). Shell start uses it while its fingerprint (`key_id`) matches:
+  no public-key operation, no extra fork. A different key is taken from
+  this machine's stanza only when the rotation proofs (at most 16) chain it
+  to the cached key and it lists no machine this one saw removed; stderr
+  prints `adopted data key … (rotation from … verified); recipients: +x,
+  -y`. A machine with nothing cached (a new one) takes no key by itself: it
+  exits `78` naming `wayu secrets adopt --yes`, which prints the
+  fingerprint to compare with the one `recipient add` printed. An unproven
+  key, or one listing a removed machine again, is also `78` naming `adopt`:
   compare the fingerprint with `recipient list` on another machine first.
   `adopt` exits `78` when this machine has no stanza.
+- A `secrets.json` under a key this machine replaced (an old copy synced
+  back) exits `78` ("older than this machine's data key"): get the current
+  file again; `adopt` and `recovery unlock` refuse that key too. A version 1
+  file on a machine that read version 2 (a downgrade) exits `78` for every
+  read and write: sync the version 2 file again, or, going back to one
+  machine on purpose, `adopt --yes` (only when every value decrypts with
+  this machine's key).
 - A machine that is not a recipient prints `wayu: secrets not loaded: this
   machine is not a recipient …; run 'wayu secrets identity' and add it from
   a machine that is` at shell start.
@@ -589,7 +613,9 @@ wayu secrets recipient add age1… --name linux-box  # on machine A, then sync s
   stanza): `recovery unlock` (passphrase on stdin) recovers the data key on
   any machine with the file, caches it, and says how to add the machine.
   `recovery rm --yes` drops it and rotates. A passphrase shorter than 12
-  characters or a wrong one: `65`.
+  characters, or a wrong one (or a modified salt: "wrong passphrase, or the
+  recovery entry was modified"): `65`. argon2id parameters other than the
+  ones wayu writes (64 MiB, 3 passes, 4 lanes): `78`, before any work.
 - Every error exits non-zero and names the command that fixes it.
   `--dry-run` writes nothing (no identity, no key, no notice marker).
 
