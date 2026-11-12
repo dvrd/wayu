@@ -16,6 +16,22 @@ brew install wayu
 wayu init
 ```
 
+Or the install script, on the same platforms without Homebrew:
+
+```bash
+curl -fsSL https://wayu.dvrd.io/install.sh | sh
+wayu init
+```
+
+It downloads the release archive for your OS and CPU, checks its SHA-256
+(and its [build provenance attestation](https://github.com/dvrd/wayu/blob/main/SECURITY.md#verifying-release-binaries)
+when the GitHub CLI `gh` is installed and logged in), and installs `wayu` to
+`~/.local/bin`, replacing an older one atomically. `WAYU_VERSION=v7.0.0`
+installs that release, `WAYU_INSTALL_DIR` another directory. It refuses to
+install next to a Homebrew-managed wayu (`WAYU_FORCE=1` overrides), and says
+when the directory is not on your `PATH`. To upgrade, run it again. Read it
+first if you like: [install.sh](https://wayu.dvrd.io/install.sh).
+
 Other platforms (older macOS, musl Linux, the BSDs) build from source. It
 needs the
 [Odin compiler](https://odin-lang.org/docs/install/) at the release named in
@@ -27,7 +43,7 @@ odin build build -out:build_it && ./build_it install   # installs to ~/.local/bi
 ```
 
 Use one install method: while Homebrew manages wayu, `./build_it install`
-refuses to run.
+and the install script refuse to run.
 
 ## Set up your shell
 

@@ -168,7 +168,7 @@ jobs:
           .github/scripts/homebrew-formula.sh .github/scripts/release-notes.sh \
           .github/scripts/upgrading-version.sh .github/scripts/check-macos-minos.sh \
           .github/scripts/apt-install.sh .github/workflows/release-build.yml \
-          .github/macos-minimum-version; do
+          .github/macos-minimum-version docs/install.sh; do
           [ -f "$f" ] || { echo "Missing: $f"; exit 1; }
         done
         echo "All required files present"
@@ -213,3 +213,63 @@ jobs:
       contents: read
     with:
       artifact-prefix: ci-
+
+  # docs/install.sh (served at https://wayu.dvrd.io/install.sh) against the
+  # latest published release, as `curl ... | sh` runs it, in an empty HOME.
+  install-script:
+    name: Install script on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      attestations: read   # gh attestation verify
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        persist-credentials: false
+
+    - name: Lint install.sh
+      if: runner.os == 'Linux'
+      run: shellcheck -s sh docs/install.sh
+
+    - name: Install the latest release in an empty HOME
+      env:
+        # gh is on the runner: the script also verifies the attestation.
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        home=$(mktemp -d)
+        export HOME="$home"
+        unset XDG_CONFIG_HOME XDG_DATA_HOME WAYU_CONFIG_DIR WAYU_DATA_DIR
+        sh docs/install.sh < /dev/null
+        "$home/.local/bin/wayu" --version
+        "$home/.local/bin/wayu" doctor
+
+    # A curl shim in front of the real one rewrites the downloaded .sha256.
+    - name: A tampered checksum fails the install
+      run: |
+        set -euo pipefail
+        home=$(mktemp -d)
+        shim=$(mktemp -d)
+        real_curl=$(command -v curl)
+        cat > "$shim/curl" <<SHIM
+        #!/bin/sh
+        "$real_curl" "\$@" || exit \$?
+        out=; prev=
+        for a in "\$@"; do [ "\$prev" = -o ] && out=\$a; prev=\$a; done
+        case "\$out" in *.sha256) printf '%064d  tampered\\n' 0 > "\$out" ;; esac
+        SHIM
+        chmod +x "$shim/curl"
+        if HOME="$home" PATH="$shim:$PATH" sh docs/install.sh < /dev/null; then
+          echo "::error::install.sh accepted a tampered sha256"
+          exit 1
+        fi
+        [ ! -e "$home/.local/bin/wayu" ] || {
+          echo "::error::install.sh left a binary behind after a checksum failure"
+          exit 1
+        }

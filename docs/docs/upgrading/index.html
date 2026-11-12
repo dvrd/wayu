@@ -124,6 +124,10 @@ releases, so they are listed here too.</p>
 with a <code class="nw">.sha256</code> and a build provenance attestation. <code class="nw">brew install wayu</code>
 picks the right one; it no longer refuses those two platforms.
 </li>
+<li>New install script, for the same platforms without Homebrew:
+<code>curl -fsSL https://wayu.dvrd.io/install.sh | sh</code> (checks the SHA-256 and,
+with a logged-in <code class="nw">gh</code>, the attestation; installs to <code class="nw">~/.local/bin</code>).
+</li>
 </ul>
 <p class="pseudo-h" id="multi-machine-secrets-experimental-opt-in"><strong>Multi-machine secrets (experimental, opt-in)<a class="anchor" href="#multi-machine-secrets-experimental-opt-in" aria-label="Link to this section">#</a></strong></p>
 <ul>

@@ -547,6 +547,7 @@
         <div class="install" data-install>
           <div class="tabs" role="tablist" aria-label="Install method">
             <button class="tab" role="tab" type="button" id="hi-brew-tab" aria-controls="hi-brew" aria-selected="true">Homebrew</button>
+            <button class="tab" role="tab" type="button" id="hi-sh-tab" aria-controls="hi-sh" aria-selected="false" tabindex="-1">Script</button>
             <button class="tab" role="tab" type="button" id="hi-src-tab" aria-controls="hi-src" aria-selected="false" tabindex="-1">From source</button>
           </div>
           <div class="install-panel" role="tabpanel" id="hi-brew" aria-labelledby="hi-brew-tab">
@@ -554,6 +555,12 @@
 <span class="p">$ </span>brew install wayu
 <span class="p">$ </span>wayu init</pre>
             <button class="icon-btn copy-btn" type="button" data-copy="brew tap dvrd/wayu&#10;brew install wayu&#10;wayu init" aria-label="Copy Homebrew install commands"></button>
+          </div>
+          <div class="install-panel" role="tabpanel" id="hi-sh" aria-labelledby="hi-sh-tab" hidden>
+<pre><span class="p">$ </span>curl -fsSL https://wayu.dvrd.io/install.sh | sh
+<span class="p">$ </span>wayu init
+<span class="cm"># checks the SHA-256, installs to ~/.local/bin</span></pre>
+            <button class="icon-btn copy-btn" type="button" data-copy="curl -fsSL https://wayu.dvrd.io/install.sh | sh&#10;wayu init" aria-label="Copy install script commands"></button>
           </div>
           <div class="install-panel" role="tabpanel" id="hi-src" aria-labelledby="hi-src-tab" hidden>
 <pre><span class="p">$ </span>git clone https://github.com/dvrd/wayu &amp;&amp; cd wayu
@@ -1271,6 +1278,7 @@ git status -sb</pre>
         <div class="install reveal" data-install>
           <div class="tabs" role="tablist" aria-label="Install method">
             <button class="tab" role="tab" type="button" id="ci-brew-tab" aria-controls="ci-brew" aria-selected="true">Homebrew</button>
+            <button class="tab" role="tab" type="button" id="ci-sh-tab" aria-controls="ci-sh" aria-selected="false" tabindex="-1">Script</button>
             <button class="tab" role="tab" type="button" id="ci-src-tab" aria-controls="ci-src" aria-selected="false" tabindex="-1">From source</button>
           </div>
           <div class="install-panel" role="tabpanel" id="ci-brew" aria-labelledby="ci-brew-tab">
@@ -1278,6 +1286,12 @@ git status -sb</pre>
 <span class="p">$ </span>brew install wayu
 <span class="p">$ </span>wayu init</pre>
             <button class="icon-btn copy-btn" type="button" data-copy="brew tap dvrd/wayu&#10;brew install wayu&#10;wayu init" aria-label="Copy Homebrew install commands"></button>
+          </div>
+          <div class="install-panel" role="tabpanel" id="ci-sh" aria-labelledby="ci-sh-tab" hidden>
+<pre><span class="p">$ </span>curl -fsSL https://wayu.dvrd.io/install.sh | sh
+<span class="p">$ </span>wayu init
+<span class="cm"># checks the SHA-256, installs to ~/.local/bin</span></pre>
+            <button class="icon-btn copy-btn" type="button" data-copy="curl -fsSL https://wayu.dvrd.io/install.sh | sh&#10;wayu init" aria-label="Copy install script commands"></button>
           </div>
           <div class="install-panel" role="tabpanel" id="ci-src" aria-labelledby="ci-src-tab" hidden>
 <pre><span class="p">$ </span>git clone https://github.com/dvrd/wayu &amp;&amp; cd wayu

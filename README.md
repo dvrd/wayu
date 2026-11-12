@@ -47,6 +47,22 @@ Prebuilt for macOS 15 Sequoia or later (Apple silicon and Intel) and Linux
 | bash | 3.2 (macOS `/bin/bash`), 5.x |
 | fish | 4.x |
 
+### Install script
+
+On the same platforms, without Homebrew:
+
+```bash
+curl -fsSL https://wayu.dvrd.io/install.sh | sh
+wayu init
+```
+
+[`docs/install.sh`](docs/install.sh) (POSIX sh) downloads the release
+archive for your OS and CPU, verifies its SHA-256 (and its build provenance
+attestation when `gh` is installed and logged in), and installs `wayu` to
+`~/.local/bin` atomically. `WAYU_VERSION=vX.Y.Z` pins a release,
+`WAYU_INSTALL_DIR` picks the directory, and it refuses to install next to a
+Homebrew-managed wayu unless `WAYU_FORCE=1`. Run it again to upgrade.
+
 ### From source
 
 Requires the [Odin compiler](https://odin-lang.org/docs/install/) at the
@@ -65,10 +81,10 @@ odin build build -out:build_it && ./build_it install
 warns when another `wayu` earlier on `PATH` shadows it.
 
 **Use one install method.** While Homebrew manages wayu, `./build_it install`
-refuses to run (`--force` overrides): two copies on `PATH` mean the shell
-runs one version and you upgrade the other. To switch from Homebrew to a
-source build, `brew uninstall wayu` first; to switch back, delete
-`~/.local/bin/wayu`.
+and the install script refuse to run (`--force` / `WAYU_FORCE=1`
+override): two copies on `PATH` mean the shell runs one version and you
+upgrade the other. To switch from Homebrew to a source build or the script,
+`brew uninstall wayu` first; to switch back, delete `~/.local/bin/wayu`.
 
 ## Shell setup
 
