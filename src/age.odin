@@ -73,7 +73,8 @@ bech32_checksum_input :: proc(hrp: string, data: []byte, extra := 0) -> []byte {
 
 // Regroup bits (8 → 5 to encode, 5 → 8 to decode). ok = false for a value
 // out of range, or (pad = false) leftover bits that are not zero padding.
-// Temp-allocated.
+// Temp-allocated. Identity bits pass through here and the procs below:
+// every temporary copy is wiped (bech32_wipe) before it is dropped.
 bech32_convert_bits :: proc(data: []byte, from, to: uint, pad: bool) -> (out: []byte, ok: bool) {
 	acc: u32 = 0
 	bits: uint = 0
@@ -82,6 +83,7 @@ bech32_convert_bits :: proc(data: []byte, from, to: uint, pad: bool) -> (out: []
 	res := make([dynamic]byte, 0, len(data) * int(from) / int(to) + 1, context.temp_allocator)
 	for v in data {
 		if u32(v) >> from != 0 {
+			bech32_wipe(res[:])
 			return nil, false
 		}
 		acc = ((acc << from) | u32(v)) & max_acc
@@ -96,16 +98,26 @@ bech32_convert_bits :: proc(data: []byte, from, to: uint, pad: bool) -> (out: []
 			append(&res, byte((acc << (to - bits)) & maxv))
 		}
 	} else if bits >= from || ((acc << (to - bits)) & maxv) != 0 {
+		bech32_wipe(res[:])
 		return nil, false
 	}
 	return res[:], true
+}
+
+@(private = "file")
+bech32_wipe :: proc(b: []byte) {
+	if len(b) > 0 {
+		crypto.zero_explicit(raw_data(b), len(b))
+	}
 }
 
 // bech32 string of `hrp` + 5-bit `data` (temp-allocated). `upper` writes it
 // in upper case (age identities).
 bech32_encode :: proc(hrp: string, data: []byte, upper := false) -> string {
 	lhrp := strings.to_lower(hrp, context.temp_allocator)
-	pm := bech32_polymod(bech32_checksum_input(lhrp, data, 6)) ~ 1
+	input := bech32_checksum_input(lhrp, data, 6)
+	pm := bech32_polymod(input) ~ 1
+	bech32_wipe(input)
 	charset := BECH32_CHARSET
 	b := strings.builder_make(context.temp_allocator)
 	strings.write_string(&b, lhrp)
@@ -115,7 +127,12 @@ bech32_encode :: proc(hrp: string, data: []byte, upper := false) -> string {
 		strings.write_byte(&b, charset[(pm >> uint(5 * (5 - i))) & 31])
 	}
 	s := strings.to_string(b)
-	return strings.to_upper(s, context.temp_allocator) if upper else s
+	if !upper {
+		return s
+	}
+	u := strings.to_upper(s, context.temp_allocator)
+	bech32_wipe(b.buf[:])
+	return u
 }
 
 // Decode a bech32 string: hrp (lower case) and the 5-bit data without the
@@ -152,19 +169,28 @@ bech32_decode :: proc(
 	ls := strings.to_lower(s, context.temp_allocator)
 	pos := strings.last_index_byte(ls, '1')
 	if pos < 1 || pos + 7 > len(ls) {
+		bech32_wipe(transmute([]byte)ls)
 		return
 	}
+	// The data part of the lower-case copy (hrp stays: it is returned).
+	defer bech32_wipe(transmute([]byte)ls[pos:])
 	vals := make([]byte, len(ls) - pos - 1, context.temp_allocator)
 	for i in pos + 1 ..< len(ls) {
 		idx := strings.index_byte(BECH32_CHARSET, ls[i])
 		if idx < 0 {
+			bech32_wipe(vals)
 			return
 		}
 		vals[i - pos - 1] = byte(idx)
 	}
-	if bech32_polymod(bech32_checksum_input(ls[:pos], vals)) != 1 {
+	input := bech32_checksum_input(ls[:pos], vals)
+	valid := bech32_polymod(input) == 1
+	bech32_wipe(input)
+	if !valid {
+		bech32_wipe(vals)
 		return
 	}
+	bech32_wipe(vals[len(vals) - 6:]) // the checksum symbols
 	return ls[:pos], vals[:len(vals) - 6], true
 }
 
@@ -221,7 +247,10 @@ age_identity_encode :: proc(secret: [AGE_KEY_SIZE]byte) -> string {
 
 // Parse "AGE-SECRET-KEY-1…" (upper case, as age writes it).
 age_identity_decode :: proc(s: string) -> (secret: [AGE_KEY_SIZE]byte, ok: bool) {
-	if s != strings.to_upper(s, context.temp_allocator) {
+	upper := strings.to_upper(s, context.temp_allocator)
+	same := s == upper
+	bech32_wipe(transmute([]byte)upper)
+	if !same {
 		return
 	}
 	hrp, five, dok := bech32_decode(s)
@@ -233,10 +262,11 @@ age_identity_decode :: proc(s: string) -> (secret: [AGE_KEY_SIZE]byte, ok: bool)
 	}
 	raw, cok := bech32_convert_bits(five, 5, 8, false)
 	if !cok || len(raw) != AGE_KEY_SIZE {
+		bech32_wipe(raw)
 		return
 	}
 	copy(secret[:], raw)
-	crypto.zero_explicit(raw_data(raw), len(raw))
+	bech32_wipe(raw)
 	return secret, true
 }
 
