@@ -659,6 +659,12 @@ generation fails, it exits <code class="nw">74</code>; the restored checkouts ar
 <code class="nw">wayu build</code> to retry. <code class="nw">--dry-run</code> does not clone or save anything.</p>
 <p><code class="nw">plugin add</code> exits <code class="nw">66</code> when the named plugin is registered but its checkout
 is missing, and names <code class="nw">wayu plugin restore</code> as the recovery command.</p>
+<p><code class="nw">plugin get</code> also attempts to copy the URL to the clipboard. Each clipboard
+helper has a five-second deadline (Linux may try xclip, then xsel). An early
+input close or timeout prints a warning; displaying the plugin information
+still succeeds. <code class="nw">--dry-run</code> displays the information and previews the copy
+without changing the clipboard. Helpers that fork a background owner are
+supported, including ones that consume input after the foreground helper exits.</p>
 <h3 id="wayu-init"><code class="nw">wayu init</code><a class="anchor" href="#wayu-init" aria-label="Link to this section">#</a></h3>
 <p><code>wayu init [--template &lt;name&gt;]</code>: create the config dir
 (<code class="nw">~/.config/wayu</code>) and the data dir (<code>${XDG_DATA_HOME:-~/.local/share}/wayu</code>),

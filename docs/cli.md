@@ -289,6 +289,13 @@ generation fails, it exits `74`; the restored checkouts are kept for
 `plugin add` exits `66` when the named plugin is registered but its checkout
 is missing, and names `wayu plugin restore` as the recovery command.
 
+`plugin get` also attempts to copy the URL to the clipboard. Each clipboard
+helper has a five-second deadline (Linux may try xclip, then xsel). An early
+input close or timeout prints a warning; displaying the plugin information
+still succeeds. `--dry-run` displays the information and previews the copy
+without changing the clipboard. Helpers that fork a background owner are
+supported, including ones that consume input after the foreground helper exits.
+
 ### `wayu init`
 
 `wayu init [--template <name>]`: create the config dir
