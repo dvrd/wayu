@@ -14,7 +14,7 @@ class FailureCampaign
     @passed = []
   end
 
-  def sandbox(label, data_parent: nil)
+  def sandbox(label, data_parent: nil, shell: '/bin/zsh')
     home = Dir.mktmpdir("wayu-failure-#{label}-")
     begin
       data = data_parent ? Dir.mktmpdir('wayu-data-', data_parent) : "#{home}/data"
@@ -22,7 +22,7 @@ class FailureCampaign
       FileUtils.mkdir_p([data, cfg])
       File.write("#{cfg}/wayu.toml", "[secrets]\nbackend = \"file\"\n")
       env = { 'HOME' => home, 'WAYU_CONFIG_DIR' => cfg, 'WAYU_DATA_DIR' => data,
-              'PATH' => ENV.fetch('PATH'), 'SHELL' => '/bin/zsh', 'NO_COLOR' => '1',
+              'PATH' => ENV.fetch('PATH'), 'SHELL' => shell, 'NO_COLOR' => '1',
               'TERM' => 'xterm-256color' }
       %w[ASAN_OPTIONS LSAN_OPTIONS UBSAN_OPTIONS].each { |k| env[k] = ENV[k] if ENV[k] }
       begin
@@ -196,7 +196,10 @@ class FailureCampaign
     if full_root
       raise 'Full-disk root must be a directory supplied by the isolated CI mount' unless File.directory?(full_root)
       verify_full_disk_root!(full_root)
-      sandbox('real-enospc', data_parent: full_root) do |env, data, _|
+      # Use Bash here: Zsh's background digest replacement may free blocks
+      # after the filler reaches ENOSPC, invalidating the injected condition.
+      # The portable cases and candidate trial still exercise Zsh.
+      sandbox('real-enospc', data_parent: full_root, shell: '/bin/bash') do |env, data, _|
         before = entries(data)
         filler = "#{data}/fill-space"
         begin
