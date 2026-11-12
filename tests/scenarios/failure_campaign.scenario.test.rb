@@ -15,7 +15,8 @@ class FailureCampaign
   end
 
   def sandbox(label, data_parent: nil)
-    Dir.mktmpdir("wayu-failure-#{label}-") do |home|
+    home = Dir.mktmpdir("wayu-failure-#{label}-")
+    begin
       data = data_parent ? Dir.mktmpdir('wayu-data-', data_parent) : "#{home}/data"
       cfg = "#{home}/config"
       FileUtils.mkdir_p([data, cfg])
@@ -30,11 +31,26 @@ class FailureCampaign
         yield env, data, home
       ensure
         FileUtils.chmod(0700, data) if File.directory?(data)
-        FileUtils.rm_rf(data) if data_parent
+        remove_fixture!(data) if data_parent
       end
+    ensure
+      remove_fixture!(home)
     end
     @passed << label
     puts "PASS failure campaign: #{label}"
+  end
+
+  def remove_fixture!(path)
+    # An intentionally asynchronous zcompile can rename .tmp.zwc while
+    # FileUtils walks the fixture. Force handles vanished entries; verify
+    # the root really disappears and bound retries for newly created files.
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
+    loop do
+      FileUtils.rm_rf(path)
+      return unless File.exist?(path) || File.symlink?(path)
+      raise "fixture cleanup did not finish: #{path}" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+      sleep 0.02
+    end
   end
 
   def run!(env, *args)
