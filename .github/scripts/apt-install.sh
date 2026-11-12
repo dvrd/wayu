@@ -8,8 +8,9 @@
 #                  (opt/llvm/bin/clang); default: the apt names
 #
 # The runner's Azure apt mirror sometimes fails to resolve: retry, then fall
-# back to archive.ubuntu.com, and as a last resort install from Homebrew
-# (bottles come from ghcr.io, not the Ubuntu mirrors; x86_64 images only).
+# back to archive.ubuntu.com (ports.ubuntu.com on arm64), and as a last
+# resort install from Homebrew (bottles come from ghcr.io, not the Ubuntu
+# mirrors; x86_64 images only).
 set -euo pipefail
 
 if [ "$#" -eq 0 ]; then
@@ -17,12 +18,18 @@ if [ "$#" -eq 0 ]; then
   exit 64
 fi
 
+# arm64 packages live on ports.ubuntu.com, not archive.ubuntu.com.
+case "$(dpkg --print-architecture 2>/dev/null)" in
+  amd64 | i386) archive=http://archive.ubuntu.com/ubuntu/ ;;
+  *) archive=http://ports.ubuntu.com/ubuntu-ports/ ;;
+esac
+
 for try in 1 2 3; do
   if sudo apt-get -o Acquire::Retries=3 update -qq &&
      sudo apt-get -o Acquire::Retries=3 install -y -qq "$@"; then
     exit 0
   fi
-  sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' \
+  sudo sed -i "s#mirror+file:/etc/apt/apt-mirrors.txt#$archive#" \
     /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
   sleep $((try * 10))
 done
