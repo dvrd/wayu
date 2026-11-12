@@ -55,6 +55,7 @@ class HelpExamplesIntegrationTest
       build_project
       write_git_stub
       prepare_pristine_home
+      test_pristine_copy
       @commands = help_commands
       @actions = action_words
       examples = collect_help_examples + DOCS.flat_map { |d| collect_doc_examples(d) }
@@ -141,7 +142,10 @@ class HelpExamplesIntegrationTest
   end
 
   def prepare_pristine_home
-    FileUtils.mkdir_p("#{@pristine}/.config")
+    FileUtils.mkdir_p("#{@pristine}/.config/wayu")
+    # Some documented examples create identities. Keep them in the fixture,
+    # even on macOS where the default backend is the user's login keychain.
+    File.write("#{@pristine}/.config/wayu/wayu.toml", "[secrets]\nbackend = \"file\"\n")
     out, st = wayu_pristine('init --shell zsh')
     abort("init failed: #{out}") unless st&.success?
     # State the examples refer to, so most of them succeed outright.
@@ -248,7 +252,7 @@ class HelpExamplesIntegrationTest
   def run_example(e)
     home = Dir.mktmpdir('wayu_help_ex_', '/tmp')
     begin
-      FileUtils.cp_r("#{@pristine}/.", home)
+      copy_pristine(home)
       out, st = run_in(home, e[:cmd])
     ensure
       FileUtils.rm_rf(home)
@@ -265,6 +269,39 @@ class HelpExamplesIntegrationTest
       check(name, st.exitstatus != EXIT_USAGE, "usage error (exit 64): #{out[0, 400]}")
     end
     check_search_claims(e, out) if st && SEARCH_WORDS.include?(e[:cmd].split[1])
+  end
+
+  def copy_pristine(home)
+    # init's compiler atomically renames .zwc caches after it returns.
+    # Copy immutable fixture inputs, excluding caches before any lstat/copy.
+    Dir.glob("#{@pristine}/**/*", File::FNM_DOTMATCH).sort.each do |source|
+      next if %w[. ..].include?(File.basename(source)) || source.end_with?('.zwc')
+      dest = File.join(home, source.delete_prefix("#{@pristine}/"))
+      stat = File.lstat(source)
+      if stat.directory?
+        FileUtils.mkdir_p(dest, mode: stat.mode & 0o777)
+      elsif stat.symlink?
+        File.symlink(File.readlink(source), dest)
+      else
+        FileUtils.cp(source, dest, preserve: true)
+      end
+    end
+  end
+
+  def test_pristine_copy
+    home = Dir.mktmpdir('wayu_help_copy_', '/tmp')
+    cache = "#{@pristine}/generated-fixture.tmp.zwc"
+    begin
+      File.write(cache, 'background bytecode fixture')
+      copy_pristine(home)
+      check('fixture copies source/configuration without mutable bytecode',
+            File.binread("#{home}/.local/share/wayu/entries.json") == File.binread("#{@pristine}/.local/share/wayu/entries.json") &&
+            File.read("#{home}/.config/wayu/wayu.toml").include?('backend = "file"') &&
+            !File.exist?("#{home}/generated-fixture.tmp.zwc"))
+    ensure
+      FileUtils.rm_f(cache)
+      FileUtils.rm_rf(home)
+    end
   end
 
   # "# matches OPENAI_API_KEY" / "# Acronym: FIREWORKS_AI_API_KEY" on a search
@@ -302,7 +339,7 @@ class HelpExamplesIntegrationTest
   def test_toml_keys_lists_real_keys
     home = Dir.mktmpdir('wayu_help_keys_', '/tmp')
     begin
-      FileUtils.cp_r("#{@pristine}/.", home)
+      copy_pristine(home)
       toml = "#{home}/.config/wayu/wayu.toml"
       File.write(toml, File.read(toml) + "\n[tools.zoxide]\ncmd = \"zoxide init zsh\"\n[custom]\nx = 1\n")
       expected = []
@@ -323,4 +360,4 @@ class HelpExamplesIntegrationTest
   end
 end
 
-HelpExamplesIntegrationTest.new.run
+HelpExamplesIntegrationTest.new.run if __FILE__ == $0
