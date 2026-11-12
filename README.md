@@ -34,18 +34,34 @@ brew install wayu
 wayu init
 ```
 
-Prebuilt for macOS arm64 (macOS 15 Sequoia or later) and Linux x86_64; on
-other platforms build from source.
+Prebuilt for macOS 15 Sequoia or later (Apple silicon and Intel) and Linux
+(x86_64 and arm64, glibc); on other platforms build from source.
 
 **Tested with** (anything else may work but isn't tested):
 
 | | Versions |
 |---|---|
-| macOS | 15 (CI), 26, 27 |
-| Linux | Ubuntu 24.04 (CI) |
+| macOS | 15 (CI; Intel: CI smoke test), 26, 27 |
+| Linux | Ubuntu 24.04 (CI; arm64: CI smoke test) |
 | zsh | 5.9 |
 | bash | 3.2 (macOS `/bin/bash`), 5.x |
 | fish | 4.x |
+
+### Install script
+
+On the same platforms, without Homebrew:
+
+```bash
+curl -fsSL https://wayu.dvrd.io/install.sh | sh
+wayu init
+```
+
+[`docs/install.sh`](docs/install.sh) (POSIX sh) downloads the release
+archive for your OS and CPU, verifies its SHA-256 (and its build provenance
+attestation when `gh` is installed and logged in), and installs `wayu` to
+`~/.local/bin` atomically. `WAYU_VERSION=vX.Y.Z` pins a release,
+`WAYU_INSTALL_DIR` picks the directory, and it refuses to install next to a
+Homebrew-managed wayu unless `WAYU_FORCE=1`. Run it again to upgrade.
 
 ### From source
 
@@ -65,10 +81,10 @@ odin build build -out:build_it && ./build_it install
 warns when another `wayu` earlier on `PATH` shadows it.
 
 **Use one install method.** While Homebrew manages wayu, `./build_it install`
-refuses to run (`--force` overrides): two copies on `PATH` mean the shell
-runs one version and you upgrade the other. To switch from Homebrew to a
-source build, `brew uninstall wayu` first; to switch back, delete
-`~/.local/bin/wayu`.
+and the install script refuse to run (`--force` / `WAYU_FORCE=1`
+override): two copies on `PATH` mean the shell runs one version and you
+upgrade the other. To switch from Homebrew to a source build or the script,
+`brew uninstall wayu` first; to switch back, delete `~/.local/bin/wayu`.
 
 ## Shell setup
 
@@ -589,10 +605,13 @@ Releases are **automatic**. Every push to `main` runs
 3. Bumps `VERSION` in `src/main.odin`, regenerates `CHANGELOG.md`, renames
    the `## Unreleased` section of `docs/UPGRADING.md` to the version, commits
    `chore: release vX.Y.Z`, and tags it.
-4. Builds the release binaries (macOS arm64, Linux x86_64), publishes the
-   GitHub release, and regenerates the Homebrew tap formula
-   (`dvrd/homebrew-wayu`). Other platforms (macOS Intel, Linux arm64) have no
-   prebuilt binary; brew refuses them with an architecture error.
+4. Builds the release binaries
+   ([`release-build.yml`](.github/workflows/release-build.yml): macOS arm64
+   and x86_64, Linux x86_64 and arm64; macOS x86_64 is cross-compiled on
+   arm64, since Odin ships no macOS x86_64 toolchain), smoke-tests each on
+   its own platform, attests them, publishes the GitHub release, and
+   regenerates the Homebrew tap formula (`dvrd/homebrew-wayu`). CI runs the
+   same build and smoke test on every push to `develop` and every PR.
 
 The workflow never deletes or moves an existing tag or release: if the target
 version's tag already exists elsewhere it fails and prints the manual fix.

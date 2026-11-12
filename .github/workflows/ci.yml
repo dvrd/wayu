@@ -38,24 +38,8 @@ jobs:
     # real shells. macOS ships zsh + bash; fish is needed everywhere.
     - name: Install shells (Linux)
       if: runner.os == 'Linux'
-      run: |
-        # The runner's Azure mirror sometimes fails to resolve: retry, then
-        # fall back to archive.ubuntu.com.
-        for try in 1 2 3; do
-          if sudo apt-get -o Acquire::Retries=3 update -qq &&
-             sudo apt-get -o Acquire::Retries=3 install -y -qq zsh fish; then
-            exit 0
-          fi
-          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' \
-            /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
-          sleep $((try * 10))
-        done
-        # Last resort: Homebrew's bottles come from ghcr.io, not the Ubuntu mirrors.
-        brew=/home/linuxbrew/.linuxbrew/bin/brew
-        [ -x "$brew" ] || exit 1
-        HOMEBREW_NO_AUTO_UPDATE=1 "$brew" install zsh fish || exit 1
-        sudo ln -sf "$($brew --prefix)/bin/zsh" /usr/bin/zsh
-        sudo ln -sf "$($brew --prefix)/bin/fish" /usr/bin/fish
+      # Retries, archive.ubuntu.com, then Homebrew (see the script).
+      run: .github/scripts/apt-install.sh zsh fish
 
     - name: Install shells (macOS)
       if: runner.os == 'macOS'
@@ -125,24 +109,8 @@ jobs:
         ruby-version: '3.3'
 
     - name: Install shells
-      run: |
-        # The runner's Azure mirror sometimes fails to resolve: retry, then
-        # fall back to archive.ubuntu.com.
-        for try in 1 2 3; do
-          if sudo apt-get -o Acquire::Retries=3 update -qq &&
-             sudo apt-get -o Acquire::Retries=3 install -y -qq zsh fish; then
-            exit 0
-          fi
-          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' \
-            /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
-          sleep $((try * 10))
-        done
-        # Last resort: Homebrew's bottles come from ghcr.io, not the Ubuntu mirrors.
-        brew=/home/linuxbrew/.linuxbrew/bin/brew
-        [ -x "$brew" ] || exit 1
-        HOMEBREW_NO_AUTO_UPDATE=1 "$brew" install zsh fish || exit 1
-        sudo ln -sf "$($brew --prefix)/bin/zsh" /usr/bin/zsh
-        sudo ln -sf "$($brew --prefix)/bin/fish" /usr/bin/fish
+      # Retries, archive.ubuntu.com, then Homebrew (see the script).
+      run: .github/scripts/apt-install.sh zsh fish
 
     - name: Bootstrap build script
       run: odin build build -out:build_it
@@ -199,7 +167,8 @@ jobs:
         for f in README.md docs/index.html docs/UPGRADING.md .github/workflows/bump.yml \
           .github/scripts/homebrew-formula.sh .github/scripts/release-notes.sh \
           .github/scripts/upgrading-version.sh .github/scripts/check-macos-minos.sh \
-          .github/macos-minimum-version; do
+          .github/scripts/apt-install.sh .github/workflows/release-build.yml \
+          .github/macos-minimum-version docs/install.sh; do
           [ -f "$f" ] || { echo "Missing: $f"; exit 1; }
         done
         echo "All required files present"
@@ -207,7 +176,8 @@ jobs:
     - name: Check formula generator
       run: |
         A=$(printf 'a%.0s' {1..64}); B=$(printf 'b%.0s' {1..64})
-        .github/scripts/homebrew-formula.sh v0.0.0 "$A" "$B" > /tmp/wayu.rb
+        C=$(printf 'c%.0s' {1..64}); D=$(printf 'd%.0s' {1..64})
+        .github/scripts/homebrew-formula.sh v0.0.0 "$A" "$B" "$C" "$D" > /tmp/wayu.rb
         ruby -c /tmp/wayu.rb
         # init.<ext> lives in the data dir since 6.0.0; caveats must not
         # point new users at the old ~/.config/wayu/init.<ext>.
@@ -218,5 +188,88 @@ jobs:
         # shellcheck disable=SC2016 # a literal $HOME in the formula text
         grep -q 'XDG_DATA_HOME:-\$HOME/.local/share}/wayu}/init.zsh' /tmp/wayu.rb || {
           echo "::error::Formula caveats lack the data-dir init.zsh line"
+          exit 1
+        }
+        # One archive per platform, each with its own checksum.
+        for asset in wayu-macos-arm64 wayu-macos-amd64 wayu-linux-amd64 wayu-linux-arm64; do
+          grep -q "/$asset.tar.gz\"" /tmp/wayu.rb || {
+            echo "::error::Formula has no url for $asset"
+            exit 1
+          }
+        done
+        [ "$(grep -cE 'sha256 "[a-d]{64}"' /tmp/wayu.rb)" = 4 ] || {
+          echo "::error::Formula must carry 4 distinct sha256 lines"
+          exit 1
+        }
+
+  # The release binaries for all four targets (linux amd64/arm64, macOS
+  # arm64/x86_64), built exactly as bump.yml builds them and smoke-tested on
+  # each platform; nothing is published. A broken target fails here, not at
+  # release time.
+  release-build:
+    name: Release build
+    uses: ./.github/workflows/release-build.yml
+    permissions:
+      contents: read
+    with:
+      artifact-prefix: ci-
+
+  # docs/install.sh (served at https://wayu.dvrd.io/install.sh) against the
+  # latest published release, as `curl ... | sh` runs it, in an empty HOME.
+  install-script:
+    name: Install script on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      attestations: read   # gh attestation verify
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        persist-credentials: false
+
+    - name: Lint install.sh
+      if: runner.os == 'Linux'
+      run: shellcheck -s sh docs/install.sh
+
+    - name: Install the latest release in an empty HOME
+      env:
+        # gh is on the runner: the script also verifies the attestation.
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        home=$(mktemp -d)
+        export HOME="$home"
+        unset XDG_CONFIG_HOME XDG_DATA_HOME WAYU_CONFIG_DIR WAYU_DATA_DIR
+        sh docs/install.sh < /dev/null
+        "$home/.local/bin/wayu" --version
+        "$home/.local/bin/wayu" doctor
+
+    # A curl shim in front of the real one rewrites the downloaded .sha256.
+    - name: A tampered checksum fails the install
+      run: |
+        set -euo pipefail
+        home=$(mktemp -d)
+        shim=$(mktemp -d)
+        real_curl=$(command -v curl)
+        cat > "$shim/curl" <<SHIM
+        #!/bin/sh
+        "$real_curl" "\$@" || exit \$?
+        out=; prev=
+        for a in "\$@"; do [ "\$prev" = -o ] && out=\$a; prev=\$a; done
+        case "\$out" in *.sha256) printf '%064d  tampered\\n' 0 > "\$out" ;; esac
+        SHIM
+        chmod +x "$shim/curl"
+        if HOME="$home" PATH="$shim:$PATH" sh docs/install.sh < /dev/null; then
+          echo "::error::install.sh accepted a tampered sha256"
+          exit 1
+        fi
+        [ ! -e "$home/.local/bin/wayu" ] || {
+          echo "::error::install.sh left a binary behind after a checksum failure"
           exit 1
         }

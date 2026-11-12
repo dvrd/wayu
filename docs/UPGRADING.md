@@ -8,6 +8,16 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+**Prebuilt binaries for Intel Macs and Linux on arm64**
+
+- Releases now ship `wayu-macos-amd64` (macOS 15 or later on Intel) and
+  `wayu-linux-arm64` next to `wayu-macos-arm64` and `wayu-linux-amd64`, each
+  with a `.sha256` and a build provenance attestation. `brew install wayu`
+  picks the right one; it no longer refuses those two platforms.
+- New install script, for the same platforms without Homebrew:
+  `curl -fsSL https://wayu.dvrd.io/install.sh | sh` (checks the SHA-256 and,
+  with a logged-in `gh`, the attestation; installs to `~/.local/bin`).
+
 **Multi-machine secrets (experimental, opt-in)**
 
 - New: `wayu secrets identity`, `wayu secrets recipient list|add|rm|rename`,

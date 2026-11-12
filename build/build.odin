@@ -4,7 +4,8 @@
 //   odin build build -out:build_it && ./build_it <target>
 //
 // Targets:
-//   build     — optimized release build (default)
+//   build     — optimized release build (default); --target=<odin target>
+//               cross-compiles (release: darwin_amd64 on an arm64 Mac)
 //   debug     — debug build with symbols
 //   test      — run unit tests
 //   check     — type-check only
@@ -55,7 +56,7 @@ main :: proc() {
 
 	switch target {
 	case "build":
-		do_build()
+		do_build(build_target_arg())
 	case "debug":
 		do_debug()
 	case "test":
@@ -160,28 +161,71 @@ require_pinned_git_cliff :: proc() {
 // released binary against this file (.github/scripts/check-macos-minos.sh).
 MACOS_MIN_VERSION_FILE :: ".github/macos-minimum-version"
 
-// Extra compiler flags for this host: -minimum-os-version on macOS.
-platform_flags :: proc() -> []string {
-	when ODIN_OS == .Darwin {
-		data, err := os.read_entire_file_from_path(MACOS_MIN_VERSION_FILE, context.temp_allocator)
-		version := strings.trim_space(string(data))
-		if err != nil || version == "" {
-			bld.log_error("Cannot read the macOS minimum version from %s", MACOS_MIN_VERSION_FILE)
-			os.exit(1)
-		}
-		flags := make([]string, 1, context.temp_allocator)
-		flags[0] = fmt.tprintf("-minimum-os-version:%s", version)
-		return flags
-	} else {
+// Extra compiler flags: -minimum-os-version when the binary is for macOS
+// (the host's OS, or `target` when cross-compiling).
+platform_flags :: proc(target := "") -> []string {
+	for_macos := strings.has_prefix(target, "darwin_") if len(target) > 0 else ODIN_OS == .Darwin
+	if !for_macos {
 		return nil
 	}
+	data, err := os.read_entire_file_from_path(MACOS_MIN_VERSION_FILE, context.temp_allocator)
+	version := strings.trim_space(string(data))
+	if err != nil || version == "" {
+		bld.log_error("Cannot read the macOS minimum version from %s", MACOS_MIN_VERSION_FILE)
+		os.exit(1)
+	}
+	flags := make([]string, 1, context.temp_allocator)
+	flags[0] = fmt.tprintf("-minimum-os-version:%s", version)
+	return flags
 }
 
-do_build :: proc() {
-	bld.log_info("Building %s (optimized)...", BINARY_NAME)
+// Odin targets `./build_it build --target=<t>` accepts: the release
+// platforms. The macOS x86_64 release is cross-compiled on an arm64 Mac
+// (Odin ships no macOS x86_64 toolchain for the pinned release).
+BUILD_TARGETS :: [?]string{"darwin_arm64", "darwin_amd64", "linux_amd64", "linux_arm64"}
+
+// `./build_it build [--target=<odin target>]`: "" builds for the host.
+build_target_arg :: proc() -> string {
+	target := ""
+	for i := 2; i < len(os.args); i += 1 {
+		arg := os.args[i]
+		if !strings.has_prefix(arg, "--target=") {
+			bld.log_error(
+				"Unknown build option '%s' (usage: ./build_it build [--target=<odin target>])",
+				arg,
+			)
+			os.exit(1)
+		}
+		target = arg[len("--target="):]
+	}
+	if target == "" {
+		return ""
+	}
+	targets := BUILD_TARGETS
+	for t in targets {
+		if t == target {
+			return target
+		}
+	}
+	bld.log_error("Unknown build target '%s' (one of: %v)", target, targets)
+	os.exit(1)
+}
+
+do_build :: proc(target := "") {
+	if len(target) > 0 {
+		bld.log_info("Building %s (optimized, %s)...", BINARY_NAME, target)
+	} else {
+		bld.log_info("Building %s (optimized)...", BINARY_NAME)
+	}
 	bld.mkdir_if_not_exists(BIN_DIR)
 	ok := bld.build(
-		{package_path = SRC_DIR, out = bin_path(), opt = .Speed, extra_flags = platform_flags()},
+		{
+			package_path = SRC_DIR,
+			out = bin_path(),
+			opt = .Speed,
+			target = target,
+			extra_flags = platform_flags(target),
+		},
 	)
 	if !ok {
 		bld.log_error("Build failed")
@@ -927,7 +971,7 @@ do_help :: proc() {
 	fmt.println("Usage: ./build_it <target>")
 	fmt.println("")
 	fmt.println("Targets:")
-	fmt.println("  build     Optimized release build (default)")
+	fmt.println("  build     Optimized release build (default) [--target=darwin_amd64|...]")
 	fmt.println("  debug     Debug build with symbols")
 	fmt.println("  test      Run unit tests (optional: NAME[,NAME] to run only those)")
 	fmt.println("  check     Type-check only")
