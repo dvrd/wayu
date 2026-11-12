@@ -83,4 +83,26 @@ out=$(vn zsh -ic 'print -r -- "S=$UP_SECRET"' 2>$H/err4)
 grep -q 'moved' $H/err4;                                  [[ $? != 0 ]]; ok $? "next shell: no notice again"
 vn wayu doctor >$H/doc 2>&1;                              ok $? "doctor exit 0"
 grep -E '✗|⚠' $H/doc | sed 's/^/    doctor: /' | head -10
+
+print "multi-machine secrets (opt-in)"
+S=$H/.local/share/wayu/secrets.json
+grep -q '"version": 1' $S;                                ok $? "secrets.json still version 1 after the upgrade"
+# A second machine (file backend) for its age recipient.
+H2=$H/other; mkdir -p $H2/tmp
+o2() { env -i HOME=$H2 SHELL=/bin/zsh NO_COLOR=1 TMPDIR=$H2/tmp/ PATH=/usr/bin:/bin $NEW "$@"; }
+o2 init --shell zsh >/dev/null 2>&1 && print '\n[secrets]\nbackend = "file"' >> $H2/.config/wayu/wayu.toml
+R2=$(o2 secrets identity 2>/dev/null);                    ok $? "other machine: identity"
+# This machine by name first (a hostname that is an IP address gives none).
+vn wayu secrets recipient add "$(vn wayu secrets identity 2>/dev/null)" --name this-mac >/dev/null 2>$H/err5; ok $? "recipient add (this machine)"
+grep -q '"version": 2' $S;                                ok $? "secrets.json migrated to version 2"
+grep -q 'is now version 2' $H/err5;                       ok $? "one-time upgrade notice"
+vn wayu secrets recipient add $R2 --name other >$H/out5 2>&1; ok $? "recipient add (other machine)"
+grep -q 'data key fingerprint' $H/out5;                   ok $? "recipient add prints the fingerprint"
+grep -lq '"version": 1' $H/.local/share/wayu/backup/secrets/* 2>/dev/null; ok $? "version 1 copy in the backups"
+out=$(vn zsh -ic 'print -r -- "S=$UP_SECRET"' 2>/dev/null)
+[[ $out == *"S=fake-up-secret"* ]];                       ok $? "shell after the upgrade: secret"
+cp $S $H/.local/share/wayu/entries.json $H2/.local/share/wayu/
+o2 const get UP_SECRET >/dev/null 2>&1;                   [[ $? == 78 ]]; ok $? "other machine: 78 until it adopts"
+o2 secrets adopt --yes >/dev/null 2>&1;                   ok $? "other machine: adopt --yes"
+[[ $(o2 const get UP_SECRET 2>/dev/null) == fake-up-secret ]]; ok $? "other machine reads the secret"
 [[ $fails == 0 ]] && print "ALL OK ($H)" || print "$fails FAILED ($H)"

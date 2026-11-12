@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "paths": [],
+  "aliases": [],
+  "env": [
+    {"name": "FAKE_V1_TOKEN", "secret": true},
+    {"name": "FAKE_V1_RUN", "secret": true, "run_only": true}
+  ]
+}

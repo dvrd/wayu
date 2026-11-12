@@ -1305,6 +1305,102 @@ expansion.</p>
 of <code class="nw">wayu const get NAME</code> (and to the environment of <code class="nw">wayu secrets run</code>&#39;s
 command). <code class="nw">wayu doctor</code> checks the backend, the key, the
 store&#39;s mode, that every secret decrypts, and the cache dir.</p>
+<h4 id="multi-machine-secrets-experimental">Multi-machine secrets (experimental)<a class="anchor" href="#multi-machine-secrets-experimental" aria-label="Link to this section">#</a></h4>
+<p>Experimental: the commands and the version 2 format below may change in a
+minor release; a format change still migrates automatically. Version 1
+stays valid: a store becomes version 2 only when you run <code class="nw">wayu secrets recipient add</code> (or <code class="nw">recovery add</code>), which backs up the version 1 file,
+writes version 2, verifies it and prints a one-time notice (wayu 7.0 cannot
+read version 2: upgrade every machine that syncs the file first). wayu 7.0
+reading a newer version exits <code class="nw">78</code> naming the upgrade.</p>
+<div class="code"><pre><code class="language-json">{
+  &quot;version&quot;: 2,
+  &quot;cipher&quot;: &quot;chacha20poly1305&quot;,
+  &quot;key_id&quot;: &quot;3f9a1c0e5b7d2a41&quot;,
+  &quot;recipients&quot;: [
+    {&quot;name&quot;: &quot;laptop&quot;, &quot;recipient&quot;: &quot;age1…&quot;, &quot;stanza&quot;: &quot;&lt;share&gt; &lt;body&gt;&quot;}
+  ],
+  &quot;recovery&quot;: {&quot;recipient&quot;: &quot;age1…&quot;, &quot;stanza&quot;: &quot;…&quot;, &quot;kdf&quot;: &quot;argon2id&quot;, &quot;m&quot;: 65536, &quot;t&quot;: 3, &quot;p&quot;: 4, &quot;salt&quot;: &quot;…&quot;, &quot;identity&quot;: &quot;…&quot;},
+  &quot;rotations&quot;: [
+    {&quot;from&quot;: &quot;a17c…&quot;, &quot;to&quot;: &quot;3f9a1c0e5b7d2a41&quot;, &quot;proof&quot;: &quot;…&quot;}
+  ],
+  &quot;values&quot;: {&quot;NAME&quot;: &quot;&lt;base64 nonce||ciphertext||tag&gt;&quot;},
+  &quot;run_only&quot;: [&quot;NAME&quot;]
+}
+</code></pre><button type="button" class="icon-btn copy-btn" aria-label="Copy json code"><svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
+<ul>
+<li><code class="nw">values</code> / <code class="nw">run_only</code>: exactly as in version 1 (same key, AAD and lines;
+a migrated store&#39;s data key is its 7.0 master key).
+</li>
+<li><code class="nw">key_id</code>: the data key&#39;s fingerprint, the first 8 bytes of
+HKDF-SHA256(key, info <code class="nw">wayu/secrets/key-id</code>) in lower-case hex.
+</li>
+<li><code class="nw">recipients</code> (at least one, sorted by name): <code class="nw">name</code> is 1-64 of
+<code class="nw">A-Z a-z 0-9 . _ -</code>, unique; <code class="nw">recipient</code> an age X25519 recipient
+(bech32 <code class="nw">age1…</code>, unique; <code class="nw">age1pq1…</code> is reserved and refused); <code class="nw">stanza</code> the
+data key wrapped as in age&#39;s X25519 recipient type (HKDF-SHA256 with salt
+= share ‖ recipient and info <code class="nw">age-encryption.org/v1/X25519</code>,
+ChaCha20-Poly1305 with a zero nonce): unpadded base64 of the 32-byte
+ephemeral share and the 48-byte body. The ephemeral key is derived from the
+data key, the name and the recipient, so wayu can recompute every stanza:
+one it did not write (an added or renamed entry) is refused before the key
+is wrapped to it again (<code class="nw">78</code>, naming <code class="nw">recipient rm</code>).
+</li>
+<li><code class="nw">rotations</code> (at most 16, oldest dropped): each new data key&#39;s
+verification key and an Ed25519 signature by the previous data key
+(both derived from the keys). A machine that cached an older key accepts
+the new one only through this chain, and not when it lists a machine
+this one saw removed. The proof does not reveal the new key to holders of
+the old one, but a removed machine that can still write the synced file
+can sign a key of its own from the old key: a machine that has not synced
+since the <code class="nw">recipient rm</code> accepts it (it prints the recipient changes) and
+stays exposed until it syncs the real file. After <code class="nw">recipient rm</code>, rotate
+the real credentials upstream.
+</li>
+<li><code class="nw">recovery</code> (optional, wayu-only): a random X25519 identity sealed with
+ChaCha20-Poly1305 under argon2id(passphrase, <code class="nw">salt</code>; <code class="nw">m</code> KiB, <code class="nw">t</code> passes,
+<code class="nw">p</code> lanes, bounded to 1 GiB / 16 / 16), and the data key wrapped to it.
+<code class="nw">salt</code> and the parameters are not authenticated: <code class="nw">recovery unlock</code> uses
+only the parameters wayu writes (<code class="nw">m</code> 65536, <code class="nw">t</code> 3, <code class="nw">p</code> 4) and refuses
+others (<code class="nw">78</code>); a changed salt fails like a wrong passphrase. The recovery
+passphrase is not machine-bound: <code class="nw">recipient rm</code> does not change it, so
+replace it (<code class="nw">recovery rm --yes</code>, <code class="nw">recovery add</code>) when the removed machine
+knew it.
+</li>
+<li>Strict like version 1: unknown fields (at any level), duplicate keys,
+names or recipients, a bad <code class="nw">key_id</code>, an empty recipient list or more than
+16 rotations make the file malformed (<code class="nw">78</code>).
+</li>
+</ul>
+<p>What each machine verified is kept after the cached key in its master-key
+item (the backend&#39;s item, or <code class="nw">secret.key</code>), never in <code class="nw">secrets.json</code>:
+<code>;v=2;r=NAME:age1…,…;x=NAME:age1…,…;s=KEYID,…</code> — it has read version 2,
+the recipients it last verified, the ones it saw removed and the data keys
+it replaced (32 kept). From then on a version 1 <code class="nw">secrets.json</code> (a
+downgrade) and a store under a replaced key (a rollback) are errors (<code class="nw">78</code>)
+naming the fix, and wayu 7.0 cannot read that item (it reads only the key
+of a one-machine item, which has no state). Not detected: an older copy of
+individual values under the <em>same</em> data key (a value rolled back by a
+synced older file), and anything on a machine before it first adopts a key.</p>
+<p>This machine&#39;s identity (<code class="nw">AGE-SECRET-KEY-1…</code>) is kept by the backend:
+keychain / Secret Service account <code class="nw">wayu-&lt;id&gt;-identity</code> (same service as the
+master key); <code class="nw">file</code>: <code class="nw">&lt;config&gt;/identity.key</code>, in age&#39;s identity-file layout
+(<code class="nw"># public key: age1…</code>), <code class="nw">0600</code>, created exclusively, never replaced. Like
+<code class="nw">secret.key</code>, never commit it (<code class="nw">wayu doctor</code> warns when either sits in a git
+work tree without being ignored). The verified data key stays in the master
+key&#39;s item. <code class="nw">wayu doctor</code> also checks that this machine is a listed
+recipient whose stanza unwraps, that the cached key is the store&#39;s (or a
+proven rotation of it), that every value decrypts with it (a concurrent
+<code class="nw">rekey</code> on two machines leaves values under the losing key: doctor names
+them), that every stanza is wayu&#39;s, and warns about sync-conflict copies
+next to the store (<code class="nw">secrets.sync-conflict-*.json</code>, <code class="nw">secrets 2.json</code>).</p>
+<p>The session cache is sourced while it is newer than <code class="nw">secrets.json</code> (a
+<code class="nw">-nt</code> test, no fork). Every wayu write deletes it, but a <code class="nw">secrets.json</code>
+replaced by a sync tool that keeps an older mtime (e.g. <code class="nw">rsync -t</code>) is not
+noticed: the shell keeps the cached values until the next wayu write,
+<code class="nw">wayu secrets lock</code>, or <code class="nw">wayu secrets cache</code> (which always rewrites it).</p>
+<p><code class="nw">wayu backup restore entries</code> over a version 2 store keeps its recipients:
+the backup&#39;s <code class="nw">secrets.json</code> values are restored under the current header
+when they decrypt with the current data key (else the restore is refused).</p>
 <h3 id="keys-wayu-does-not-read">Keys wayu does not read<a class="anchor" href="#keys-wayu-does-not-read" aria-label="Link to this section">#</a></h3>
 <p>wayu reads only the keys and tables listed above. Anything else (for example
 <code class="nw">wayu_version</code>, <code class="nw">[settings] auto_backup</code>, <code class="nw">[path]</code>, <code class="nw">[[plugins]]</code> — plugins
@@ -1921,7 +2017,7 @@ every shell initialized in the data dir.</p>
 </tr>
 <tr>
 <td><code class="nw">secrets.json</code></td>
-<td>Encrypted constants (see <a href="#secrets"><code class="nw">[secrets]</code></a>); written by <code class="nw">wayu const add --secret</code>, <code class="nw">const rm</code>, <code class="nw">secrets rekey</code>. Not generated from wayu.toml.</td>
+<td>Encrypted constants (see <a href="#secrets"><code class="nw">[secrets]</code></a>); written by <code class="nw">wayu const add --secret</code>, <code class="nw">const rm</code>, <code class="nw">secrets rekey</code> and the multi-machine <code class="nw">secrets recipient</code> / <code class="nw">recovery</code> commands (experimental). Not generated from wayu.toml.</td>
 </tr>
 <tr>
 <td><code class="nw">backup/</code></td>

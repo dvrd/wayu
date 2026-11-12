@@ -6,6 +6,45 @@ section after its version and publishes it as the GitHub release's
 `BREAKING CHANGE:` footers. 4.4.3 and 4.4.4 shipped behavior changes as patch
 releases, so they are listed here too.
 
+## Unreleased
+
+**Multi-machine secrets (experimental, opt-in)**
+
+- New: `wayu secrets identity`, `wayu secrets recipient list|add|rm|rename`,
+  `wayu secrets adopt --yes`, `wayu secrets recovery add|rm|unlock`. They
+  let several machines read the same synced `secrets.json` without copying
+  a key: each machine has its own age identity and the data key is wrapped
+  to each. Marked experimental (see docs/STABILITY.md): they print a
+  one-time notice the first time.
+- Nothing changes until you opt in. The first `recipient add` (or
+  `recovery add`) rewrites `secrets.json` to version 2 (backup first,
+  verified, one-time notice). wayu 7.0 cannot read version 2 (it exits `78`
+  and, from this release on, names the upgrade): upgrade wayu on every
+  machine that syncs the file before you run it.
+- `wayu doctor` warns when `secret.key` / `identity.key` sits in a git work
+  tree without being ignored, and about sync-conflict copies of
+  `secrets.json` (`secrets.sync-conflict-*.json`, `secrets 2.json`).
+- A new machine never trusts a data key by itself: after `recipient add`
+  (which prints the key's fingerprint) and a sync, run `wayu secrets adopt
+  --yes` there and compare the fingerprint it prints. Until then it exits
+  `78` naming that command (at shell start: one `secrets not loaded` line).
+- A machine that has read version 2 keeps what it verified with its cached
+  key (in the same keychain item or `secret.key`; wayu 7.0 cannot read that
+  item). From then on a version 1 `secrets.json` (downgrade) or one under a
+  key it replaced (rollback) exits `78` naming the fix, and a rotation that
+  lists a machine it saw removed is not adopted automatically.
+- `recipient add` / `recovery add` no longer name this machine after an
+  empty or IP-address hostname: they exit `64` asking for `--name`.
+
+**`secrets.json` from a newer wayu: "upgrade wayu", not "malformed"**
+
+- A `secrets.json` whose `"version"` is higher than this wayu reads (a store
+  a newer wayu wrote, e.g. on another machine syncing the data dir) now
+  fails with `secrets.json version N was written by a newer wayu …: upgrade
+  wayu on this machine` instead of a generic "unsupported version" or
+  "unknown field" error. The exit code is unchanged (`78`) and the file is
+  never touched.
+
 ## 7.0.0
 
 **Leftover `[paths]` / `[aliases]` / `[env]` in `wayu.toml` are reported by `build`**

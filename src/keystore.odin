@@ -31,6 +31,7 @@ import "core:mem/virtual"
 import "core:os"
 import "core:strings"
 import "core:sys/posix"
+import "core:time"
 
 SECRETS_KEY_SIZE :: 32 // 256-bit master key
 
@@ -239,12 +240,21 @@ keychain_store_argv :: proc() -> []string {
 // existing item (rekey). Each word goes through keychain_quote.
 // Temp-allocated; the caller wipes it.
 keychain_store_line :: proc(key_hex: string) -> string {
+	return keychain_store_line_item(keystore_account(), keystore_label(), key_hex, true)
+}
+
+// The `security -i` line that stores `secret` under `account` (same
+// service). `update` adds -U (replace an existing item); without it an
+// existing item makes `security` fail, so nothing is overwritten.
+// Temp-allocated; the caller wipes it.
+keychain_store_line_item :: proc(account, label, secret: string, update: bool) -> string {
 	return fmt.tprintf(
-		"add-generic-password -U -a %s -s %s -l %s -w %s\n",
-		keychain_quote(keystore_account()),
+		"add-generic-password%s -a %s -s %s -l %s -w %s\n",
+		" -U" if update else "",
+		keychain_quote(account),
 		keychain_quote(KEYCHAIN_SERVICE),
-		keychain_quote(keystore_label()),
-		keychain_quote(key_hex),
+		keychain_quote(label),
+		keychain_quote(secret),
 	)
 }
 
@@ -273,13 +283,13 @@ keychain_quote :: proc(word: string) -> string {
 
 // `security find-generic-password -a wayu-<id> -s wayu-master-key -w`
 // (prints the key).
-keychain_load_argv :: proc() -> []string {
+keychain_load_argv :: proc(account := "") -> []string {
 	return slice_temp(
 		{
 			"security",
 			"find-generic-password",
 			"-a",
-			keystore_account(),
+			account if len(account) > 0 else keystore_account(),
 			"-s",
 			KEYCHAIN_SERVICE,
 			"-w",
@@ -289,22 +299,22 @@ keychain_load_argv :: proc() -> []string {
 
 // `secret-tool store --label='wayu master key (<data>)' service wayu
 // account wayu-<id>` (the key is written to stdin).
-secret_service_store_argv :: proc() -> []string {
+secret_service_store_argv :: proc(account := "", label := "") -> []string {
 	return slice_temp(
 		{
 			"secret-tool",
 			"store",
-			fmt.tprintf("--label=%s", keystore_label()),
+			fmt.tprintf("--label=%s", label if len(label) > 0 else keystore_label()),
 			"service",
 			SECRET_SERVICE_SERVICE,
 			"account",
-			keystore_account(),
+			account if len(account) > 0 else keystore_account(),
 		},
 	)
 }
 
 // `secret-tool lookup service wayu account wayu-<id>` (prints the key).
-secret_service_load_argv :: proc() -> []string {
+secret_service_load_argv :: proc(account := "") -> []string {
 	return slice_temp(
 		{
 			"secret-tool",
@@ -312,7 +322,7 @@ secret_service_load_argv :: proc() -> []string {
 			"service",
 			SECRET_SERVICE_SERVICE,
 			"account",
-			keystore_account(),
+			account if len(account) > 0 else keystore_account(),
 		},
 	)
 }
@@ -379,13 +389,19 @@ keystore_load_legacy :: proc(
 ) {
 	#partial switch secrets_backend_resolve(b) {
 	case .KEYCHAIN:
-		return keystore_load_command(
+		key, _, status, msg = keystore_load_command(
 			keychain_legacy_load_argv(),
 			"macOS keychain",
 			KEYCHAIN_NOT_FOUND_EXIT,
 		)
+		return
 	case .SECRET_SERVICE:
-		return keystore_load_command(secret_service_legacy_load_argv(), "Secret Service", 1)
+		key, _, status, msg = keystore_load_command(
+			secret_service_legacy_load_argv(),
+			"Secret Service",
+			1,
+		)
+		return
 	}
 	return key, .MISSING, ""
 }
@@ -430,6 +446,32 @@ keystore_decode_hex :: proc(text: string) -> (key: [SECRETS_KEY_SIZE]byte, ok: b
 	return key, true
 }
 
+// The text of a master-key item: the 64-hex key, then (multi-machine
+// secrets, secrets_recipients.odin) this machine's local state, which
+// starts with ';' and holds no whitespace. state is "" for a plain key
+// (every 7.0 item) and temp-allocated otherwise.
+keystore_decode_item :: proc(
+	text: string,
+) -> (
+	key: [SECRETS_KEY_SIZE]byte,
+	state: string,
+	ok: bool,
+) {
+	t := strings.trim_space(text)
+	if len(t) < 2 * SECRETS_KEY_SIZE {
+		return
+	}
+	rest := t[2 * SECRETS_KEY_SIZE:]
+	if len(rest) > 0 && rest[0] != ';' {
+		return
+	}
+	key, ok = keystore_decode_hex(t[:2 * SECRETS_KEY_SIZE])
+	if !ok {
+		return
+	}
+	return key, strings.clone(rest, context.temp_allocator), true
+}
+
 // Hex text of a key (lowercase, temp-allocated). Caller wipes it.
 keystore_encode_hex :: proc(key: [SECRETS_KEY_SIZE]byte) -> []byte {
 	k := key
@@ -441,6 +483,20 @@ keystore_load :: proc(
 	b: Secrets_Backend,
 ) -> (
 	key: [SECRETS_KEY_SIZE]byte,
+	status: Key_Status,
+	msg: string,
+) {
+	key, _, status, msg = keystore_load_item(b)
+	return
+}
+
+// Load the master key and the local state stored after it (see
+// keystore_decode_item; temp-allocated, "" when none).
+keystore_load_item :: proc(
+	b: Secrets_Backend,
+) -> (
+	key: [SECRETS_KEY_SIZE]byte,
+	state: string,
 	status: Key_Status,
 	msg: string,
 ) {
@@ -467,8 +523,27 @@ keystore_save :: proc(
 	ok: bool,
 	msg: string,
 ) {
+	return keystore_save_item(b, key, "", replace)
+}
+
+// Store `key` followed by the local state `state` ("" or ";…", no
+// whitespace: keystore_decode_item).
+keystore_save_item :: proc(
+	b: Secrets_Backend,
+	key: [SECRETS_KEY_SIZE]byte,
+	state: string,
+	replace: bool,
+) -> (
+	ok: bool,
+	msg: string,
+) {
 	secrets_disable_core_dumps() // the key is in memory from here on
-	key_hex := keystore_encode_hex(key)
+	assert(len(state) == 0 || (state[0] == ';' && !strings.contains_any(state, " \t\r\n")))
+	hex_only := keystore_encode_hex(key)
+	key_hex := make([]byte, len(hex_only) + len(state), context.temp_allocator)
+	copy(key_hex, hex_only)
+	copy(key_hex[len(hex_only):], state)
+	crypto.zero_explicit(raw_data(hex_only), len(hex_only))
 	defer crypto.zero_explicit(raw_data(key_hex), len(key_hex))
 
 	#partial switch secrets_backend_resolve(b) {
@@ -534,13 +609,53 @@ keystore_load_command :: proc(
 	not_found_exit: int,
 ) -> (
 	key: [SECRETS_KEY_SIZE]byte,
+	state: string,
+	status: Key_Status,
+	msg: string,
+) {
+	text: []byte
+	text, status, msg = keystore_load_command_text(argv, label, not_found_exit, "master key")
+	defer keystore_text_destroy(text)
+	if status != .OK {
+		return
+	}
+	k, st, ok := keystore_decode_item(string(text))
+	if !ok {
+		return key, "", .INVALID, fmt.tprintf(
+			"the wayu master key in the %s is not 64 hex characters",
+			label,
+		)
+	}
+	return k, st, .OK, ""
+}
+
+// Wipe and free a secret read by keystore_load_command_text /
+// keystore_read_private_file.
+keystore_text_destroy :: proc(text: []byte) {
+	if len(text) > 0 {
+		crypto.zero_explicit(raw_data(text), len(text))
+	}
+	delete(text)
+}
+
+// Run a keychain / Secret Service lookup and return what it printed
+// (heap; free with keystore_text_destroy). `what` names the item in
+// messages ("master key", "identity"); argv[3] / argv[5] is the account.
+keystore_load_command_text :: proc(
+	argv: []string,
+	label: string,
+	not_found_exit: int,
+	what: string,
+) -> (
+	text: []byte,
 	status: Key_Status,
 	msg: string,
 ) {
 	backend: Secrets_Backend = .KEYCHAIN if argv[0] == "security" else .SECRET_SERVICE
+	account := argv[3] if backend == .KEYCHAIN else argv[5]
 	bin := keystore_backend_binary(backend)
 	if len(bin) == 0 {
-		return key, .UNAVAILABLE, fmt.tprintf(
+		return nil, .UNAVAILABLE, fmt.tprintf(
 			"%s: %s not found",
 			label,
 			keystore_backend_binary_hint(backend),
@@ -555,30 +670,27 @@ keystore_load_command :: proc(
 		if res.exit_code == not_found_exit &&
 		   len(res.stdout) == 0 &&
 		   (not_found_exit == KEYCHAIN_NOT_FOUND_EXIT || len(res.stderr) == 0) {
-			return key, .MISSING, fmt.tprintf(
-				"no wayu master key in the %s (account %s)",
+			return nil, .MISSING, fmt.tprintf(
+				"no wayu %s in the %s (account %s)",
+				what,
 				label,
-				keystore_account(),
+				account,
 			)
 		}
 		if res.timed_out {
-			return key, .UNAVAILABLE, fmt.tprintf("%s did not answer in time", label)
+			return nil, .UNAVAILABLE, fmt.tprintf("%s did not answer in time", label)
 		}
-		return key, .UNAVAILABLE, fmt.tprintf(
-			"could not read the wayu master key from the %s (%s exited %d)",
+		return nil, .UNAVAILABLE, fmt.tprintf(
+			"could not read the wayu %s from the %s (%s exited %d)",
+			what,
 			label,
 			argv[0],
 			res.exit_code,
 		)
 	}
-	k, ok := keystore_decode_hex(res.stdout)
-	if !ok {
-		return key, .INVALID, fmt.tprintf(
-			"the wayu master key in the %s is not 64 hex characters",
-			label,
-		)
-	}
-	return k, .OK, ""
+	out := make([]byte, len(res.stdout))
+	copy(out, res.stdout)
+	return out, .OK, ""
 }
 
 // File backend load: regular file owned by us, no group/other bits.
@@ -586,6 +698,29 @@ keystore_load_file :: proc(
 	path: string,
 ) -> (
 	key: [SECRETS_KEY_SIZE]byte,
+	state: string,
+	status: Key_Status,
+	msg: string,
+) {
+	data: []byte
+	data, status, msg = keystore_read_private_file(path)
+	defer keystore_text_destroy(data)
+	if status != .OK {
+		return
+	}
+	k, st, ok := keystore_decode_item(string(data))
+	if !ok {
+		return key, "", .INVALID, fmt.tprintf("%s is not 64 hex characters", path)
+	}
+	return k, st, .OK, ""
+}
+
+// Read a key file: a regular file owned by us with no group/other bits
+// (heap; free with keystore_text_destroy).
+keystore_read_private_file :: proc(
+	path: string,
+) -> (
+	data: []byte,
 	status: Key_Status,
 	msg: string,
 ) {
@@ -593,36 +728,28 @@ keystore_load_file :: proc(
 	st: posix.stat_t
 	if posix.lstat(cpath, &st) != .OK {
 		if posix.errno() == .ENOENT {
-			return key, .MISSING, fmt.tprintf("%s does not exist", path)
+			return nil, .MISSING, fmt.tprintf("%s does not exist", path)
 		}
-		return key, .UNAVAILABLE, fmt.tprintf(
+		return nil, .UNAVAILABLE, fmt.tprintf(
 			"cannot stat %s: %s",
 			path,
 			posix.strerror(posix.errno()),
 		)
 	}
 	if !posix.S_ISREG(st.st_mode) {
-		return key, .INVALID, fmt.tprintf("%s is not a regular file", path)
+		return nil, .INVALID, fmt.tprintf("%s is not a regular file", path)
 	}
 	if st.st_uid != posix.getuid() {
-		return key, .INVALID, fmt.tprintf("%s is not owned by you", path)
+		return nil, .INVALID, fmt.tprintf("%s is not owned by you", path)
 	}
 	if st.st_mode & (posix.S_IRWXG | posix.S_IRWXO) != {} {
-		return key, .INVALID, fmt.tprintf("%s is readable by group/other: chmod 600 it", path)
+		return nil, .INVALID, fmt.tprintf("%s is readable by group/other: chmod 600 it", path)
 	}
-	data, err := os.read_entire_file_from_path(path, context.allocator)
+	d, err := os.read_entire_file_from_path(path, context.allocator)
 	if err != nil {
-		return key, .UNAVAILABLE, fmt.tprintf("cannot read %s: %v", path, err)
+		return nil, .UNAVAILABLE, fmt.tprintf("cannot read %s: %v", path, err)
 	}
-	defer {
-		crypto.zero_explicit(raw_data(data), len(data))
-		delete(data)
-	}
-	k, ok := keystore_decode_hex(string(data))
-	if !ok {
-		return key, .INVALID, fmt.tprintf("%s is not 64 hex characters", path)
-	}
-	return k, .OK, ""
+	return d, .OK, ""
 }
 
 // File backend save. A new key file is created with O_EXCL (never over an
@@ -639,7 +766,21 @@ keystore_save_file :: proc(
 	copy(line, key_hex)
 	line[len(key_hex)] = '\n'
 	defer crypto.zero_explicit(raw_data(line), len(line))
+	return keystore_write_private_file(path, line, replace, "a master key")
+}
 
+// Write a key file (0600). A new file is created with O_EXCL (never over an
+// existing one: "<path> already exists: refusing to overwrite <what>");
+// `replace` swaps an existing file atomically.
+keystore_write_private_file :: proc(
+	path: string,
+	line: []byte,
+	replace: bool,
+	what: string,
+) -> (
+	ok: bool,
+	msg: string,
+) {
 	if replace && os.exists(path) {
 		if err := write_file_atomic(path, line); err != nil {
 			return false, fmt.tprintf("cannot write %s: %v", path, err)
@@ -658,10 +799,7 @@ keystore_save_file :: proc(
 	f, err := os.open(path, {.Write, .Create, .Excl}, SECRET_FILE_PERMS)
 	if err != nil {
 		if err == os.General_Error.Exist {
-			return false, fmt.tprintf(
-				"%s already exists: refusing to overwrite a master key",
-				path,
-			)
+			return false, fmt.tprintf("%s already exists: refusing to overwrite %s", path, what)
 		}
 		return false, fmt.tprintf("cannot create %s: %v", path, err)
 	}
@@ -675,4 +813,178 @@ keystore_save_file :: proc(
 		return false, fmt.tprintf("cannot sync %s: %v", path, serr)
 	}
 	return true, ""
+}
+
+// ---------------------------------------------------------------------------
+// This machine's age identity (multi-machine secrets, OKAMI-370)
+// ---------------------------------------------------------------------------
+//
+//   keychain / secret-service   account "wayu-<id>-identity" (same service
+//                               as the master key), value AGE-SECRET-KEY-1…
+//   file                        <config>/identity.key in age's identity-file
+//                               layout (`# public key: age1…` comment), so
+//                               `age -i` reads it; 0600, created with O_EXCL.
+//
+// Created once (`wayu secrets identity`, or the first `recipient add`) and
+// never replaced by wayu.
+
+IDENTITY_KEY_FILE :: "identity.key"
+
+// Account of the identity item: "wayu-<id>-identity" (temp-allocated).
+keystore_identity_account :: proc() -> string {
+	return fmt.tprintf("%s-identity", keystore_account())
+}
+
+// <config>/identity.key (temp-allocated).
+identity_key_file_path :: proc() -> string {
+	return fmt.tprintf("%s/%s", wayu.config, IDENTITY_KEY_FILE)
+}
+
+// The AGE-SECRET-KEY-1… line of an identity file or keystore item: the one
+// non-comment, non-blank line. ok = false for none, several, or a bad key.
+keystore_identity_parse :: proc(text: string) -> (secret: [AGE_KEY_SIZE]byte, ok: bool) {
+	rest := text
+	found := false
+	for line in strings.split_lines_iterator(&rest) {
+		l := strings.trim_space(line)
+		if len(l) == 0 || l[0] == '#' {
+			continue
+		}
+		if found {
+			crypto.zero_explicit(&secret, size_of(secret))
+			return secret, false
+		}
+		secret, ok = age_identity_decode(l)
+		if !ok {
+			return
+		}
+		found = true
+	}
+	return secret, found
+}
+
+// Load this machine's identity (`msg` explains a non-OK status).
+keystore_identity_load :: proc(
+	b: Secrets_Backend,
+) -> (
+	secret: [AGE_KEY_SIZE]byte,
+	status: Key_Status,
+	msg: string,
+) {
+	secrets_disable_core_dumps()
+	text: []byte
+	where_: string
+	#partial switch secrets_backend_resolve(b) {
+	case .KEYCHAIN:
+		where_ = "macOS keychain"
+		text, status, msg = keystore_load_command_text(
+			keychain_load_argv(keystore_identity_account()),
+			where_,
+			KEYCHAIN_NOT_FOUND_EXIT,
+			"identity",
+		)
+	case .SECRET_SERVICE:
+		where_ = "Secret Service"
+		text, status, msg = keystore_load_command_text(
+			secret_service_load_argv(keystore_identity_account()),
+			where_,
+			1,
+			"identity",
+		)
+	case:
+		where_ = identity_key_file_path()
+		text, status, msg = keystore_read_private_file(identity_key_file_path())
+	}
+	defer keystore_text_destroy(text)
+	if status != .OK {
+		return
+	}
+	s, ok := keystore_identity_parse(string(text))
+	if !ok {
+		return secret, .INVALID, fmt.tprintf(
+			"the wayu identity in the %s is not one AGE-SECRET-KEY-1… line",
+			where_,
+		)
+	}
+	return s, .OK, ""
+}
+
+// Store a new identity. Never replaces one: the file is created with
+// O_EXCL, the keychain item without -U.
+keystore_identity_save :: proc(
+	b: Secrets_Backend,
+	secret: [AGE_KEY_SIZE]byte,
+) -> (
+	ok: bool,
+	msg: string,
+) {
+	secrets_disable_core_dumps()
+	id_text := age_identity_encode(secret)
+	defer crypto.zero_explicit(raw_data(id_text), len(id_text))
+	label := fmt.tprintf("wayu identity (%s)", wayu.data)
+
+	#partial switch secrets_backend_resolve(b) {
+	case .KEYCHAIN:
+		bin := keystore_backend_binary(.KEYCHAIN)
+		if len(bin) == 0 {
+			return false, fmt.tprintf("%s not found", KEYSTORE_SECURITY_BIN)
+		}
+		line := keychain_store_line_item(keystore_identity_account(), label, id_text, false)
+		defer crypto.zero_explicit(raw_data(line), len(line))
+		res := run_command_timeout(
+			keystore_argv_resolved(keychain_store_argv(), bin),
+			KEYSTORE_TIMEOUT_MS,
+			stdin_data = line,
+		)
+		defer command_result_destroy(&res)
+		if !res.ok {
+			return false, fmt.tprintf(
+				"could not store the identity in the macOS keychain (security exited %d)",
+				res.exit_code,
+			)
+		}
+		return true, ""
+	case .SECRET_SERVICE:
+		bin := keystore_backend_binary(.SECRET_SERVICE)
+		if len(bin) == 0 {
+			return false, fmt.tprintf(
+				"%s: not found",
+				keystore_backend_binary_hint(.SECRET_SERVICE),
+			)
+		}
+		res := run_command_timeout(
+			keystore_argv_resolved(
+				secret_service_store_argv(keystore_identity_account(), label),
+				bin,
+			),
+			KEYSTORE_TIMEOUT_MS,
+			stdin_data = id_text,
+		)
+		defer command_result_destroy(&res)
+		if !res.ok {
+			return false, fmt.tprintf(
+				"could not store the identity with secret-tool (exited %d)",
+				res.exit_code,
+			)
+		}
+		return true, ""
+	}
+	created, _ := time.time_to_rfc3339(
+		time.now(),
+		include_nanos = false,
+		allocator = context.temp_allocator,
+	)
+	content := fmt.tprintf(
+		"# created: %s\n# public key: %s\n%s\n",
+		created,
+		age_recipient_encode(age_identity_public(secret)),
+		id_text,
+	)
+	defer crypto.zero_explicit(raw_data(content), len(content))
+	return keystore_write_private_file(
+		identity_key_file_path(),
+		transmute([]byte)content,
+		false,
+		"an identity",
+	)
 }

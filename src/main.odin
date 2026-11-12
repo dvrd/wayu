@@ -80,6 +80,10 @@ Action :: enum {
 	IMPORT, // script import
 	BUILD, // script build
 	RUN, // secrets run
+	IDENTITY, // secrets identity
+	RECIPIENT, // secrets recipient list|add|rm|rename
+	ADOPT, // secrets adopt
+	RECOVERY, // secrets recovery add|rm|unlock
 	FPATH, // completions fpath
 	HELP,
 	UNKNOWN,

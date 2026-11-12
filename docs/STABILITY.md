@@ -30,6 +30,19 @@ such change is listed under "⚠ Upgrade notes" in the release and in
 - Hidden or internal commands (`completions names`, `--test`/`--snapshot`
   component modes).
 
+## Experimental
+
+Marked "(experimental)" in [cli.md](cli.md), [config-reference.md](config-reference.md)
+and `wayu help`; the first use prints a one-time notice on stderr.
+
+- **Multi-machine secrets**: `wayu secrets identity`, `recipient`, `adopt`,
+  `recovery`, and the `secrets.json` version 2 format they write. Their
+  commands, flags, output, `--json` shape and the version 2 format may
+  change in a minor release. A change to the format still migrates
+  automatically (backup, verify, one-time notice): no manual step. Version 1
+  `secrets.json` (one machine) is stable as above and is never rewritten
+  unless you opt in with `recipient add` / `recovery add`.
+
 ## Deprecation
 
 A command, action, flag or config key that is going away:

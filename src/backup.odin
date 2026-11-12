@@ -602,6 +602,18 @@ restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 		}
 	}
 	defer delete(secrets_copy)
+	if has_secrets_copy {
+		// Over a version 2 store: keep its recipients (secrets_restore_merge).
+		merged, rewrapped, merr := secrets_restore_merge(secrets_copy)
+		if len(merr) > 0 {
+			print_error_simple("%s", merr)
+			return false
+		}
+		if rewrapped {
+			delete(secrets_copy)
+			secrets_copy = merged
+		}
+	}
 
 	// Back up the current state so the restore can be undone.
 	if os.exists(file_path) {

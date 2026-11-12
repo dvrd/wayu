@@ -537,7 +537,7 @@ action_takes_no_args :: proc(command: Command, action: Action) -> bool {
 	case .PATH, .ALIAS, .CONSTANTS, .PLUGIN, .SCRIPT, .FUNCTION, .HOOKS, .TEMPLATE, .COMPLETIONS:
 		return action == .LIST
 	case .SECRETS:
-		return action == .LIST || action == .CLEAN
+		return action == .LIST || action == .CLEAN || action == .ADOPT
 	case .EXPORT:
 		return action != .HELP && action != .UNKNOWN
 	case .TOML:
