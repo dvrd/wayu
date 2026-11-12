@@ -14,7 +14,13 @@ class ReleaseIntegrationTest
 
   ROOT = File.expand_path('../..', __dir__)
   SCRIPTS = File.join(ROOT, '.github', 'scripts')
-  SHA = 'a' * 64
+  # One distinct sha256 per archive, in homebrew-formula.sh's argument order.
+  SHAS = {
+    'wayu-macos-arm64' => 'a' * 64,
+    'wayu-macos-amd64' => 'b' * 64,
+    'wayu-linux-amd64' => 'c' * 64,
+    'wayu-linux-arm64' => 'd' * 64,
+  }.freeze
 
   def initialize
     setup_test_env
@@ -27,6 +33,7 @@ class ReleaseIntegrationTest
     begin
       test_formula_caveats
       test_formula_macos_floor
+      test_formula_platforms
       test_macos_minos
       test_release_notes_use_upgrading_section
       test_release_notes_without_section
@@ -56,7 +63,7 @@ class ReleaseIntegrationTest
 
   def formula
     @formula ||= begin
-      out, err, st = Open3.capture3(File.join(SCRIPTS, 'homebrew-formula.sh'), 'v1.2.3', SHA, SHA)
+      out, err, st = Open3.capture3(File.join(SCRIPTS, 'homebrew-formula.sh'), 'v1.2.3', *SHAS.values)
       raise "homebrew-formula.sh failed: #{err}" unless st.success?
       out
     end
@@ -91,6 +98,24 @@ class ReleaseIntegrationTest
     names = { '11' => 'big_sur', '12' => 'monterey', '13' => 'ventura', '14' => 'sonoma', '15' => 'sequoia', '26' => 'tahoe' }
     want = "depends_on macos: :#{names[floor.split('.').first]}"
     check(formula.include?(want), "floor #{floor}: missing #{want.inspect}")
+  end
+
+  # Each OS block picks its archive by CPU: on_arm / on_intel inside
+  # on_macos / on_linux, each url next to its own sha256.
+  def test_formula_platforms
+    print "Test: formula maps each OS/CPU to its archive and sha256... "
+    os_block = ->(os) { formula[/^  on_#{os} do\n(.*?)^  end\n/m, 1].to_s }
+    cpu_block = ->(text, cpu) { text[/^    on_#{cpu} do\n(.*?)^    end\n/m, 1].to_s }
+    want = {
+      %w[macos arm] => 'wayu-macos-arm64', %w[macos intel] => 'wayu-macos-amd64',
+      %w[linux arm] => 'wayu-linux-arm64', %w[linux intel] => 'wayu-linux-amd64',
+    }
+    bad = want.reject do |(os, cpu), asset|
+      block = cpu_block.(os_block.(os), cpu)
+      block.include?("/v1.2.3/#{asset}.tar.gz\"") && block.include?("sha256 \"#{SHAS[asset]}\"")
+    end
+    check(bad.empty? && !formula.include?('depends_on arch:'),
+          "wrong or missing: #{bad.keys.inspect}\n#{formula[/^  on_macos.*?^  def install/m]}")
   end
 
   def test_macos_minos
