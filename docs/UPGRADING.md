@@ -8,6 +8,17 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+**Subprocess deadlines and relative symlink writes**
+
+- Commands run with a deadline now remain bounded after closing stdout and
+  stderr. Previously a child that closed both streams and kept running could
+  make wayu wait indefinitely, including during external-alias discovery.
+- Captured command diagnostics now respect the exact 64 KiB limit even when
+  a read crosses the boundary; excess output is drained and discarded.
+- Atomic writes through a relative symlink in the current directory now
+  resolve its relative target in that directory, preserving the symlink.
+  No configuration or data migration is needed.
+
 **Portable PATH entries and release evidence**
 
 - New: `path add <path> --portable` stores home-relative directories as

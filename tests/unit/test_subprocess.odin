@@ -3,6 +3,51 @@ package test_wayu
 import wayu "../../src"
 import "core:strings"
 import "core:testing"
+import "core:time"
+
+@(test)
+test_run_command_timeout_after_output_closed :: proc(t: ^testing.T) {
+	start := time.tick_now()
+	r := wayu.run_command_timeout([]string{"sh", "-c", "exec >/dev/null 2>&1; sleep 2"}, 100)
+	defer wayu.command_result_destroy(&r)
+	testing.expect(
+		t,
+		r.timed_out && !r.ok,
+		"deadline must cover children that close both output streams",
+	)
+	testing.expect(
+		t,
+		time.tick_since(start) < time.Second,
+		"closed streams must not bypass the deadline",
+	)
+
+	// No deadline still waits for the actual exit code, rather than treating
+	// EOF as success or timing an ordinary child out.
+	done := wayu.run_command_timeout(
+		[]string{"sh", "-c", "exec >/dev/null 2>&1; sleep 0.05; exit 7"},
+		0,
+	)
+	defer wayu.command_result_destroy(&done)
+	testing.expect(t, !done.timed_out && !done.ok)
+	testing.expect_value(t, done.exit_code, 7)
+}
+
+@(test)
+test_subprocess_capture_limits_unaligned_chunks :: proc(t: ^testing.T) {
+	// The first short chunk makes the capture boundary fall inside a later
+	// read. Both runners must cap bytes, rather than only count full reads.
+	producer :: "printf a; sleep 0.05; head -c 70000 /dev/zero | tr '\\000' x"
+	r := wayu.run_command_timeout([]string{"sh", "-c", producer}, 5000)
+	defer wayu.command_result_destroy(&r)
+	testing.expect(t, r.ok)
+	testing.expect_value(t, len(r.stdout), 64 * 1024)
+	ok, stderr := wayu.run_command_capture_stderr(
+		[]string{"sh", "-c", "{ " + producer + "; } >&2"},
+	)
+	defer delete(stderr)
+	testing.expect(t, ok)
+	testing.expect_value(t, len(stderr), 64 * 1024)
+}
 
 @(test)
 test_run_command_success :: proc(t: ^testing.T) {

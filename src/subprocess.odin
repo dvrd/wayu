@@ -475,7 +475,7 @@ run_command_capture_stderr :: proc(args: []string) -> (ok: bool, stderr_text: st
 		}
 		// Keep draining past the cap so the child never blocks on a full pipe.
 		if strings.builder_len(sb) < MAX_STDERR {
-			strings.write_bytes(&sb, buf[:n])
+			strings.write_bytes(&sb, buf[:min(int(n), MAX_STDERR - strings.builder_len(sb))])
 		}
 	}
 	posix.close(pipefd[0])
@@ -690,8 +690,21 @@ run_command_timeout :: proc(
 	open_count := 2
 	start := time.tick_now()
 	buf: [4096]byte
+	status: c.int
+	reaped := false
 
-	for open_count > 0 {
+	for open_count > 0 || !reaped {
+		// EOF on both pipes says nothing about process lifetime: a child
+		// can redirect its output and keep running. Keep the same deadline
+		// and cancellation checks active until it actually exits.
+		if open_count == 0 {
+			waited := posix.waitpid(pid, &status, {.NOHANG})
+			if waited == pid {
+				reaped = true
+				break
+			}
+			if waited < 0 && posix.errno() != .EINTR do break
+		}
 		wait_ms: c.int = -1
 		if timeout_ms > 0 {
 			elapsed := int(time.duration_milliseconds(time.tick_since(start)))
@@ -708,6 +721,7 @@ run_command_timeout :: proc(
 			}
 			if wait_ms < 0 || wait_ms > SUBPROCESS_CANCEL_POLL_MS do wait_ms = SUBPROCESS_CANCEL_POLL_MS
 		}
+		if open_count == 0 && (wait_ms < 0 || wait_ms > 10) do wait_ms = 10
 
 		n := posix.poll(raw_data(fds[:]), 2, wait_ms)
 		if n < 0 {
@@ -733,7 +747,10 @@ run_command_timeout :: proc(
 			}
 			sb := &out_sb if i == 0 else &err_sb
 			if strings.builder_len(sb^) < MAX_CAPTURE {
-				strings.write_bytes(sb, buf[:got])
+				strings.write_bytes(
+					sb,
+					buf[:min(int(got), MAX_CAPTURE - strings.builder_len(sb^))],
+				)
 			}
 		}
 	}
@@ -750,12 +767,19 @@ run_command_timeout :: proc(
 		}
 	}
 
-	status: c.int = 0
-	for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
+	if !reaped {
+		waited: posix.pid_t
+		for {
+			waited = posix.waitpid(pid, &status, {})
+			if waited >= 0 || posix.errno() != .EINTR do break
+		}
+		reaped = waited == pid
+	}
 	child_guard_end(guarded)
 
-	result.exit_code = int(posix.WEXITSTATUS(status)) if posix.WIFEXITED(status) else -1
+	result.exit_code = int(posix.WEXITSTATUS(status)) if reaped && posix.WIFEXITED(status) else -1
 	result.ok =
+		reaped &&
 		!result.timed_out &&
 		!result.cancelled &&
 		posix.WIFEXITED(status) &&

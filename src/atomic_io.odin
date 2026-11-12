@@ -142,7 +142,7 @@ atomic_resolve_target :: proc(path: string, allocator: runtime.Allocator) -> (st
 			current = link
 		} else {
 			dir, _ := os.split_path(current)
-			current = fmt.aprintf("%s/%s", dir, link, allocator = allocator)
+			current = link if dir == "" else fmt.aprintf("%s/%s", dir, link, allocator = allocator)
 		}
 	}
 	return "", os.General_Error.Invalid_Path
