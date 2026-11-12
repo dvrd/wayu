@@ -8,6 +8,23 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+**Multi-machine secrets (experimental, opt-in)**
+
+- New: `wayu secrets identity`, `wayu secrets recipient list|add|rm|rename`,
+  `wayu secrets adopt --yes`, `wayu secrets recovery add|rm|unlock`. They
+  let several machines read the same synced `secrets.json` without copying
+  a key: each machine has its own age identity and the data key is wrapped
+  to each. Marked experimental (see docs/STABILITY.md): they print a
+  one-time notice the first time.
+- Nothing changes until you opt in. The first `recipient add` (or
+  `recovery add`) rewrites `secrets.json` to version 2 (backup first,
+  verified, one-time notice). wayu 7.0 cannot read version 2 (it exits `78`
+  and, from this release on, names the upgrade): upgrade wayu on every
+  machine that syncs the file before you run it.
+- `wayu doctor` warns when `secret.key` / `identity.key` sits in a git work
+  tree without being ignored, and about sync-conflict copies of
+  `secrets.json` (`secrets.sync-conflict-*.json`, `secrets 2.json`).
+
 **`secrets.json` from a newer wayu: "upgrade wayu", not "malformed"**
 
 - A `secrets.json` whose `"version"` is higher than this wayu reads (a store

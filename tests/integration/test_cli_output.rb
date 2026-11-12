@@ -180,6 +180,8 @@ class CliOutputIntegrationTest
     'backup list --json' => [%w[backups], %w[file count entries]],
     'search ll --json' => [%w[results query count], %w[type name value match field score]],
     'doctor --json' => [%w[checks summary], %w[name status message fixable]],
+    # Version 1 store here (no rows); test_secrets_multi.rb checks the rows.
+    'secrets recipient list --json' => [%w[recipients key_id recovery], %w[name recipient this_machine]],
   }.freeze
 
   def test_json_schema
@@ -189,7 +191,7 @@ class CliOutputIntegrationTest
       doc = valid_json?(out) ? JSON.parse(out) : {}
       bad << "#{cmd}: top keys #{doc.keys}" unless doc.keys.sort == top.sort
       rows = doc[top.first] || []
-      bad << "#{cmd}: no rows" if rows.empty? && cmd !~ /plugin/
+      bad << "#{cmd}: no rows" if rows.empty? && cmd !~ /plugin|secrets/
       rows.each { |r| bad << "#{cmd}: row keys #{r.keys}" unless r.keys.sort == row.sort }
     end
     backup = JSON.parse(run_split('backup list --json').first)['backups'].first

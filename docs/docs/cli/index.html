@@ -1084,6 +1084,26 @@ Service, or <code class="nw">secret.key</code> in the config dir). <code class="
 <td>Run <code class="nw">cmd</code> with these secrets in its environment</td>
 </tr>
 <tr>
+<td><code class="nw">identity</code></td>
+<td><code class="nw">[--name NAME]</code></td>
+<td>(experimental) Print this machine&#39;s age recipient (<code class="nw">age1…</code>) on stdout, creating its identity the first time; stderr shows the <code class="nw">recipient add</code> command to run on a machine that reads the secrets (<code class="nw">--name</code>: the name in that command, default <code class="nw">hostname -s</code>)</td>
+</tr>
+<tr>
+<td><code class="nw">recipient</code></td>
+<td><code class="nw">list</code> (<code class="nw">ls</code>) <code class="nw">[--json]</code> · <code class="nw">add &lt;age1…&gt; [--name NAME]</code> · <code class="nw">rm &lt;NAME&gt; --yes</code> · <code class="nw">rename &lt;OLD&gt; &lt;NEW&gt;</code></td>
+<td>(experimental) Machines that can read the secrets (see below)</td>
+</tr>
+<tr>
+<td><code class="nw">adopt</code></td>
+<td><code class="nw">--yes</code></td>
+<td>(experimental) Accept the data key in this machine&#39;s stanza without a rotation proof (prints its fingerprint)</td>
+</tr>
+<tr>
+<td><code class="nw">recovery</code></td>
+<td><code class="nw">add [--name NAME]</code> · <code class="nw">rm --yes</code> · <code class="nw">unlock</code></td>
+<td>(experimental) Recovery passphrase (read from stdin, never argv)</td>
+</tr>
+<tr>
 <td><code class="nw">help</code></td>
 <td></td>
 <td></td>
@@ -1115,6 +1135,64 @@ not decrypt, the shell prints one <code class="nw">wayu: secrets not loaded: …
 stderr and starts without the secrets. The first <code class="nw">add --secret</code> creates the
 key; wayu never creates a new key while <code class="nw">secrets.json</code> holds values (exit
 <code class="nw">78</code>). Errors reading the store or key exit <code class="nw">78</code>; write errors <code class="nw">74</code>.</p>
+<h4 id="multi-machine-secrets-experimental">Multi-machine secrets (experimental)<a class="anchor" href="#multi-machine-secrets-experimental" aria-label="Link to this section">#</a></h4>
+<p>The same <code class="nw">secrets.json</code> (with <code class="nw">entries.json</code>) can be read on several
+machines without copying any key between them. Each machine has its own age
+X25519 identity (<code class="nw">AGE-SECRET-KEY-1…</code>, kept by the <code class="nw">[secrets]</code> backend), and
+<code class="nw">secrets.json</code> version 2 wraps one data key to every machine&#39;s recipient
+(<code class="nw">age1…</code>); see <a href="/docs/config/#multi-machine-secrets-experimental">config-reference.md</a>.
+Experimental: these actions and the version 2 format may change in a minor
+release (a format change still migrates automatically). The first use prints
+a one-time notice on stderr.</p>
+<div class="code"><pre><code class="language-bash">wayu secrets identity                              # on the new machine B: prints age1…
+wayu secrets recipient add age1… --name linux-box  # on machine A, then sync secrets.json
+</code></pre><button type="button" class="icon-btn copy-btn" aria-label="Copy bash code"><svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
+<ul>
+<li><code>recipient add &lt;age1…&gt; [--name NAME]</code> needs the data key. The first one
+upgrades a version 1 store to version 2 (backup first, then a verify step;
+a one-time notice says wayu 7.0 cannot read it): the master key becomes the
+data key unchanged, this machine is added as <code class="nw">hostname -s</code>, value lines are
+untouched. <code class="nw">--name</code> is required for another machine&#39;s key (default
+<code class="nw">hostname -s</code> for this machine&#39;s own). <code class="nw">65</code>: bad or reserved recipient
+(post-quantum <code class="nw">age1pq1…</code> is reserved, not supported), bad name, duplicate
+name or recipient. <code class="nw">64</code>: missing <code class="nw">--name</code> for another machine.
+</li>
+<li><code class="nw">recipient rm &lt;NAME&gt; --yes</code> drops the machine and always rotates: a new
+data key, every value re-encrypted, re-wrapped to the remaining recipients,
+a rotation proof appended, the session cache and backup copies of
+<code class="nw">secrets.json</code> dropped. The removed machine can no longer read values
+stored from then on (it already decrypted the old ones: rotate those
+credentials upstream). Removing this machine or the last recipient is
+refused (<code class="nw">65</code>). Without <code class="nw">--yes</code>: <code class="nw">64</code>.
+</li>
+<li><code class="nw">recipient rename &lt;OLD&gt; &lt;NEW&gt;</code>, <code class="nw">recipient list [--json]</code> (marks this
+machine; also prints the data key&#39;s fingerprint).
+</li>
+<li><code class="nw">rekey</code> on a version 2 store makes a new data key, wraps it to every
+recipient and appends a rotation proof.
+</li>
+<li>Each machine caches the data key it verified in the backend&#39;s existing
+master-key item. Shell start uses it while its fingerprint (<code class="nw">key_id</code>)
+matches: no public-key operation, no extra fork. A different key is taken
+from this machine&#39;s stanza only when the rotation proofs (at most 16)
+chain it to the cached key; with nothing cached (a new machine) it is
+trusted on first use and its fingerprint printed (<code class="nw">adopted data key …</code>).
+Anything else is an error (<code class="nw">78</code>) that names <code class="nw">wayu secrets adopt --yes</code>:
+compare the fingerprint with <code class="nw">recipient list</code> on another machine first.
+<code class="nw">adopt</code> exits <code class="nw">78</code> when this machine has no stanza.
+</li>
+<li>A machine that is not a recipient prints <code>wayu: secrets not loaded: this machine is not a recipient …; run &#39;wayu secrets identity&#39; and add it from a machine that is</code> at shell start.
+</li>
+<li><code class="nw">recovery add</code> sets a passphrase stanza (argon2id; wayu-only, not an age
+stanza): <code class="nw">recovery unlock</code> (passphrase on stdin) recovers the data key on
+any machine with the file, caches it, and says how to add the machine.
+<code class="nw">recovery rm --yes</code> drops it and rotates. A passphrase shorter than 12
+characters or a wrong one: <code class="nw">65</code>.
+</li>
+<li>Every error exits non-zero and names the command that fixes it.
+<code class="nw">--dry-run</code> writes nothing (no identity, no key, no notice marker).
+</li>
+</ul>
 <h3 id="wayu-optimize"><code class="nw">wayu optimize</code><a class="anchor" href="#wayu-optimize" aria-label="Link to this section">#</a></h3>
 <p><code>wayu optimize [--check] [--dry-run] [--yes]</code>: move the lines installers
 append to your shell startup files into wayu, and remove them from the file.
@@ -1206,7 +1284,7 @@ scripts and regenerates under the config lock, like the CLI.</p>
 <p>Prints the global help: commands, flags, command flags, examples, exit codes.</p>
 <h2 id="json-output">JSON output<a class="anchor" href="#json-output" aria-label="Link to this section">#</a></h2>
 <p><code class="nw">--json</code> is accepted by <code>path|alias|const|plugin|backup|script list</code>,
-<code class="nw">search</code> and <code class="nw">doctor</code> (and by any <code class="nw">help</code>); anywhere else it exits <code class="nw">64</code>. Output is one
+<code class="nw">secrets recipient list</code>, <code class="nw">search</code> and <code class="nw">doctor</code> (and by any <code class="nw">help</code>); anywhere else it exits <code class="nw">64</code>. Output is one
 JSON document on stdout (errors stay on stderr); an empty list is <code class="nw">[]</code>. The
 shapes below are checked by <code>tests/integration/test_cli_output.rb</code> — new
 keys may be added, existing ones keep their meaning.</p>
@@ -1241,6 +1319,10 @@ keys may be added, existing ones keep their meaning.</p>
 <tr>
 <td><code class="nw">script list</code></td>
 <td><code>{&quot;scripts&quot;: [{&quot;name&quot;, &quot;lang&quot;, &quot;source&quot;, &quot;bin&quot;, &quot;compiled&quot;: bool, &quot;stale&quot;: bool}], &quot;count&quot;: int}</code></td>
+</tr>
+<tr>
+<td><code class="nw">secrets recipient list</code></td>
+<td><code>{&quot;recipients&quot;: [{&quot;name&quot;, &quot;recipient&quot;, &quot;this_machine&quot;: bool}], &quot;key_id&quot;, &quot;recovery&quot;: bool}</code> (experimental); a version 1 store has <code class="nw">&quot;recipients&quot;: []</code> and <code class="nw">&quot;key_id&quot;: &quot;&quot;</code></td>
 </tr>
 <tr>
 <td><code class="nw">search QUERY</code></td>
@@ -1540,6 +1622,34 @@ Ctrl-C, <code class="nw">143</code> for <code class="nw">SIGTERM</code>, <code c
 <tr>
 <td><code class="nw">wayu secrets lock x</code></td>
 <td>64</td>
+</tr>
+<tr>
+<td><code class="nw">wayu secrets adopt</code></td>
+<td>64</td>
+</tr>
+<tr>
+<td><code>wayu secrets recipient rm laptop</code></td>
+<td>64</td>
+</tr>
+<tr>
+<td><code class="nw">wayu secrets recipient bogus</code></td>
+<td>64</td>
+</tr>
+<tr>
+<td><code class="nw">wayu secrets recovery rm</code></td>
+<td>64</td>
+</tr>
+<tr>
+<td><code class="nw">wayu secrets identity --json</code></td>
+<td>64</td>
+</tr>
+<tr>
+<td><code>wayu secrets recipient add age1notakey --name x</code></td>
+<td>65</td>
+</tr>
+<tr>
+<td><code>wayu secrets recipient add age1pq1qqqqqqqqqqqqqqqq --name x</code></td>
+<td>65</td>
 </tr>
 <tr>
 <td><code class="nw">wayu build --test</code></td>

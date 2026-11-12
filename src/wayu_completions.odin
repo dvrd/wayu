@@ -161,8 +161,21 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec {
 			{"rekey", .UPDATE, "New master key, re-encrypt every secret"},
 			{"lock", .CLEAN, "Delete the decrypted session cache"},
 			{"run", .RUN, "Run a command with secrets set"},
+			{"identity", .IDENTITY, "Print this machine's age recipient (experimental)"},
+			{
+				"recipient",
+				.RECIPIENT,
+				"Machines that read the secrets: list, add, rm, rename (experimental)",
+			},
+			{"adopt", .ADOPT, "Accept the data key in this machine's stanza (experimental)"},
+			{"recovery", .RECOVERY, "Recovery passphrase: add, rm, unlock (experimental)"},
 			{"cache", .TURBO, ""},
 			{"help", .HELP, "Show help"},
+		},
+		json = {.RECIPIENT},
+		flags = {
+			{"--name", "Recipient name (identity, recipient add; default: hostname -s)"},
+			{"--name=", ""},
 		},
 	},
 	{
@@ -527,6 +540,8 @@ WayuValue :: enum u8 {
 	TEMPLATES,
 	PLUGIN_KEYS,
 	FPATH_ACTIONS,
+	RECIPIENT_ACTIONS,
+	RECOVERY_ACTIONS,
 }
 
 // `position` of a WayuArgCompleter: every argument / the words after `--`.
@@ -551,6 +566,8 @@ WAYU_ARG_COMPLETERS := [?]WayuArgCompleter {
 	{.COMPLETIONS, {.FPATH}, 2, .DIRS, .NONE},
 	{.SECRETS, {.RUN}, ARG_AFTER_DASHDASH, .COMMAND, .NONE},
 	{.SECRETS, {.RUN}, ARG_EVERY, .NAMES, .SECRET},
+	{.SECRETS, {.RECIPIENT}, 1, .RECIPIENT_ACTIONS, .NONE},
+	{.SECRETS, {.RECOVERY}, 1, .RECOVERY_ACTIONS, .NONE},
 	{.BACKUP, {.LIST, .RESTORE, .REMOVE}, 1, .NAMES, .BACKUP},
 	{.BACKUP, {.RESTORE}, 2, .NAMES, .BACKUP_INDEX},
 	{.TEMPLATE, {.ADD}, 1, .TEMPLATES, .NONE},
@@ -572,6 +589,7 @@ WAYU_FLAG_VALUES := [?]WayuFlagValue {
 	{.PLUGIN, "--use", .ANY},
 	{.INIT, "--template", .TEMPLATES},
 	{.SCRIPT, "--lang", .LANGS},
+	{.SECRETS, "--name", .ANY},
 }
 
 // Global flags (cli_parser) as completions offer them, anywhere on the line.
@@ -619,6 +637,10 @@ wayu_value_words :: proc(v: WayuValue) -> []string {
 		for p in POPULAR_PLUGINS {append(&out, p.key)}
 	case .FPATH_ACTIONS:
 		append(&out, "list", "add", "rm")
+	case .RECIPIENT_ACTIONS:
+		append(&out, "list", "add", "rm", "rename")
+	case .RECOVERY_ACTIONS:
+		append(&out, "add", "rm", "unlock")
 	}
 	return out[:]
 }

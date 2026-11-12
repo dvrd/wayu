@@ -147,7 +147,9 @@ needs a deprecation warning for at least one minor release first.
 | `src/turbo_export.odin` | `wayu export` (turbo copy of core, `--eval`, `--check` compares content; zsh, bash, fish) |
 | `src/secrets.odin` | Secret heuristic + masking; file modes for files holding [env] values |
 | `src/secrets_store.odin` | Encrypted constants: ChaCha20-Poly1305 store (`secrets.json`), session cache + core loader, `const add --secret`/`--run-only`/get/rm, `wayu secrets` (incl. `run`: setenv + execvp), doctor check; `env_store_mark_secret` seam to the env store |
-| `src/keystore.odin` | Master key backends (`[secrets] backend`): keychain, secret-service, file |
+| `src/keystore.odin` | Master key backends (`[secrets] backend`): keychain, secret-service, file; this machine's age identity (`wayu-<id>-identity` / `identity.key`) |
+| `src/age.odin` | bech32 (BIP-173), age keys (`age1…`, `AGE-SECRET-KEY-1…`, `age1pq` reserved), the age X25519 stanza wrap/unwrap |
+| `src/secrets_recipients.odin` | Multi-machine secrets (experimental): `secrets.json` v2 header (recipients, rotations, recovery), data-key pinning + rotation proofs, `secrets identity/recipient/adopt/recovery`, v2 doctor checks, backup-restore re-wrap |
 | `src/env_snapshot.odin` | Snapshot of the running env (PATH, aliases, env) for the list views' `source` column |
 | `src/atomic_io.odin` | Atomic file replacement + inter-process config lock |
 | `src/subprocess.odin` | `run_command`: subprocess without a shell, with timeouts (plugin clones, shells) |
@@ -256,9 +258,9 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 - `--help` / `-h`: works globally and per-command
 - `--version` / `-v`: prints `wayu vX.Y.Z`
 - `--no-color`: disables ANSI colors (equivalent to `NO_COLOR=1`)
-- `--yes` / `-y`: confirm destructive operations (required by: `path clean`, `path dedup`, `backup restore`, `backup rm`, `plugin remove`, `function remove`, `script remove`, `config scan --fix`, `doctor --fix`, `optimize`); without it they exit 64
+- `--yes` / `-y`: confirm destructive operations (required by: `path clean`, `path dedup`, `backup restore`, `backup rm`, `plugin remove`, `function remove`, `script remove`, `config scan --fix`, `doctor --fix`, `optimize`, `secrets recipient rm`, `secrets adopt`, `secrets recovery rm`); without it they exit 64
 - `--`: ends flag parsing; in `alias add` / `const add` the rest of the line after the first value word is the value (see `docs/cli.md`). Unknown options exit 64
-- `--json`: machine-readable output for `path|alias|const|plugin|backup|script list`, `search`, `doctor` (the `json` bit_set in `WAYU_COMMAND_SPECS`; elsewhere exit 64). Schemas are documented in `docs/cli.md` "JSON output" and pinned by `test_json_schema` in `tests/integration/test_cli_output.rb` — update both when a shape changes
+- `--json`: machine-readable output for `path|alias|const|plugin|backup|script list`, `secrets recipient list`, `search`, `doctor` (the `json` bit_set in `WAYU_COMMAND_SPECS`; elsewhere exit 64). Schemas are documented in `docs/cli.md` "JSON output" and pinned by `test_json_schema` in `tests/integration/test_cli_output.rb` — update both when a shape changes
 - `docs/cli.md` is the CLI contract: when you add/rename a command, action or flag in `WAYU_COMMAND_SPECS`, or change an exit code, update it (`tests/unit/test_cli_doc.odin` and `tests/integration/test_exit_codes.rb` fail otherwise)
 - `wayu doctor` exits `EXIT_CONFIG` (78) when any check reports an error, so it can gate CI
 - `--dry-run`: show what would happen without writing

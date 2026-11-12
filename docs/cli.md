@@ -502,6 +502,10 @@ Service, or `secret.key` in the config dir). `const get` decrypts,
 | `rekey` | | New master key, re-encrypt every secret, drop the session cache |
 | `lock` | | Delete the decrypted session cache from every dir it was written to (next shell decrypts again) |
 | `run` | `<NAME>... -- <cmd> [args...]` | Run `cmd` with these secrets in its environment |
+| `identity` | `[--name NAME]` | (experimental) Print this machine's age recipient (`age1…`) on stdout, creating its identity the first time; stderr shows the `recipient add` command to run on a machine that reads the secrets (`--name`: the name in that command, default `hostname -s`) |
+| `recipient` | `list` (`ls`) `[--json]` · `add <age1…> [--name NAME]` · `rm <NAME> --yes` · `rename <OLD> <NEW>` | (experimental) Machines that can read the secrets (see below) |
+| `adopt` | `--yes` | (experimental) Accept the data key in this machine's stanza without a rotation proof (prints its fingerprint) |
+| `recovery` | `add [--name NAME]` · `rm --yes` · `unlock` | (experimental) Recovery passphrase (read from stdin, never argv) |
 | `help` | | |
 
 **Run-only secrets.** `wayu const add NAME [VALUE] --run-only` stores a
@@ -533,6 +537,61 @@ not decrypt, the shell prints one `wayu: secrets not loaded: …` line on
 stderr and starts without the secrets. The first `add --secret` creates the
 key; wayu never creates a new key while `secrets.json` holds values (exit
 `78`). Errors reading the store or key exit `78`; write errors `74`.
+
+#### Multi-machine secrets (experimental)
+
+The same `secrets.json` (with `entries.json`) can be read on several
+machines without copying any key between them. Each machine has its own age
+X25519 identity (`AGE-SECRET-KEY-1…`, kept by the `[secrets]` backend), and
+`secrets.json` version 2 wraps one data key to every machine's recipient
+(`age1…`); see [config-reference.md](config-reference.md#multi-machine-secrets-experimental).
+Experimental: these actions and the version 2 format may change in a minor
+release (a format change still migrates automatically). The first use prints
+a one-time notice on stderr.
+
+```bash
+wayu secrets identity                              # on the new machine B: prints age1…
+wayu secrets recipient add age1… --name linux-box  # on machine A, then sync secrets.json
+```
+
+- `recipient add <age1…> [--name NAME]` needs the data key. The first one
+  upgrades a version 1 store to version 2 (backup first, then a verify step;
+  a one-time notice says wayu 7.0 cannot read it): the master key becomes the
+  data key unchanged, this machine is added as `hostname -s`, value lines are
+  untouched. `--name` is required for another machine's key (default
+  `hostname -s` for this machine's own). `65`: bad or reserved recipient
+  (post-quantum `age1pq1…` is reserved, not supported), bad name, duplicate
+  name or recipient. `64`: missing `--name` for another machine.
+- `recipient rm <NAME> --yes` drops the machine and always rotates: a new
+  data key, every value re-encrypted, re-wrapped to the remaining recipients,
+  a rotation proof appended, the session cache and backup copies of
+  `secrets.json` dropped. The removed machine can no longer read values
+  stored from then on (it already decrypted the old ones: rotate those
+  credentials upstream). Removing this machine or the last recipient is
+  refused (`65`). Without `--yes`: `64`.
+- `recipient rename <OLD> <NEW>`, `recipient list [--json]` (marks this
+  machine; also prints the data key's fingerprint).
+- `rekey` on a version 2 store makes a new data key, wraps it to every
+  recipient and appends a rotation proof.
+- Each machine caches the data key it verified in the backend's existing
+  master-key item. Shell start uses it while its fingerprint (`key_id`)
+  matches: no public-key operation, no extra fork. A different key is taken
+  from this machine's stanza only when the rotation proofs (at most 16)
+  chain it to the cached key; with nothing cached (a new machine) it is
+  trusted on first use and its fingerprint printed (`adopted data key …`).
+  Anything else is an error (`78`) that names `wayu secrets adopt --yes`:
+  compare the fingerprint with `recipient list` on another machine first.
+  `adopt` exits `78` when this machine has no stanza.
+- A machine that is not a recipient prints `wayu: secrets not loaded: this
+  machine is not a recipient …; run 'wayu secrets identity' and add it from
+  a machine that is` at shell start.
+- `recovery add` sets a passphrase stanza (argon2id; wayu-only, not an age
+  stanza): `recovery unlock` (passphrase on stdin) recovers the data key on
+  any machine with the file, caches it, and says how to add the machine.
+  `recovery rm --yes` drops it and rotates. A passphrase shorter than 12
+  characters or a wrong one: `65`.
+- Every error exits non-zero and names the command that fixes it.
+  `--dry-run` writes nothing (no identity, no key, no notice marker).
 
 ### `wayu optimize`
 
@@ -601,7 +660,7 @@ Prints the global help: commands, flags, command flags, examples, exit codes.
 ## JSON output
 
 `--json` is accepted by `path|alias|const|plugin|backup|script list`,
-`search` and `doctor` (and by any `help`); anywhere else it exits `64`. Output is one
+`secrets recipient list`, `search` and `doctor` (and by any `help`); anywhere else it exits `64`. Output is one
 JSON document on stdout (errors stay on stderr); an empty list is `[]`. The
 shapes below are checked by `tests/integration/test_cli_output.rb` — new
 keys may be added, existing ones keep their meaning.
@@ -614,6 +673,7 @@ keys may be added, existing ones keep their meaning.
 | `plugin list` | `{"plugins": [{"name", "enabled": bool, "priority": int, "shell", "url", "commit", "installed_path", "conflicts": [{"kind", "name", "with"}]}], "count": int, "enabled": int}` |
 | `backup list` | `{"backups": [{"file", "count": int, "entries": [{"index": int, "timestamp", "size_bytes": int, "path", "pre_restore": bool}]}]}` |
 | `script list` | `{"scripts": [{"name", "lang", "source", "bin", "compiled": bool, "stale": bool}], "count": int}` |
+| `secrets recipient list` | `{"recipients": [{"name", "recipient", "this_machine": bool}], "key_id", "recovery": bool}` (experimental); a version 1 store has `"recipients": []` and `"key_id": ""` |
 | `search QUERY` | `{"query", "results": [{"type", "name", "value", "match", "field", "score": int}], "count": int}`; `field` is always `name`; an encrypted constant adds `"secret": true` (its `value` is `""`) |
 | `doctor` | `{"checks": [{"name", "status", "message", "fixable": bool}], "summary": {"ok", "warnings", "errors", "info", "fixable"}}` |
 
@@ -705,6 +765,13 @@ Run against a freshly initialized config (`wayu init`) by
 | `wayu export --eval --check` | 64 |
 | `wayu path list x` | 64 |
 | `wayu secrets lock x` | 64 |
+| `wayu secrets adopt` | 64 |
+| `wayu secrets recipient rm laptop` | 64 |
+| `wayu secrets recipient bogus` | 64 |
+| `wayu secrets recovery rm` | 64 |
+| `wayu secrets identity --json` | 64 |
+| `wayu secrets recipient add age1notakey --name x` | 65 |
+| `wayu secrets recipient add age1pq1qqqqqqqqqqqqqqqq --name x` | 65 |
 | `wayu build --test` | 64 |
 | `wayu build --snapshot` | 64 |
 | `wayu build --full` | 64 |

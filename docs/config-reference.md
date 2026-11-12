@@ -655,6 +655,78 @@ of `wayu const get NAME` (and to the environment of `wayu secrets run`'s
 command). `wayu doctor` checks the backend, the key, the
 store's mode, that every secret decrypts, and the cache dir.
 
+#### Multi-machine secrets (experimental)
+
+Experimental: the commands and the version 2 format below may change in a
+minor release; a format change still migrates automatically. Version 1
+stays valid: a store becomes version 2 only when you run `wayu secrets
+recipient add` (or `recovery add`), which backs up the version 1 file,
+writes version 2, verifies it and prints a one-time notice (wayu 7.0 cannot
+read version 2: upgrade every machine that syncs the file first). wayu 7.0
+reading a newer version exits `78` naming the upgrade.
+
+```json
+{
+  "version": 2,
+  "cipher": "chacha20poly1305",
+  "key_id": "3f9a1c0e5b7d2a41",
+  "recipients": [
+    {"name": "laptop", "recipient": "age1…", "stanza": "<share> <body>"}
+  ],
+  "recovery": {"recipient": "age1…", "stanza": "…", "kdf": "argon2id", "m": 65536, "t": 3, "p": 4, "salt": "…", "identity": "…"},
+  "rotations": [
+    {"from": "a17c…", "to": "3f9a1c0e5b7d2a41", "proof": "…"}
+  ],
+  "values": {"NAME": "<base64 nonce||ciphertext||tag>"},
+  "run_only": ["NAME"]
+}
+```
+
+- `values` / `run_only`: exactly as in version 1 (same key, AAD and lines;
+  a migrated store's data key is its 7.0 master key).
+- `key_id`: the data key's fingerprint, the first 8 bytes of
+  HKDF-SHA256(key, info `wayu/secrets/key-id`) in lower-case hex.
+- `recipients` (at least one, sorted by name): `name` is 1-64 of
+  `A-Z a-z 0-9 . _ -`, unique; `recipient` an age X25519 recipient
+  (bech32 `age1…`, unique; `age1pq1…` is reserved and refused); `stanza` the
+  data key wrapped as in age's X25519 recipient type (HKDF-SHA256 with salt
+  = share ‖ recipient and info `age-encryption.org/v1/X25519`,
+  ChaCha20-Poly1305 with a zero nonce): unpadded base64 of the 32-byte
+  ephemeral share and the 48-byte body. The ephemeral key is derived from the
+  data key, the name and the recipient, so wayu can recompute every stanza:
+  one it did not write (an added or renamed entry) is refused before the key
+  is wrapped to it again (`78`, naming `recipient rm`).
+- `rotations` (at most 16, oldest dropped): each new data key's
+  verification key and an Ed25519 signature by the previous data key
+  (both derived from the keys). A machine that cached an older key accepts
+  the new one only through this chain. The proof does not reveal the new
+  key to holders of the old one, but a removed machine that can still write
+  the synced file could sign a key of its own: after `recipient rm`, rotate
+  the credentials upstream.
+- `recovery` (optional, wayu-only): a random X25519 identity sealed with
+  ChaCha20-Poly1305 under argon2id(passphrase, `salt`; `m` KiB, `t` passes,
+  `p` lanes, bounded to 1 GiB / 16 / 16), and the data key wrapped to it.
+- Strict like version 1: unknown fields (at any level), duplicate keys,
+  names or recipients, a bad `key_id`, an empty recipient list or more than
+  16 rotations make the file malformed (`78`).
+
+This machine's identity (`AGE-SECRET-KEY-1…`) is kept by the backend:
+keychain / Secret Service account `wayu-<id>-identity` (same service as the
+master key); `file`: `<config>/identity.key`, in age's identity-file layout
+(`# public key: age1…`), `0600`, created exclusively, never replaced. Like
+`secret.key`, never commit it (`wayu doctor` warns when either sits in a git
+work tree without being ignored). The verified data key stays in the master
+key's item. `wayu doctor` also checks that this machine is a listed
+recipient whose stanza unwraps, that the cached key is the store's (or a
+proven rotation of it), that every value decrypts with it (a concurrent
+`rekey` on two machines leaves values under the losing key: doctor names
+them), that every stanza is wayu's, and warns about sync-conflict copies
+next to the store (`secrets.sync-conflict-*.json`, `secrets 2.json`).
+
+`wayu backup restore entries` over a version 2 store keeps its recipients:
+the backup's `secrets.json` values are restored under the current header
+when they decrypt with the current data key (else the restore is refused).
+
 ### Keys wayu does not read
 
 wayu reads only the keys and tables listed above. Anything else (for example
@@ -1030,7 +1102,7 @@ every shell initialized in the data dir.
 | `turbo.<ext>` | zsh/bash. Same content as `core.<ext>`, refreshed with it, only if it exists (created by `wayu export`). |
 | `plugins.<ext>` | Plugin loader, regenerated on any `plugin` change and by `wayu init`. |
 | `plugins/config.zsh` | `[settings] autosuggestions_accept_keys` bindings. |
-| `secrets.json` | Encrypted constants (see [`[secrets]`](#secrets)); written by `wayu const add --secret`, `const rm`, `secrets rekey`. Not generated from wayu.toml. |
+| `secrets.json` | Encrypted constants (see [`[secrets]`](#secrets)); written by `wayu const add --secret`, `const rm`, `secrets rekey` and the multi-machine `secrets recipient` / `recovery` commands (experimental). Not generated from wayu.toml. |
 | `backup/` | Timestamped backups `<file>.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]` (UTC), 5 newest per file (see `wayu backup`). `<file>` is the name of a file directly in the config/data dir, `@` + its relative path with `/` as `%` for a nested one (`@functions%init.zsh`), or the path of a file outside them (`.zshrc`, `.config%zsh%.zshrc`). Files named otherwise are ignored. |
 
 Also `$WAYU_DATA_DIR/.wayu.lock` (lock shared by concurrent wayu commands)
