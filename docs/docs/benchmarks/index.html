@@ -141,6 +141,8 @@ process exit; every raw sample and the median of each metric.
 <li>Detected completion/suggestion/highlighting flags, so missing or deferred
 work is visible. Do not compare a deferred first prompt with fully loaded
 startup as if the same work had finished.
+The upstream detector may not recognize wayu&#39;s native features; inspect the
+named configuration as well as the detector flags for those rows.
 </li>
 <li>One first-process-exit observation for each fresh HOME after setup. Generated
 artifacts may already exist; this diagnostic is neither a cold first-prompt

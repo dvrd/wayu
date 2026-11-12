@@ -61,7 +61,7 @@ report = {
     'pins': dict(item.split('=', 1) for item in a.pin),
     'iterations': a.iters, 'cache_state': 'warmed',
     'cold_note': 'One first process-exit observation per fresh HOME after setup; generated artifacts may already exist. Not first-prompt latency or a median.',
-    'deferred_note': 'Deferred plugins may not be loaded at the first command. Compare detected feature flags before comparing timings.',
+    'deferred_note': 'Deferred plugins may not be loaded at the first command. Native wayu features may not be recognized by the upstream detector. Inspect configuration and detected flags before comparing timings.',
     'results': results,
 }
 a.output.parent.mkdir(parents=True, exist_ok=True)

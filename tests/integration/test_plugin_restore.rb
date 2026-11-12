@@ -4,6 +4,7 @@ require 'open3'
 require 'fileutils'
 require 'json'
 require 'tmpdir'
+require 'digest'
 
 class PluginRestoreTest
   BIN = File.expand_path(ENV.fetch('WAYU_BIN', '../../bin/wayu'), ENV['WAYU_BIN'] ? Dir.pwd : __dir__)
@@ -141,11 +142,23 @@ class PluginRestoreTest
   def test_dry_run
     home = fixture('dry')
     before = File.binread(data(home) + '/plugins.json')
-    files = Dir.glob(data(home) + '/**/*', File::FNM_DOTMATCH).sort
+    files = durable_snapshot(home)
+    # Reproduce init's cache arriving after the baseline deterministically.
+    File.write(data(home) + '/async-fixture.zwc', 'bytecode fixture')
     out = command(home, 'plugin', 'restore', '--dry-run')
     check('dry-run preserves files and never clones', out.include?('DRY RUN') &&
           File.binread(data(home) + '/plugins.json') == before && !File.exist?(checkout(home)) &&
-          files == Dir.glob(data(home) + '/**/*', File::FNM_DOTMATCH).sort)
+          files == durable_snapshot(home))
+  end
+
+  # init compiles zsh bytecode asynchronously. A cache appearing during a
+  # preview is not a write by that preview; compare all durable file bytes.
+  def durable_snapshot(home)
+    Dir.glob(data(home) + '/**/*', File::FNM_DOTMATCH).sort.each_with_object({}) do |path, files|
+      next unless File.file?(path)
+      next if path.end_with?('.zwc')
+      files[path] = Digest::SHA256.file(path).hexdigest
+    end
   end
 
   def test_failure_rolls_back

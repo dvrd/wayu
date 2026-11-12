@@ -32,6 +32,8 @@ it is not a measurement of real kubectl, gh or helm startup.
 - Detected completion/suggestion/highlighting flags, so missing or deferred
   work is visible. Do not compare a deferred first prompt with fully loaded
   startup as if the same work had finished.
+  The upstream detector may not recognize wayu's native features; inspect the
+  named configuration as well as the detector flags for those rows.
 - One first-process-exit observation for each fresh HOME after setup. Generated
   artifacts may already exist; this diagnostic is neither a cold first-prompt
   latency nor a statistically reliable median.
