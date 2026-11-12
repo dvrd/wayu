@@ -116,12 +116,14 @@ entries, aliases and secrets into it. Every command, flag and exit code is in
 the <a href="/docs/cli/">CLI reference</a>; every config key in the
 <a href="/docs/config/">configuration reference</a>.</p>
 <h2 id="install">Install<a class="anchor" href="#install" aria-label="Link to this section">#</a></h2>
-<p>Homebrew (macOS 15 or later on Apple silicon, Linux on x86_64):</p>
+<p>Homebrew (macOS 15 or later on Apple silicon or Intel, Linux on x86_64 or
+arm64):</p>
 <div class="code"><pre><code class="language-bash">brew tap dvrd/wayu
 brew install wayu
 wayu init
 </code></pre><button type="button" class="icon-btn copy-btn" aria-label="Copy bash code"><svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
-<p>Other platforms (Intel Macs, Linux on arm64) build from source. It needs the
+<p>Other platforms (older macOS, musl Linux, the BSDs) build from source. It
+needs the
 <a href="https://odin-lang.org/docs/install/" rel="noopener">Odin compiler</a> at the release named in
 <a href="https://github.com/dvrd/wayu/blob/main/.github/odin-release" rel="noopener"><code class="nw">.github/odin-release</code></a>:</p>
 <div class="code"><pre><code class="language-bash">git clone https://github.com/dvrd/wayu &amp;&amp; cd wayu

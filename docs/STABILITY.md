@@ -59,8 +59,8 @@ Tested on every release (CI) or by the maintainer; see the README's
 
 | | Versions |
 |---|---|
-| macOS | 15 (CI), 26, 27 |
-| Linux | Ubuntu 24.04 (CI) |
+| macOS | 15 (CI; Intel: CI smoke test), 26, 27 |
+| Linux | Ubuntu 24.04 (CI; arm64: CI smoke test) |
 | zsh | 5.9 |
 | bash | 3.2 (macOS `/bin/bash`), 5.x |
 | fish | 4.x |

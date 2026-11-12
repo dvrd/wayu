@@ -30,7 +30,7 @@
     "description": "A shell configuration CLI: PATH entries, aliases, environment variables, encrypted secrets, scripts and plugins for zsh, bash and fish, compiled into one init file.",
     "url": "https://wayu.dvrd.io/",
     "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "macOS 15 or later (arm64), Linux (x86_64)",
+    "operatingSystem": "macOS 15 or later (arm64, x86_64), Linux (x86_64, arm64)",
     "downloadUrl": "https://github.com/dvrd/wayu/releases",
     "installUrl": "https://wayu.dvrd.io/docs/quickstart/",
     "license": "https://opensource.org/licenses/MIT",
@@ -1238,7 +1238,7 @@ git status -sb</pre>
           <details>
             <summary><span>Which platforms and shells?</span></summary>
             <div>
-              <p>Prebuilt binaries for macOS 15 or later on Apple silicon (arm64) and Linux on x86_64 (amd64), through Homebrew. There is no prebuilt binary for Intel Macs or Linux on arm64: build those from source with Odin. Tested with zsh 5.9, bash 3.2 and 5.x, fish 4.x, on macOS 15, 26 and 27 and Ubuntu 24.04. Windows is not supported.</p>
+              <p>Prebuilt binaries for macOS 15 or later (Apple silicon and Intel) and Linux on x86_64 and arm64 (glibc), through Homebrew. Anything else (older macOS, musl Linux, the BSDs): build from source with Odin. Tested with zsh 5.9, bash 3.2 and 5.x, fish 4.x, on macOS 15, 26 and 27 and Ubuntu 24.04. Windows is not supported.</p>
             </div>
           </details>
           <details>
@@ -1267,7 +1267,7 @@ git status -sb</pre>
     <section class="cta" id="install" aria-labelledby="cta-title">
       <div class="wrap">
         <h2 id="cta-title" class="reveal">Hand your shell setup to wayu.</h2>
-        <p class="sub reveal">Prebuilt for macOS 15 or later (Apple silicon, arm64) and Linux (x86_64). Intel Macs and Linux on arm64 have no binary: build from source with Odin.</p>
+        <p class="sub reveal">Prebuilt for macOS 15 or later (Apple silicon and Intel) and Linux (x86_64 and arm64). Anything else: build from source with Odin.</p>
         <div class="install reveal" data-install>
           <div class="tabs" role="tablist" aria-label="Install method">
             <button class="tab" role="tab" type="button" id="ci-brew-tab" aria-controls="ci-brew" aria-selected="true">Homebrew</button>

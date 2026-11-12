@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
 # Render the Homebrew formula for dvrd/homebrew-wayu to stdout.
 #
-# Usage: homebrew-formula.sh <version-tag> <macos-arm64-sha256> <linux-amd64-sha256>
-#   e.g. homebrew-formula.sh v4.4.3 <64 hex> <64 hex> > Formula/wayu.rb
+# Usage: homebrew-formula.sh <version-tag> <macos-arm64-sha256> <macos-amd64-sha256>
+#                             <linux-amd64-sha256> <linux-arm64-sha256>
+#   e.g. homebrew-formula.sh v4.4.3 <64 hex> <64 hex> <64 hex> <64 hex> > Formula/wayu.rb
 #
-# Published binaries: macOS arm64 and Linux x86_64 only. Each OS block pins
-# the one CPU it has a binary for with `depends_on arch:`, so brew stops with
-# its own "An ARM64 / x86_64 architecture is required" message on macOS Intel
-# or Linux arm64 instead of installing a binary that cannot exec. Every
-# platform still gets a url so the formula always loads (a formula with no
-# url for the current platform fails to load with a vaguer error).
+# Published binaries: macOS arm64 + x86_64, Linux x86_64 + arm64. Each OS
+# block picks the archive for the CPU with on_arm / on_intel, so every
+# supported platform has a url and sha256.
 set -euo pipefail
 
-if [ "$#" -ne 3 ]; then
-  echo "usage: $0 <version-tag> <macos-arm64-sha256> <linux-amd64-sha256>" >&2
+if [ "$#" -ne 5 ]; then
+  echo "usage: $0 <version-tag> <macos-arm64-sha256> <macos-amd64-sha256> <linux-amd64-sha256> <linux-arm64-sha256>" >&2
   exit 64
 fi
 
 VERSION="$1"
 MACOS_ARM64_SHA="$2"
-LINUX_AMD64_SHA="$3"
+MACOS_AMD64_SHA="$3"
+LINUX_AMD64_SHA="$4"
+LINUX_ARM64_SHA="$5"
 
 if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "error: version must look like vX.Y.Z, got '$VERSION'" >&2
   exit 65
 fi
-for sha in "$MACOS_ARM64_SHA" "$LINUX_AMD64_SHA"; do
+for sha in "$MACOS_ARM64_SHA" "$MACOS_AMD64_SHA" "$LINUX_AMD64_SHA" "$LINUX_ARM64_SHA"; do
   if ! [[ "$sha" =~ ^[0-9a-f]{64}$ ]]; then
     echo "error: invalid sha256 '$sha'" >&2
     exit 65
@@ -60,19 +60,30 @@ class Wayu < Formula
   version "${VERSION_BARE}"
   license "MIT"
 
-  # Prebuilt binaries exist for macOS arm64 and Linux x86_64 only.
-  # macOS: built for ${MACOS_FLOOR} and later.
+  # Prebuilt binaries: macOS arm64 + x86_64 (${MACOS_FLOOR} and later),
+  # Linux x86_64 + arm64.
   on_macos do
-    depends_on arch: :arm64
     depends_on macos: :${MACOS_SYMBOL}
-    url "${BASE_URL}/wayu-macos-arm64.tar.gz"
-    sha256 "${MACOS_ARM64_SHA}"
+
+    on_arm do
+      url "${BASE_URL}/wayu-macos-arm64.tar.gz"
+      sha256 "${MACOS_ARM64_SHA}"
+    end
+    on_intel do
+      url "${BASE_URL}/wayu-macos-amd64.tar.gz"
+      sha256 "${MACOS_AMD64_SHA}"
+    end
   end
 
   on_linux do
-    depends_on arch: :x86_64
-    url "${BASE_URL}/wayu-linux-amd64.tar.gz"
-    sha256 "${LINUX_AMD64_SHA}"
+    on_arm do
+      url "${BASE_URL}/wayu-linux-arm64.tar.gz"
+      sha256 "${LINUX_ARM64_SHA}"
+    end
+    on_intel do
+      url "${BASE_URL}/wayu-linux-amd64.tar.gz"
+      sha256 "${LINUX_AMD64_SHA}"
+    end
   end
 
   def install

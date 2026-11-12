@@ -7,7 +7,8 @@ the [CLI reference](cli.md); every config key in the
 
 ## Install
 
-Homebrew (macOS 15 or later on Apple silicon, Linux on x86_64):
+Homebrew (macOS 15 or later on Apple silicon or Intel, Linux on x86_64 or
+arm64):
 
 ```bash
 brew tap dvrd/wayu
@@ -15,7 +16,8 @@ brew install wayu
 wayu init
 ```
 
-Other platforms (Intel Macs, Linux on arm64) build from source. It needs the
+Other platforms (older macOS, musl Linux, the BSDs) build from source. It
+needs the
 [Odin compiler](https://odin-lang.org/docs/install/) at the release named in
 [`.github/odin-release`](https://github.com/dvrd/wayu/blob/main/.github/odin-release):
 

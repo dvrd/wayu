@@ -38,24 +38,8 @@ jobs:
     # real shells. macOS ships zsh + bash; fish is needed everywhere.
     - name: Install shells (Linux)
       if: runner.os == 'Linux'
-      run: |
-        # The runner's Azure mirror sometimes fails to resolve: retry, then
-        # fall back to archive.ubuntu.com.
-        for try in 1 2 3; do
-          if sudo apt-get -o Acquire::Retries=3 update -qq &&
-             sudo apt-get -o Acquire::Retries=3 install -y -qq zsh fish; then
-            exit 0
-          fi
-          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' \
-            /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
-          sleep $((try * 10))
-        done
-        # Last resort: Homebrew's bottles come from ghcr.io, not the Ubuntu mirrors.
-        brew=/home/linuxbrew/.linuxbrew/bin/brew
-        [ -x "$brew" ] || exit 1
-        HOMEBREW_NO_AUTO_UPDATE=1 "$brew" install zsh fish || exit 1
-        sudo ln -sf "$($brew --prefix)/bin/zsh" /usr/bin/zsh
-        sudo ln -sf "$($brew --prefix)/bin/fish" /usr/bin/fish
+      # Retries, archive.ubuntu.com, then Homebrew (see the script).
+      run: .github/scripts/apt-install.sh zsh fish
 
     - name: Install shells (macOS)
       if: runner.os == 'macOS'
@@ -125,24 +109,8 @@ jobs:
         ruby-version: '3.3'
 
     - name: Install shells
-      run: |
-        # The runner's Azure mirror sometimes fails to resolve: retry, then
-        # fall back to archive.ubuntu.com.
-        for try in 1 2 3; do
-          if sudo apt-get -o Acquire::Retries=3 update -qq &&
-             sudo apt-get -o Acquire::Retries=3 install -y -qq zsh fish; then
-            exit 0
-          fi
-          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' \
-            /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
-          sleep $((try * 10))
-        done
-        # Last resort: Homebrew's bottles come from ghcr.io, not the Ubuntu mirrors.
-        brew=/home/linuxbrew/.linuxbrew/bin/brew
-        [ -x "$brew" ] || exit 1
-        HOMEBREW_NO_AUTO_UPDATE=1 "$brew" install zsh fish || exit 1
-        sudo ln -sf "$($brew --prefix)/bin/zsh" /usr/bin/zsh
-        sudo ln -sf "$($brew --prefix)/bin/fish" /usr/bin/fish
+      # Retries, archive.ubuntu.com, then Homebrew (see the script).
+      run: .github/scripts/apt-install.sh zsh fish
 
     - name: Bootstrap build script
       run: odin build build -out:build_it
@@ -199,6 +167,7 @@ jobs:
         for f in README.md docs/index.html docs/UPGRADING.md .github/workflows/bump.yml \
           .github/scripts/homebrew-formula.sh .github/scripts/release-notes.sh \
           .github/scripts/upgrading-version.sh .github/scripts/check-macos-minos.sh \
+          .github/scripts/apt-install.sh .github/workflows/release-build.yml \
           .github/macos-minimum-version; do
           [ -f "$f" ] || { echo "Missing: $f"; exit 1; }
         done
@@ -207,7 +176,8 @@ jobs:
     - name: Check formula generator
       run: |
         A=$(printf 'a%.0s' {1..64}); B=$(printf 'b%.0s' {1..64})
-        .github/scripts/homebrew-formula.sh v0.0.0 "$A" "$B" > /tmp/wayu.rb
+        C=$(printf 'c%.0s' {1..64}); D=$(printf 'd%.0s' {1..64})
+        .github/scripts/homebrew-formula.sh v0.0.0 "$A" "$B" "$C" "$D" > /tmp/wayu.rb
         ruby -c /tmp/wayu.rb
         # init.<ext> lives in the data dir since 6.0.0; caveats must not
         # point new users at the old ~/.config/wayu/init.<ext>.
@@ -220,3 +190,26 @@ jobs:
           echo "::error::Formula caveats lack the data-dir init.zsh line"
           exit 1
         }
+        # One archive per platform, each with its own checksum.
+        for asset in wayu-macos-arm64 wayu-macos-amd64 wayu-linux-amd64 wayu-linux-arm64; do
+          grep -q "/$asset.tar.gz\"" /tmp/wayu.rb || {
+            echo "::error::Formula has no url for $asset"
+            exit 1
+          }
+        done
+        [ "$(grep -cE 'sha256 "[a-d]{64}"' /tmp/wayu.rb)" = 4 ] || {
+          echo "::error::Formula must carry 4 distinct sha256 lines"
+          exit 1
+        }
+
+  # The release binaries for all four targets (linux amd64/arm64, macOS
+  # arm64/x86_64), built exactly as bump.yml builds them and smoke-tested on
+  # each platform; nothing is published. A broken target fails here, not at
+  # release time.
+  release-build:
+    name: Release build
+    uses: ./.github/workflows/release-build.yml
+    permissions:
+      contents: read
+    with:
+      artifact-prefix: ci-

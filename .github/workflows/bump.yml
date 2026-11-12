@@ -274,109 +274,19 @@ jobs:
         name: release-notes
         path: ${{ runner.temp }}/release-notes/release_notes.md
 
+  # Builds every target at the release tag and smoke-tests each archive on
+  # its own platform (macOS x86_64: cross-compiled on arm64, run on an
+  # Intel runner). The same workflow runs in CI on develop/PRs.
   build-release:
-    name: Build ${{ matrix.artifact }}
+    name: Release build
     needs: bump
     if: needs.bump.outputs.skip == 'false'
-    runs-on: ${{ matrix.os }}
-    # Read-only: the build (odin, ./build_it) never holds a token that can
-    # sign or write. The attest job signs what this job uploads.
+    uses: ./.github/workflows/release-build.yml
     permissions:
       contents: read
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            arch: x86_64
-            artifact: wayu-linux-amd64
-          - os: macos-15
-            arch: arm64
-            artifact: wayu-macos-arm64
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      with:
-        ref: ${{ needs.bump.outputs.version }}
-
-    # The formula maps each asset to a CPU; fail if a runner image changes arch.
-    - name: Check runner architecture
-      env:
-        EXPECTED: ${{ matrix.arch }}
-      run: |
-        ACTUAL=$(uname -m)
-        if [ "$ACTUAL" != "$EXPECTED" ]; then
-          echo "::error::Runner is $ACTUAL, expected $EXPECTED for ${{ matrix.artifact }}"
-          exit 1
-        fi
-
-    - name: Setup Odin
-      uses: ./.github/actions/setup-odin
-
-    # ./build_it build is the one release build: on macOS it passes
-    # -minimum-os-version from .github/macos-minimum-version (Odin otherwise
-    # stamps the runner's macOS, and the binary refuses to start on older Macs).
-    - name: Build optimized release
-      run: |
-        odin build build -out:build_it
-        ./build_it build
-        chmod +x bin/wayu
-
-    - name: Check macOS minimum version
-      if: runner.os == 'macOS'
-      run: .github/scripts/check-macos-minos.sh bin/wayu
-
-    - name: Verify build matches release version
-      env:
-        VERSION: ${{ needs.bump.outputs.version }}
-      run: |
-        OUT=$(./bin/wayu --version)
-        echo "$OUT"
-        case "$OUT" in
-          *"${VERSION#v}"*) ;;
-          *) echo "::error::binary reports '$OUT', expected $VERSION"; exit 1 ;;
-        esac
-
-    # Reproducible archive: same binary → same tarball bytes. One entry,
-    # mode 0755, owner 0:0 without names, mtime = the release commit's time
-    # (SOURCE_DATE_EPOCH), ustar (no pax atime/ctime), no macOS xattrs,
-    # gzip -n (no name/timestamp in the gzip header).
-    - name: Package and compute SHA256
-      env:
-        ARTIFACT: ${{ matrix.artifact }}
-      run: |
-        set -euo pipefail
-        SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
-        export SOURCE_DATE_EPOCH
-        stage="$RUNNER_TEMP/package"
-        rm -rf "$stage"
-        mkdir -p "$stage"
-        cp bin/wayu "$stage/wayu"
-        chmod 0755 "$stage/wayu"
-        if [[ "$RUNNER_OS" == "macOS" ]]; then
-          # bsdtar has no --mtime/--sort: set the file's mtime instead.
-          TZ=UTC touch -t "$(date -u -r "$SOURCE_DATE_EPOCH" +%Y%m%d%H%M.%S)" "$stage/wayu"
-          tar --format ustar --uid 0 --gid 0 --numeric-owner \
-            --no-mac-metadata --no-xattrs --no-acls --no-fflags \
-            -cf - -C "$stage" wayu | gzip -n -9 > "$ARTIFACT.tar.gz"
-          shasum -a 256 "$ARTIFACT.tar.gz" > "$ARTIFACT.sha256"
-        else
-          tar --format=ustar --sort=name --mtime="@$SOURCE_DATE_EPOCH" \
-            --owner=0 --group=0 --numeric-owner \
-            -cf - -C "$stage" wayu | gzip -n -9 > "$ARTIFACT.tar.gz"
-          sha256sum "$ARTIFACT.tar.gz" > "$ARTIFACT.sha256"
-        fi
-        tar -tvzf "$ARTIFACT.tar.gz"
-        # "<hash>  <file>": `shasum -a 256 -c` / `sha256sum -c` accept it.
-        echo "SHA256=$(awk '{print $1}' "$ARTIFACT.sha256")"
-
-    - name: Upload artifacts
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-      with:
-        name: ${{ matrix.artifact }}
-        path: |
-          ${{ matrix.artifact }}.tar.gz
-          ${{ matrix.artifact }}.sha256
+    with:
+      ref: ${{ needs.bump.outputs.version }}
+      version: ${{ needs.bump.outputs.version }}
 
   # Signed SLSA build provenance for each archive and the binary inside it:
   # `gh attestation verify <file> --repo dvrd/wayu` (see SECURITY.md).
@@ -393,7 +303,7 @@ jobs:
       attestations: write   # store the build provenance attestation
     strategy:
       matrix:
-        artifact: [wayu-linux-amd64, wayu-macos-arm64]
+        artifact: [wayu-linux-amd64, wayu-linux-arm64, wayu-macos-arm64, wayu-macos-amd64]
 
     steps:
     - name: Download build artifact
@@ -433,10 +343,18 @@ jobs:
       contents: write
 
     steps:
-    - name: Download all artifacts
+    # The release's own artifacts only (CI's, from the same run, are ci-*).
+    - name: Download release artifacts
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
+        pattern: wayu-*
         path: artifacts
+
+    - name: Download release notes
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: release-notes
+        path: artifacts/release-notes
 
     - name: Create Release
       # Updates an existing release at the same tag, so re-runs are idempotent.
@@ -452,8 +370,12 @@ jobs:
         files: |
           artifacts/wayu-linux-amd64/wayu-linux-amd64.tar.gz
           artifacts/wayu-linux-amd64/wayu-linux-amd64.sha256
+          artifacts/wayu-linux-arm64/wayu-linux-arm64.tar.gz
+          artifacts/wayu-linux-arm64/wayu-linux-arm64.sha256
           artifacts/wayu-macos-arm64/wayu-macos-arm64.tar.gz
           artifacts/wayu-macos-arm64/wayu-macos-arm64.sha256
+          artifacts/wayu-macos-amd64/wayu-macos-amd64.tar.gz
+          artifacts/wayu-macos-amd64/wayu-macos-amd64.sha256
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -479,6 +401,7 @@ jobs:
     - name: Download release artifacts
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
+        pattern: wayu-*
         path: artifacts
 
     - name: Checkout tap repo
@@ -494,8 +417,7 @@ jobs:
         VERSION: ${{ needs.bump.outputs.version }}
       run: |
         set -euo pipefail
-        MACOS_ARM64_SHA=$(awk '{print $1}' artifacts/wayu-macos-arm64/wayu-macos-arm64.sha256)
-        LINUX_AMD64_SHA=$(awk '{print $1}' artifacts/wayu-linux-amd64/wayu-linux-amd64.sha256)
+        sha() { awk '{print $1}' "artifacts/$1/$1.sha256"; }
 
         # Never downgrade brew users (e.g. a re-run of an old release).
         FORMULA=tap/Formula/wayu.rb
@@ -510,7 +432,9 @@ jobs:
         fi
 
         mkdir -p tap/Formula
-        wayu/.github/scripts/homebrew-formula.sh "$VERSION" "$MACOS_ARM64_SHA" "$LINUX_AMD64_SHA" > "$FORMULA.new"
+        wayu/.github/scripts/homebrew-formula.sh "$VERSION" \
+          "$(sha wayu-macos-arm64)" "$(sha wayu-macos-amd64)" \
+          "$(sha wayu-linux-amd64)" "$(sha wayu-linux-arm64)" > "$FORMULA.new"
         ruby -c "$FORMULA.new"
         if grep -n '\.config/wayu/init' "$FORMULA.new"; then
           echo "::error::Formula caveats name ~/.config/wayu/init.*; use the data dir"

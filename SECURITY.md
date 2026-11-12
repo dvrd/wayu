@@ -48,4 +48,5 @@ carry a GitHub build provenance attestation. Verify an archive with the
 
 ```bash
 gh attestation verify wayu-macos-arm64.tar.gz --repo dvrd/wayu
+# wayu-macos-amd64, wayu-linux-amd64, wayu-linux-arm64 likewise
 ```

@@ -34,15 +34,15 @@ brew install wayu
 wayu init
 ```
 
-Prebuilt for macOS arm64 (macOS 15 Sequoia or later) and Linux x86_64; on
-other platforms build from source.
+Prebuilt for macOS 15 Sequoia or later (Apple silicon and Intel) and Linux
+(x86_64 and arm64, glibc); on other platforms build from source.
 
 **Tested with** (anything else may work but isn't tested):
 
 | | Versions |
 |---|---|
-| macOS | 15 (CI), 26, 27 |
-| Linux | Ubuntu 24.04 (CI) |
+| macOS | 15 (CI; Intel: CI smoke test), 26, 27 |
+| Linux | Ubuntu 24.04 (CI; arm64: CI smoke test) |
 | zsh | 5.9 |
 | bash | 3.2 (macOS `/bin/bash`), 5.x |
 | fish | 4.x |
@@ -589,10 +589,13 @@ Releases are **automatic**. Every push to `main` runs
 3. Bumps `VERSION` in `src/main.odin`, regenerates `CHANGELOG.md`, renames
    the `## Unreleased` section of `docs/UPGRADING.md` to the version, commits
    `chore: release vX.Y.Z`, and tags it.
-4. Builds the release binaries (macOS arm64, Linux x86_64), publishes the
-   GitHub release, and regenerates the Homebrew tap formula
-   (`dvrd/homebrew-wayu`). Other platforms (macOS Intel, Linux arm64) have no
-   prebuilt binary; brew refuses them with an architecture error.
+4. Builds the release binaries
+   ([`release-build.yml`](.github/workflows/release-build.yml): macOS arm64
+   and x86_64, Linux x86_64 and arm64; macOS x86_64 is cross-compiled on
+   arm64, since Odin ships no macOS x86_64 toolchain), smoke-tests each on
+   its own platform, attests them, publishes the GitHub release, and
+   regenerates the Homebrew tap formula (`dvrd/homebrew-wayu`). CI runs the
+   same build and smoke test on every push to `develop` and every PR.
 
 The workflow never deletes or moves an existing tag or release: if the target
 version's tag already exists elsewhere it fails and prints the manual fix.
