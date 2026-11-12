@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Behavior changes per release: [docs/UPGRADING.md](docs/UPGRADING.md).
 
+## [8.0.0] - 2026-11-12
+
+### ⚠ Upgrade notes
+
+- **readiness**: Plugin add exits 66 when a registered checkout is missing;
+run wayu plugin restore to reconstruct it. Existing checkout edits are kept.
+- **runtime**: Commands that close stdout and stderr before their deadline now time out instead of waiting indefinitely; captured diagnostics are capped at exactly 64 KiB. Relative symlink writes now resolve beside the link.
+- **runtime**: Clipboard helpers time out after five seconds and report broken-pipe failures instead of terminating wayu. Incomplete subprocess input is now a failure even when the child exits zero.
+- **clipboard**: Clipboard-copy completion no longer waits for an owner daemon to close inherited output streams.
+- **runtime**: Clipboard helpers that fork before reading stdin now receive the complete input instead of a truncated transfer being reported as failure.
+
+### Added
+
+- **secrets**: Age keys and the X25519 recipient stanza
+- **secrets**: Multi-machine secrets (experimental)
+- **release**: MacOS x86_64 and Linux arm64 binaries
+- **install**: Curl | sh install script
+- **readiness**: Restore portable setups and gate releases
+
+### Fixed
+
+- **build**: Drop unused fmt import in bld/cmd.odin
+- **secrets**: Name the upgrade when secrets.json is from a newer wayu
+- **secrets**: Wipe identity bits in bech32 temporaries
+- **secrets**: Pin what each machine verified; no TOFU; working rm guidance
+- **runtime**: Enforce subprocess deadlines through exit
+- **runtime**: Stream child input under the deadline
+- **clipboard**: Preserve background owner startup
+- **runtime**: Finish input before reaping the child
 ## [7.0.0] - 2026-11-11
 
 ### ⚠ Upgrade notes
@@ -1407,6 +1436,7 @@ Major version bump to 2.0.0 due to multi-shell architecture changes.
 ### Changed
 
 - Clean up code and improve error handling
+[8.0.0]: https://github.com/dvrd/wayu/releases/tag/v8.0.0
 [7.0.0]: https://github.com/dvrd/wayu/releases/tag/v7.0.0
 [6.0.0]: https://github.com/dvrd/wayu/releases/tag/v6.0.0
 [5.0.0]: https://github.com/dvrd/wayu/releases/tag/v5.0.0

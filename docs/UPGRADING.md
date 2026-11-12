@@ -6,7 +6,7 @@ section after its version and publishes it as the GitHub release's
 `BREAKING CHANGE:` footers. 4.4.3 and 4.4.4 shipped behavior changes as patch
 releases, so they are listed here too.
 
-## Unreleased
+## 8.0.0
 
 **Failure campaign and candidate acceptance**
 
