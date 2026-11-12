@@ -49,6 +49,18 @@ class ClipboardTest
         status.success? && (out + err).include?('URL copied to clipboard') &&
         File.binread("#{@tmp_home}/copied") == url
       puts 'PASS clipboard: the complete large URL reaches the helper'
+
+      # Clipboard owners such as xclip can fork a background daemon. Its
+      # inherited output must not hold a capture pipe open in wayu.
+      %w[pbcopy xclip xsel].each do |name|
+        File.write("#{fake_bin}/#{name}", "#!/bin/sh\ncat > \"$WAYU_CLIP_FIXTURE\"\nsleep 4 &\n")
+      end
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      out, err, status = Open3.capture3(env, @wayu_bin, 'plugin', 'get', 'demo')
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      abort "background clipboard owner delayed wayu: #{elapsed}s" unless
+        status.success? && elapsed < 3 && (out + err).include?('URL copied to clipboard')
+      puts 'PASS clipboard: a background owner does not delay foreground completion'
     ensure
       teardown_test_env
     end

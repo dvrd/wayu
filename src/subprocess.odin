@@ -293,7 +293,7 @@ capture_command :: proc(args: []string) -> string {
 // Clipboard helpers are best-effort: bound their lifetime and share the
 // runner's nonblocking input, partial-write and SIGPIPE handling.
 run_command_with_stdin :: proc(args: []string, input: string) -> bool {
-	r := run_command_timeout(args, 5_000, stdin_data = input)
+	r := run_command_timeout(args, 5_000, stdin_data = input, capture_output = false)
 	defer command_result_destroy(&r)
 	return r.ok
 }
@@ -469,12 +469,16 @@ SUBPROCESS_CANCEL_POLL_MS :: 100
 // cwd, when non-empty, is the child's working directory (it exits 127 when
 // it cannot change to it): compilers such as bun, deno or go read config
 // files from their cwd, which must not be wherever wayu was started.
+// capture_output = false discards stdout/stderr. Clipboard programs may
+// fork an owner daemon: its inherited output must not keep capture pipes
+// open after the foreground command exits.
 run_command_timeout :: proc(
 	args: []string,
 	timeout_ms: int,
 	env_defaults: []Env_Default = nil,
 	stdin_data := "",
 	cwd := "",
+	capture_output := true,
 ) -> (
 	result: Command_Result,
 ) {
@@ -579,6 +583,13 @@ run_command_timeout :: proc(
 		posix.dup2(err_pipe[1], posix.FD(2))
 		posix.close(out_pipe[1])
 		posix.close(err_pipe[1])
+		if !capture_output {
+			devnull := posix.open("/dev/null", {.WRONLY})
+			if devnull < 0 do posix._exit(127)
+			posix.dup2(devnull, posix.FD(1))
+			posix.dup2(devnull, posix.FD(2))
+			posix.close(devnull)
+		}
 		if in_pipe[0] >= 0 {
 			posix.close(in_pipe[1])
 			posix.dup2(in_pipe[0], posix.FD(0))
