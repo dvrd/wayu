@@ -80,6 +80,10 @@ Action :: enum {
 	IMPORT, // script import
 	BUILD, // script build
 	RUN, // secrets run
+	IDENTITY, // secrets identity
+	RECIPIENT, // secrets recipient list|add|rm|rename
+	ADOPT, // secrets adopt
+	RECOVERY, // secrets recovery add|rm|unlock
 	FPATH, // completions fpath
 	HELP,
 	UNKNOWN,
@@ -296,7 +300,7 @@ main :: proc() {
 
 	switch parsed.command {
 	case .PATH:
-		handle_path_command(parsed.action, parsed.args)
+		handle_path_command(parsed.action, parsed.args, parsed.path_portable)
 	case .ALIAS:
 		handle_alias_command(parsed.action, parsed.args)
 	case .CONSTANTS:

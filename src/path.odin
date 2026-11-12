@@ -24,7 +24,11 @@ PathOpResult :: enum {
 }
 
 // Main handler for PATH commands (entries live in <data>/entries.json).
-handle_path_command :: proc(action: Action, args: []string) {
+handle_path_command :: proc(action: Action, args: []string, portable := false) {
+	if portable && (action != .ADD || len(args) != 1) {
+		print_error_simple("Usage: wayu path add [name=]<path> --portable")
+		wayu_exit(EXIT_USAGE)
+	}
 	// Mutations hold the config lock across read → write → regenerate so
 	// concurrent wayu runs neither lose entries nor publish stale init files.
 	// add/remove take it themselves, around the write only: their hooks run
@@ -72,6 +76,10 @@ handle_path_command :: proc(action: Action, args: []string) {
 			delete(check_err)
 			wayu_exit(check_code)
 		}
+		if portable && path_portable_value(expanded) == "" {
+			print_error_simple("--portable requires a directory inside HOME")
+			wayu_exit(EXIT_DATAERR)
+		}
 		if !check_wayu_initialized() {
 			wayu_exit(EXIT_CONFIG)
 		}
@@ -81,7 +89,7 @@ handle_path_command :: proc(action: Action, args: []string) {
 			hook_pre_path_add(expanded)
 		}
 		config_lock_acquire_or_exit()
-		res := path_add_result(raw_path, name_hint)
+		res := path_add_result(raw_path, name_hint, portable)
 		// NOOP: already present (warning printed). Dry-run: preview printed.
 		// Neither changed anything, so no regen, no success line, no hook.
 		changed := res == .OK && !wayu.dry_run
@@ -918,7 +926,11 @@ path_entry_lookup :: proc(target: string) -> (path: string, found: bool) {
 // order is PATH precedence (first wins), so existing entries never move and a
 // new directory never shadows one the user already has. NOOP when the dir
 // (resolved) is already there.
-path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOpResult {
+path_add_result :: proc(
+	raw_path: string,
+	name_hint: string = "",
+	portable := false,
+) -> PathOpResult {
 	// Freeze the intended path at every write boundary (CLI, TUI, templates)
 	// before duplicate detection or key generation.
 	path := expand_env_vars(raw_path, require_resolved = true)
@@ -926,6 +938,14 @@ path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOpResul
 	if len(path) == 0 {
 		print_error("Could not resolve path to an absolute path: %s", raw_path)
 		return .INVALID
+	}
+	stored_path := path
+	if portable {
+		stored_path = path_portable_value(path)
+		if stored_path == "" {
+			print_error("--portable requires a directory inside HOME")
+			return .INVALID
+		}
 	}
 
 	if !config_lock_acquire() {
@@ -976,16 +996,36 @@ path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOpResul
 		if !print_quiet {
 			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 			fmt.println()
-			fmt.printfln("%sWould add PATH entry: %s = %q%s", BRIGHT_CYAN, new_key, path, RESET)
+			fmt.printfln(
+				"%sWould add PATH entry: %s = %q%s",
+				BRIGHT_CYAN,
+				new_key,
+				stored_path,
+				RESET,
+			)
 		}
 		return .OK
 	}
 
-	append(&store.paths, StorePath{key = new_key, dir = strings.clone(path)}) // the store owns both
+	append(&store.paths, StorePath{key = new_key, dir = strings.clone(stored_path)}) // the store owns both
 	if !entries_save(&store) {
 		return .IO_ERROR
 	}
 	return .OK
+}
+
+// Explicit opt-in portability: only the HOME directory boundary is replaced.
+// Other absolute paths keep their meaning unless the caller asks otherwise.
+path_portable_value :: proc(path: string) -> string {
+	home := expand_env_vars("$HOME", require_resolved = true)
+	defer delete(home)
+	if home == "" do return ""
+	if path == home do return "$HOME"
+	prefix := fmt.tprintf("%s/", strings.trim_right(home, "/"))
+	if strings.has_prefix(path, prefix) {
+		return fmt.tprintf("$HOME/%s", path[len(prefix):])
+	}
+	return ""
 }
 
 // Point the entry matching `target` (key, stored dir, or resolved dir — same

@@ -30,6 +30,19 @@ such change is listed under "⚠ Upgrade notes" in the release and in
 - Hidden or internal commands (`completions names`, `--test`/`--snapshot`
   component modes).
 
+## Experimental
+
+Marked "(experimental)" in [cli.md](cli.md), [config-reference.md](config-reference.md)
+and `wayu help`; the first use prints a one-time notice on stderr.
+
+- **Multi-machine secrets**: `wayu secrets identity`, `recipient`, `adopt`,
+  `recovery`, and the `secrets.json` version 2 format they write. Their
+  commands, flags, output, `--json` shape and the version 2 format may
+  change in a minor release. A change to the format still migrates
+  automatically (backup, verify, one-time notice): no manual step. Version 1
+  `secrets.json` (one machine) is stable as above and is never rewritten
+  unless you opt in with `recipient add` / `recovery add`.
+
 ## Deprecation
 
 A command, action, flag or config key that is going away:
@@ -41,13 +54,19 @@ A command, action, flag or config key that is going away:
 
 ## Supported platforms
 
+[Validation before a release](validation.md) describes the automated gates,
+failure campaign, repeated fresh-shell trials and evidence retained by CI.
+Those checks support the contracts above; they are not a guarantee that every
+possible system failure has been tested. Multi-day observation and independent
+review of experimental secrets remain separate records.
+
 Tested on every release (CI) or by the maintainer; see the README's
 "Tested with" table. Anything else may work but is not supported.
 
 | | Versions |
 |---|---|
-| macOS | 15 (CI), 26, 27 |
-| Linux | Ubuntu 24.04 (CI) |
+| macOS | 15 (CI; Intel: CI smoke test), 26, 27 |
+| Linux | Ubuntu 24.04 (CI; arm64: CI smoke test) |
 | zsh | 5.9 |
 | bash | 3.2 (macOS `/bin/bash`), 5.x |
 | fish | 4.x |

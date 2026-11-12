@@ -5,15 +5,18 @@ body:
   - type: markdown
     attributes:
       value: |
-        Security problem? Don't file it here — see [SECURITY.md](https://github.com/dvrd/wayu/blob/main/SECURITY.md).
-        Please remove secrets (API keys, tokens) from any config or output you paste.
+        Security problem? Don't file it here: [report it privately](https://github.com/dvrd/wayu/security/advisories/new) (see [SECURITY.md](https://github.com/dvrd/wayu/blob/main/SECURITY.md)).
+        Question or idea rather than a bug? Use [Discussions](https://github.com/dvrd/wayu/discussions).
+
+        > [!WARNING]
+        > **Remove secrets and personal paths before pasting anything.** `wayu doctor` never prints secret values, but it does print file paths (your home directory, user name) and PATH entries. Config files, `entries.json`, `env` output and shell traces can contain API keys and tokens: replace them with `<redacted>`.
 
   - type: input
     id: version
     attributes:
       label: wayu version
       description: Output of `wayu --version`
-      placeholder: wayu v5.0.0
+      placeholder: wayu v7.0.0
     validations:
       required: true
 
@@ -30,10 +33,20 @@ body:
       required: true
 
   - type: input
+    id: shell-version
+    attributes:
+      label: Shell version
+      description: Output of `zsh --version`, `bash --version | head -1` or `fish --version`
+      placeholder: zsh 5.9 (arm64-apple-darwin24.0)
+    validations:
+      required: true
+
+  - type: input
     id: platform
     attributes:
-      label: OS and install method
-      placeholder: macOS 15 arm64, Homebrew
+      label: OS, version and install method
+      description: For example `sw_vers -productVersion` on macOS, `/etc/os-release` on Linux; Homebrew, release archive or built from source.
+      placeholder: macOS 15.5 arm64, Homebrew
     validations:
       required: true
 
@@ -56,9 +69,9 @@ body:
     id: reproduce
     attributes:
       label: Steps to reproduce
-      description: Ideally starting from a clean `HOME=$(mktemp -d) wayu init`.
+      description: Ideally starting from a throwaway HOME, so your real config is not involved.
       placeholder: |
-        1. HOME=$(mktemp -d) wayu init
+        1. export HOME=$(mktemp -d) && wayu init
         2. wayu path add ...
         3. ...
     validations:
@@ -68,5 +81,16 @@ body:
     id: doctor
     attributes:
       label: wayu doctor output
-      description: Output of `wayu doctor` (optional, but often helps).
+      description: |
+        Output of `wayu doctor --no-color`. It never prints secret values, but it does print paths: replace your home directory and user name if you'd rather not share them.
       render: text
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: redacted
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed API keys, tokens and other secrets (and any paths I don't want public) from everything above.
+          required: true

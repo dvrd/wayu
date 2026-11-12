@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "verified_at": "2026-11-12",
+  "tools": {
+    "sheldon": {
+      "darwin-arm64": {
+        "tag": "0.8.5",
+        "url": "https://github.com/rossmacarthur/sheldon/releases/download/0.8.5/sheldon-0.8.5-aarch64-apple-darwin.tar.gz",
+        "sha256": "6e47f10a25f165b095eb2bde1ab617d4d34ad6f3ff2ca984167ca94fadd52730",
+        "format": "tar.gz",
+        "executable": "sheldon"
+      },
+      "linux-amd64": {
+        "tag": "0.8.5",
+        "url": "https://github.com/rossmacarthur/sheldon/releases/download/0.8.5/sheldon-0.8.5-x86_64-unknown-linux-musl.tar.gz",
+        "sha256": "80aa0be617072c278d67fd6c5fbce4903d3801d78b6abf8f058f0648d2242c78",
+        "format": "tar.gz",
+        "executable": "sheldon"
+      }
+    },
+    "mise": {
+      "darwin-arm64": {
+        "tag": "v2026.11.7",
+        "url": "https://github.com/jdx/mise/releases/download/v2026.11.7/mise-v2026.11.7-macos-arm64.tar.gz",
+        "sha256": "92f1b9f68b6031a9f77938a0ff8dfd7a77fe9cd918c5b09d0ed434f06ebbd3f2",
+        "format": "tar.gz",
+        "executable": "mise"
+      },
+      "linux-amd64": {
+        "tag": "v2026.11.7",
+        "url": "https://github.com/jdx/mise/releases/download/v2026.11.7/mise-v2026.11.7-linux-x64.tar.gz",
+        "sha256": "3198a5ed5716ca8c17ecfc54521e2769d6cacbf2d13f24f0c2f9706620ec0024",
+        "format": "tar.gz",
+        "executable": "mise"
+      }
+    },
+    "direnv": {
+      "darwin-arm64": {
+        "tag": "v2.38.2",
+        "url": "https://github.com/direnv/direnv/releases/download/v2.38.2/direnv.darwin-arm64",
+        "sha256": "30443c413e74614a53deb90234e9c97661b1041a0f4aca601ceb482a578ae8b6",
+        "format": "raw",
+        "executable": "direnv"
+      },
+      "linux-amd64": {
+        "tag": "v2.38.2",
+        "url": "https://github.com/direnv/direnv/releases/download/v2.38.2/direnv.linux-amd64",
+        "sha256": "148820a187930d36ca6a204504e5cdb30d8396cd1a97e64c3b3f10d793c11247",
+        "format": "raw",
+        "executable": "direnv"
+      }
+    },
+    "chezmoi": {
+      "darwin-arm64": {
+        "tag": "v2.74.1",
+        "url": "https://github.com/twpayne/chezmoi/releases/download/v2.74.1/chezmoi_2.74.1_darwin_arm64.tar.gz",
+        "sha256": "fbc7b86c7b36eb0448e2a99a616b6d32f022d1f3895076ad44f4c5d65a77fe60",
+        "format": "tar.gz",
+        "executable": "chezmoi"
+      },
+      "linux-amd64": {
+        "tag": "v2.74.1",
+        "url": "https://github.com/twpayne/chezmoi/releases/download/v2.74.1/chezmoi_2.74.1_linux_amd64.tar.gz",
+        "sha256": "ae01c66b1a6dbf563667c63fbbd9986b3cfa3c98dd266ddee732f63e8af2e9d1",
+        "format": "tar.gz",
+        "executable": "chezmoi"
+      }
+    },
+    "starship": {
+      "darwin-arm64": {
+        "tag": "v1.27.0",
+        "url": "https://github.com/starship/starship/releases/download/v1.27.0/starship-aarch64-apple-darwin.tar.gz",
+        "sha256": "5362da8cb2928f98f3ce0ffda697cf0f8de70081db000dae316d6d3a404f6cf0",
+        "format": "tar.gz",
+        "executable": "starship"
+      },
+      "linux-amd64": {
+        "tag": "v1.27.0",
+        "url": "https://github.com/starship/starship/releases/download/v1.27.0/starship-x86_64-unknown-linux-musl.tar.gz",
+        "sha256": "10c8eb4cb3b761d9bf59ea828444c2dab36c900b7d69a69e08814b286969df89",
+        "format": "tar.gz",
+        "executable": "starship"
+      }
+    }
+  },
+  "fisher": {
+    "commit": "791da644d33d392216f6b1a9b5fc1e470db6d7f2",
+    "repository": "https://github.com/jorgebucaran/fisher.git",
+    "source_path": "functions/fisher.fish"
+  },
+  "sources": {
+    "oh-my-zsh": {
+      "url": "https://github.com/ohmyzsh/ohmyzsh.git",
+      "commit": "cca3bdfbef8c52ef8939ce7911ff68852b949daa"
+    },
+    "antidote": {
+      "url": "https://github.com/mattmc3/antidote.git",
+      "commit": "e6612794db27e6fae70eddbcff08201a6cba0748"
+    },
+    "fisher": {
+      "url": "https://github.com/jorgebucaran/fisher.git",
+      "commit": "791da644d33d392216f6b1a9b5fc1e470db6d7f2"
+    }
+  }
+}

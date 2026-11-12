@@ -25,6 +25,10 @@ normal version with the advisory published once users can upgrade.
 
 ## Scope
 
+The experimental multi-machine protocol has an
+[independent review brief](docs/security-review.md). Independent sign-off is
+pending; its internal tests and evidence tooling are not an external audit.
+
 wayu writes shell code that every new shell sources, so these are in scope:
 
 - values from `wayu.toml` or CLI arguments that escape their quoting in the
@@ -48,4 +52,5 @@ carry a GitHub build provenance attestation. Verify an archive with the
 
 ```bash
 gh attestation verify wayu-macos-arm64.tar.gz --repo dvrd/wayu
+# wayu-macos-amd64, wayu-linux-amd64, wayu-linux-arm64 likewise
 ```

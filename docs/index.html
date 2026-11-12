@@ -30,7 +30,7 @@
     "description": "A shell configuration CLI: PATH entries, aliases, environment variables, encrypted secrets, scripts and plugins for zsh, bash and fish, compiled into one init file.",
     "url": "https://wayu.dvrd.io/",
     "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "macOS 15 or later (arm64), Linux (x86_64)",
+    "operatingSystem": "macOS 15 or later (arm64, x86_64), Linux (x86_64, arm64)",
     "downloadUrl": "https://github.com/dvrd/wayu/releases",
     "installUrl": "https://wayu.dvrd.io/docs/quickstart/",
     "license": "https://opensource.org/licenses/MIT",
@@ -152,7 +152,7 @@
     p { margin: 0; text-wrap: pretty; }
     a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
     a:hover { text-decoration-thickness: 2px; }
-    code, pre, kbd { font-family: var(--font-mono); font-size: 0.86em; }
+    code, pre { font-family: var(--font-mono); font-size: 0.86em; }
     :not(pre) > code { background: var(--code-bg); color: var(--ink); padding: 0.1em 0.35em; border-radius: 4px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
     :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
     ::selection { background: var(--accent-fill); color: var(--on-accent); }
@@ -161,7 +161,6 @@
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
     .skip { position: absolute; left: 12px; top: -60px; z-index: 100; background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: var(--r-sm); text-decoration: none; transition: transform 0.2s var(--ease-out); }
     .skip:focus { transform: translateY(72px); }
-    .num { font-variant-numeric: tabular-nums; }
 
     /* The brand: a red dot inside two soft halo rings (favicon.svg). */
     .dot { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-fill); box-shadow: 0 0 0 2.5px var(--halo-1), 0 0 0 5px var(--halo-2); }
@@ -205,9 +204,6 @@
     .btn:active { transform: scale(0.97); }
     .btn-primary { background: var(--accent-fill); color: var(--on-accent); box-shadow: 0 1px 0 rgba(255,255,255,0.18) inset, 0 6px 18px -8px rgba(228, 0, 80, 0.7); }
     .btn-primary:hover { background: #cc0047; }
-    .btn-ghost { color: var(--ink); background: transparent; box-shadow: inset 0 0 0 1px var(--line-2); }
-    .btn-ghost:hover { background: var(--bg-2); }
-    .btn svg { width: 16px; height: 16px; flex: none; }
 
     /* ── Hero ───────────────────────────────────────────────────────────── */
     .hero { position: relative; padding: clamp(40px, 6vw, 80px) 0 clamp(56px, 7vw, 88px); text-align: center; isolation: isolate; overflow-x: clip; }
@@ -363,12 +359,11 @@
     .term pre { margin: 0; padding: 16px 18px 20px; font: 400 0.8rem/1.62 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; min-height: calc(22 * 1.62em + 36px); }
     @media (max-width: 520px) { .term pre { font-size: 0.72rem; padding: 14px 14px 16px; min-height: calc(28 * 1.62em + 30px); } }
     .t-dir { color: var(--term-dir); font-weight: 600; } .t-git { color: var(--term-git); font-weight: 600; } .t-arr { color: var(--term-arrow); }
-    .t-ok { color: var(--term-ok); } .t-dim { color: var(--term-dim); } .t-key { color: var(--term-key); } .t-pink { color: var(--term-pink); } .t-add { color: var(--term-arrow); } .t-del { color: var(--term-red); }
+    .t-ok { color: var(--term-ok); } .t-dim { color: var(--term-dim); } .t-pink { color: var(--term-pink); } .t-del { color: var(--term-red); }
     .t-tbl { display: inline-block; vertical-align: top; line-height: 1.2; white-space: pre; max-width: 100%; overflow-x: auto; overflow-wrap: normal; scrollbar-width: none; }
     .t-caret { display: inline-block; width: 0.6em; height: 1.15em; margin-bottom: -0.2em; background: #f5e0dc; }
     @media (prefers-reduced-motion: no-preference) { .t-caret.blink { animation: blink 1.1s steps(1) infinite; } }
     @keyframes blink { 50% { opacity: 0; } }
-    .replay-foot { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 0.85rem; color: var(--ink-3); }
 
     /* Demo recording */
     .demo { margin-top: 56px; display: grid; gap: 22px; grid-template-columns: minmax(0, 1fr); align-items: center; }
@@ -494,7 +489,7 @@
     .foot-bottom { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; font-size: 0.82rem; }
     .foot-bottom a { display: inline-flex; align-items: center; min-height: 32px; color: inherit; }
     /* Links inside running text: a 24px+ hit area without changing the line. */
-    .demo p a, .bench-cap a, .cmp-note a, .install-note a, .foot-brand a, .faq a, .sec-head a { display: inline-block; padding: 3px 0; }
+    .demo p a, .bench-cap a, .foot-brand a, .faq a, .sec-head a { display: inline-block; padding: 3px 0; }
 
     /* ── Motion ─────────────────────────────────────────────────────────── */
     @media (prefers-reduced-motion: no-preference) {
@@ -552,6 +547,7 @@
         <div class="install" data-install>
           <div class="tabs" role="tablist" aria-label="Install method">
             <button class="tab" role="tab" type="button" id="hi-brew-tab" aria-controls="hi-brew" aria-selected="true">Homebrew</button>
+            <button class="tab" role="tab" type="button" id="hi-sh-tab" aria-controls="hi-sh" aria-selected="false" tabindex="-1">Script</button>
             <button class="tab" role="tab" type="button" id="hi-src-tab" aria-controls="hi-src" aria-selected="false" tabindex="-1">From source</button>
           </div>
           <div class="install-panel" role="tabpanel" id="hi-brew" aria-labelledby="hi-brew-tab">
@@ -559,6 +555,12 @@
 <span class="p">$ </span>brew install wayu
 <span class="p">$ </span>wayu init</pre>
             <button class="icon-btn copy-btn" type="button" data-copy="brew tap dvrd/wayu&#10;brew install wayu&#10;wayu init" aria-label="Copy Homebrew install commands"></button>
+          </div>
+          <div class="install-panel" role="tabpanel" id="hi-sh" aria-labelledby="hi-sh-tab" hidden>
+<pre><span class="p">$ </span>curl -fsSL https://wayu.dvrd.io/install.sh | sh
+<span class="p">$ </span>wayu init
+<span class="cm"># checks the SHA-256, installs to ~/.local/bin</span></pre>
+            <button class="icon-btn copy-btn" type="button" data-copy="curl -fsSL https://wayu.dvrd.io/install.sh | sh&#10;wayu init" aria-label="Copy install script commands"></button>
           </div>
           <div class="install-panel" role="tabpanel" id="hi-src" aria-labelledby="hi-src-tab" hidden>
 <pre><span class="p">$ </span>git clone https://github.com/dvrd/wayu &amp;&amp; cd wayu
@@ -576,9 +578,10 @@
         <ul class="trust" aria-label="Project facts">
           <li><a href="https://github.com/dvrd/wayu/blob/main/LICENSE">MIT licensed</a></li>
           <li>zsh · bash · fish</li>
-          <li>One binary, no runtime dependencies</li>
-          <li><a href="https://github.com/dvrd/wayu/tree/main/tests" data-gen="unit-tests">680+ unit tests</a> + end-to-end suites</li>
+          <li>Standalone CLI · Git for plugins</li>
+          <li><a href="https://github.com/dvrd/wayu/tree/main/tests" data-gen="unit-tests">700+ unit tests</a> + end-to-end suites</li>
           <li><a href="docs/stability/">Stable from 7.0 on</a></li>
+          <li><a href="docs/validation/">Failure and upgrade checks</a></li>
         </ul>
 
         <!-- ── Command → generated code (real output: wayu build in a throwaway HOME, home dir shown as /Users/ana) ── -->
@@ -704,7 +707,7 @@ _wayu_prompt_full() {
             <summary>Show the numbers as a table, with the versions measured</summary>
             <div id="bench-table"></div>
           </details>
-          <noscript><p class="bench-cap">Time until the first command runs (zsh-bench, median of 32, Apple M1 Max): zsh, no config 19.9 ms; wayu 58.9 ms; hand-written (compinit -C) 65.2 ms; hand-written .zshrc 77.3 ms; antidote 86.8 ms; oh-my-zsh 105.0 ms; zinit 111.1 ms.</p></noscript>
+          <noscript><p class="bench-cap">Recorded macOS arm64 run, 2026-11-12, source 67a4d1a; median of 32: wayu 75.9 ms, hand-written 83.8 ms, antidote 102.7 ms, oh-my-zsh 133.2 ms, zinit 122.8 ms, Sheldon dynamic 102.9 ms, Sheldon static 94.5 ms. <a href="docs/benchmarks/">Raw samples and limits</a>.</p></noscript>
         </div>
       </div>
     </section>
@@ -712,111 +715,124 @@ _wayu_prompt_full() {
     <!-- BENCH DATA: from tests/benchmark/compare.sh -->
     <script type="application/json" id="bench-data">
 {
-  "machine": "Apple M1 Max, macOS 27.2, zsh 5.9",
-  "method": "romkatv/zsh-bench in a pty, interactive login zsh, warm caches, each contender in its own throwaway HOME; value = median of 32 iterations.",
+  "machine": "GitHub Actions macos-15, arm64, zsh 5.9",
+  "method": "Recorded at source 67a4d1a; zsh-bench PTY, interactive login zsh, warmed caches, isolated homes; median of 32 samples. Separate from current candidate validation",
   "runs": 32,
-  "date": "2026-11-09",
+  "date": "2026-11-12",
   "scenarios": [
     {
       "id": "first-command",
       "tab": "Everything loaded",
       "title": "Time until the first command runs",
-      "metric": "first command lag · ms (lower is better)",
-      "note": "Same workload everywhere: compinit, zsh-autosuggestions + zsh-syntax-highlighting, 20 aliases, 10 PATH entries, 5 env vars; no prompt theme (PROMPT='%1~ %# '), all loaded before the first prompt. 'zsh, no config' is the floor (zsh + /etc/zshrc). 'hand-written (compinit -C)' skips compinit's security audit and dump freshness check.",
+      "metric": "first command lag \u00b7 ms (lower is better)",
+      "note": "Same plugin workload: compinit, zsh-autosuggestions + zsh-syntax-highlighting, 20 aliases, 10 PATH entries, 5 env vars and a minimal prompt. All three features were detected in every shared-workload sample. The no-config row is the shell floor. Sheldon dynamic and pre-generated static loaders are separate configurations.",
       "results": [
         {
           "name": "zsh, no config",
-          "value": 19.9
+          "value": 21.4
         },
         {
           "name": "wayu",
-          "value": 58.9,
+          "value": 75.9,
           "highlight": true
         },
         {
-          "name": "hand-written (compinit -C)",
-          "value": 65.2
-        },
-        {
           "name": "hand-written .zshrc",
-          "value": 77.3
+          "value": 83.8
         },
         {
           "name": "antidote",
-          "value": 86.8
+          "value": 102.7
         },
         {
           "name": "oh-my-zsh",
-          "value": 105.0
+          "value": 133.2
         },
         {
           "name": "zinit",
-          "value": 111.1
+          "value": 122.8
+        },
+        {
+          "name": "sheldon",
+          "value": 102.9
+        },
+        {
+          "name": "sheldon static loader",
+          "value": 94.5
         }
       ],
       "versions": {
-        "wayu": "6bf570c (7.0 pre-release)",
-        "oh-my-zsh": "cca3bdf",
-        "zinit": "cb49681 (v3.17.1+10)",
-        "antidote": "e661279 (v2.3.0+3)",
-        "zsh-autosuggestions": "85919cd (v0.7.1+6)",
-        "zsh-syntax-highlighting": "e6683f2 (0.8.0+8)",
-        "zsh-bench": "28b1b1b"
+        "oh-my-zsh": "cca3bdfbef8c52ef8939ce7911ff68852b949daa",
+        "zinit": "cb4968123979cf073384e93aa8066d8fd450580f",
+        "antidote": "e6612794db27e6fae70eddbcff08201a6cba0748",
+        "autosuggestions": "85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5",
+        "highlighting": "e6683f20e5c38d3e5447f45845d04ddda75d0f23",
+        "zsh-defer": "53a26e287fbbe2dcebb3aa1801546c6de32416fa",
+        "zsh-bench": "28b1b1bc888159f0a2cf50f9d29381758341aba1",
+        "sheldon": "sheldon 0.8.5 (344dfc75e 2025-07-22)",
+        "wayu": "67a4d1a1 (recorded candidate)"
       }
     },
     {
       "id": "deferred",
       "tab": "Deferred plugins",
       "title": "Time to first prompt with deferred plugin loading",
-      "metric": "first prompt lag · ms (lower is better)",
+      "metric": "first prompt lag \u00b7 ms (lower is better)",
       "note": "Same workload; plugins load after the prompt is drawn (wayu defer_plugins = true, antidote kind:defer, zinit turbo per its README, which also defers compinit; wayu and antidote run compinit before the prompt). Plugins are not active yet when the very first command runs.",
       "results": [
         {
           "name": "wayu (defer_plugins)",
-          "value": 36.4,
+          "value": 29.3,
           "highlight": true
         },
         {
           "name": "antidote (kind:defer)",
-          "value": 58.3
+          "value": 52.3
         },
         {
           "name": "zinit (turbo)",
-          "value": 61.8
+          "value": 49.5
         }
       ],
       "versions": {
-        "wayu": "6bf570c (7.0 pre-release)",
-        "zinit": "cb49681 (v3.17.1+10)",
-        "antidote": "e661279 (v2.3.0+3)",
-        "zsh-defer": "53a26e2",
-        "zsh-autosuggestions": "85919cd (v0.7.1+6)",
-        "zsh-syntax-highlighting": "e6683f2 (0.8.0+8)",
-        "zsh-bench": "28b1b1b"
+        "oh-my-zsh": "cca3bdfbef8c52ef8939ce7911ff68852b949daa",
+        "zinit": "cb4968123979cf073384e93aa8066d8fd450580f",
+        "antidote": "e6612794db27e6fae70eddbcff08201a6cba0748",
+        "autosuggestions": "85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5",
+        "highlighting": "e6683f20e5c38d3e5447f45845d04ddda75d0f23",
+        "zsh-defer": "53a26e287fbbe2dcebb3aa1801546c6de32416fa",
+        "zsh-bench": "28b1b1bc888159f0a2cf50f9d29381758341aba1",
+        "sheldon": "sheldon 0.8.5 (344dfc75e 2025-07-22)",
+        "wayu": "67a4d1a1 (recorded candidate)"
       }
     },
     {
       "id": "optimize",
       "tab": "wayu optimize",
       "title": "A hand-grown .zshrc before and after wayu optimize",
-      "metric": "first command lag · ms (lower is better)",
+      "metric": "first command lag \u00b7 ms (lower is better)",
       "note": "A .zshrc with the same workload plus plain compinit and eval \"$(tool completion zsh)\" for 3 CLIs that take ~25 ms to start (simulated); after `wayu optimize --yes` the PATH/env/alias lines move to wayu, compinit is wayu's, and the completion output is cached.",
       "results": [
         {
           "name": "after wayu optimize",
-          "value": 72.1,
+          "value": 60.9,
           "highlight": true
         },
         {
           "name": "before",
-          "value": 240.4
+          "value": 492.9
         }
       ],
       "versions": {
-        "wayu": "6bf570c (7.0 pre-release)",
-        "zsh-autosuggestions": "85919cd (v0.7.1+6)",
-        "zsh-syntax-highlighting": "e6683f2 (0.8.0+8)",
-        "zsh-bench": "28b1b1b"
+        "oh-my-zsh": "cca3bdfbef8c52ef8939ce7911ff68852b949daa",
+        "zinit": "cb4968123979cf073384e93aa8066d8fd450580f",
+        "antidote": "e6612794db27e6fae70eddbcff08201a6cba0748",
+        "autosuggestions": "85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5",
+        "highlighting": "e6683f20e5c38d3e5447f45845d04ddda75d0f23",
+        "zsh-defer": "53a26e287fbbe2dcebb3aa1801546c6de32416fa",
+        "zsh-bench": "28b1b1bc888159f0a2cf50f9d29381758341aba1",
+        "sheldon": "sheldon 0.8.5 (344dfc75e 2025-07-22)",
+        "wayu": "67a4d1a1 (recorded candidate)"
       }
     }
   ]
@@ -1216,6 +1232,13 @@ git status -sb</pre>
         </div>
         <div class="faq reveal">
           <details>
+            <summary><span>How is wayu checked before a release?</span></summary>
+            <div>
+              <p>CI checks memory handling, real shell sessions, upgrades, failed writes, interrupted operations and a full filesystem. Candidate trials repeat fresh sessions in Zsh, Bash and Fish on macOS and Linux. <a href="docs/validation/">See the gates, retained evidence and limits →</a></p>
+              <p>Automated sessions do not replace multi-day use. Multi-machine secrets remain experimental while their independent review is pending.</p>
+            </div>
+          </details>
+          <details>
             <summary><span>What does it change in my rc file, and how do I undo it?</span></summary>
             <div>
               <p><code>wayu init</code> asks before it adds one <code>source</code> line to your rc file (it only prints the line when it isn't run in a terminal). Everything else lives in <code>~/.config/wayu</code> and <code>~/.local/share/wayu</code>.</p>
@@ -1243,7 +1266,7 @@ git status -sb</pre>
           <details>
             <summary><span>Which platforms and shells?</span></summary>
             <div>
-              <p>Prebuilt binaries for macOS 15 or later on Apple silicon (arm64) and Linux on x86_64 (amd64), through Homebrew. There is no prebuilt binary for Intel Macs or Linux on arm64: build those from source with Odin. Tested with zsh 5.9, bash 3.2 and 5.x, fish 4.x, on macOS 15, 26 and 27 and Ubuntu 24.04. Windows is not supported.</p>
+              <p>Prebuilt binaries for macOS 15 or later (Apple silicon and Intel) and Linux on x86_64 and arm64 (glibc), through Homebrew. Anything else (older macOS, musl Linux, the BSDs): build from source with Odin. Tested with zsh 5.9, bash 3.2 and 5.x, fish 4.x, on macOS 15, 26 and 27 and Ubuntu 24.04. Windows is not supported.</p>
             </div>
           </details>
           <details>
@@ -1272,10 +1295,11 @@ git status -sb</pre>
     <section class="cta" id="install" aria-labelledby="cta-title">
       <div class="wrap">
         <h2 id="cta-title" class="reveal">Hand your shell setup to wayu.</h2>
-        <p class="sub reveal">Prebuilt for macOS 15 or later (Apple silicon, arm64) and Linux (x86_64). Intel Macs and Linux on arm64 have no binary: build from source with Odin.</p>
+        <p class="sub reveal">Prebuilt for macOS 15 or later (Apple silicon and Intel) and Linux (x86_64 and arm64). Anything else: build from source with Odin.</p>
         <div class="install reveal" data-install>
           <div class="tabs" role="tablist" aria-label="Install method">
             <button class="tab" role="tab" type="button" id="ci-brew-tab" aria-controls="ci-brew" aria-selected="true">Homebrew</button>
+            <button class="tab" role="tab" type="button" id="ci-sh-tab" aria-controls="ci-sh" aria-selected="false" tabindex="-1">Script</button>
             <button class="tab" role="tab" type="button" id="ci-src-tab" aria-controls="ci-src" aria-selected="false" tabindex="-1">From source</button>
           </div>
           <div class="install-panel" role="tabpanel" id="ci-brew" aria-labelledby="ci-brew-tab">
@@ -1283,6 +1307,12 @@ git status -sb</pre>
 <span class="p">$ </span>brew install wayu
 <span class="p">$ </span>wayu init</pre>
             <button class="icon-btn copy-btn" type="button" data-copy="brew tap dvrd/wayu&#10;brew install wayu&#10;wayu init" aria-label="Copy Homebrew install commands"></button>
+          </div>
+          <div class="install-panel" role="tabpanel" id="ci-sh" aria-labelledby="ci-sh-tab" hidden>
+<pre><span class="p">$ </span>curl -fsSL https://wayu.dvrd.io/install.sh | sh
+<span class="p">$ </span>wayu init
+<span class="cm"># checks the SHA-256, installs to ~/.local/bin</span></pre>
+            <button class="icon-btn copy-btn" type="button" data-copy="curl -fsSL https://wayu.dvrd.io/install.sh | sh&#10;wayu init" aria-label="Copy install script commands"></button>
           </div>
           <div class="install-panel" role="tabpanel" id="ci-src" aria-labelledby="ci-src-tab" hidden>
 <pre><span class="p">$ </span>git clone https://github.com/dvrd/wayu &amp;&amp; cd wayu
@@ -1327,7 +1357,8 @@ git status -sb</pre>
         </nav>
         <nav aria-labelledby="f-more"><h2 id="f-more">More</h2>
           <ul>
-            <li><a href="https://github.com/dvrd/wayu/tree/main/tests/benchmark">Benchmarks</a></li>
+            <li><a href="docs/benchmarks/">Benchmarks</a></li>
+            <li><a href="docs/validation/">Validation and evidence</a></li>
             <li><a href="https://github.com/dvrd/wayu/tree/main/docs/demo">Demo tape</a></li>
             <li><a href="https://github.com/dvrd/homebrew-wayu">Homebrew tap</a></li>
             <li><a href="https://github.com/dvrd/wayu/blob/main/CONTRIBUTING.md">Contributing</a></li>
@@ -1482,7 +1513,7 @@ git status -sb</pre>
 
       $('bench-cap').innerHTML = esc(data.machine) + ' · ' + esc(data.method) + (data.date ? ' · ' + esc(data.date) : '') +
         '. Replay runs ' + slow + '× slower than real time so the bars are visible; bars grow at the same rate, so their lengths are the real proportions. ' +
-        '<a href="https://github.com/dvrd/wayu/tree/main/tests/benchmark">Reproduce it</a>, or run <code>wayu build profile</code> on your own setup.';
+        '<a href="docs/benchmarks/">Raw samples and methodology</a>; timings from different runners are separate experiments. Run <code>wayu build profile</code> on your own setup.';
 
       $('bench-table').innerHTML = scen.map(function (s) {
         return '<table class="data-table"><caption>' + esc(s.title) + '</caption><thead><tr><th scope="col">Run</th><th scope="col" style="text-align:right">Median</th></tr></thead><tbody>' +

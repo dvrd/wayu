@@ -204,6 +204,42 @@ git_clone_at_commit :: proc(
 	return true, strings.clone("")
 }
 
+// Restore a snapshot without changing whether the plugin follows a branch.
+// Keeping the branch name means a later explicit `plugin update` still works.
+plugin_clone_for_restore :: proc(p: ^PluginMetadata) -> (bool, string) {
+	revision, _ := plugin_restore_revision(p)
+	if revision == "" do return git_clone(p.url, p.installed_path)
+	if is_valid_commit_sha(revision) {
+		ok, err := git_clone_at_commit(p.url, p.installed_path, revision)
+		if !ok do return false, err
+		delete(err)
+	} else {
+		clone_guard_partial(p.installed_path)
+		defer clone_guard_done()
+		r := run_git_network(
+			git_argv("clone", "--no-checkout", "--quiet", "--", p.url, p.installed_path),
+			GIT_CLONE_TIMEOUT_MS,
+		)
+		delete(r.stdout)
+		if !r.ok do return false, r.stderr
+		delete(r.stderr)
+		ok, err := run_command_capture_stderr(
+			git_argv("-C", p.installed_path, "checkout", "--quiet", "--detach", revision),
+		)
+		if !ok do return false, err
+		delete(err)
+	}
+	if p.git.ref_type == .Branch &&
+	   p.git.pinned_ref == "" &&
+	   p.git.branch != "" &&
+	   p.git.branch != "HEAD" {
+		return run_command_capture_stderr(
+			git_argv("-C", p.installed_path, "checkout", "--quiet", "-B", p.git.branch, "HEAD"),
+		)
+	}
+	return true, strings.clone("")
+}
+
 // A commit SHA as accepted by `plugin add <url>@<sha>`: 7-40 hex digits.
 is_valid_commit_sha :: proc(s: string) -> bool {
 	if len(s) < 7 || len(s) > 40 {

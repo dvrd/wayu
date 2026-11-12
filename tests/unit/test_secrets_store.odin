@@ -148,7 +148,7 @@ test_keystore_file_backend :: proc(t: ^testing.T) {
 	defer os.remove_all(dir)
 	path := strings.concatenate({dir, "/secret.key"}, context.temp_allocator)
 
-	_, status, _ := wayu.keystore_load_file(path)
+	_, _, status, _ := wayu.keystore_load_file(path)
 	testing.expect_value(t, status, wayu.Key_Status.MISSING)
 
 	key := test_key(0xab)
@@ -165,7 +165,7 @@ test_keystore_file_backend :: proc(t: ^testing.T) {
 		"a dir created for the key must be 0700",
 	)
 
-	got, st2, _ := wayu.keystore_load_file(path)
+	got, _, st2, _ := wayu.keystore_load_file(path)
 	testing.expect_value(t, st2, wayu.Key_Status.OK)
 	testing.expect(t, got == key, "loaded key differs")
 
@@ -174,19 +174,19 @@ test_keystore_file_backend :: proc(t: ^testing.T) {
 	testing.expect(t, !ok && strings.contains(msg, "refusing"), "second create must fail")
 	ok, _ = wayu.keystore_save_file(path, wayu.keystore_encode_hex(test_key(1)), true)
 	testing.expect(t, ok, "replace (rekey) must work")
-	got, _, _ = wayu.keystore_load_file(path)
+	got, _, _, _ = wayu.keystore_load_file(path)
 	testing.expect(t, got == test_key(1), "replaced key not loaded")
 
 	// Group/other readable: refused.
 	os.chmod(path, {.Read_User, .Write_User, .Read_Group})
-	_, st3, msg3 := wayu.keystore_load_file(path)
+	_, _, st3, msg3 := wayu.keystore_load_file(path)
 	testing.expect_value(t, st3, wayu.Key_Status.INVALID)
 	testing.expect(t, strings.contains(msg3, "group/other"))
 
 	// Bad content.
 	os.chmod(path, {.Read_User, .Write_User})
 	_ = os.write_entire_file(path, transmute([]byte)string("nothex\n"))
-	_, st4, _ := wayu.keystore_load_file(path)
+	_, _, st4, _ := wayu.keystore_load_file(path)
 	testing.expect_value(t, st4, wayu.Key_Status.INVALID)
 }
 
@@ -741,4 +741,31 @@ test_env_snapshot_per_name :: proc(t: ^testing.T) {
 		!wayu.env_snapshot_holds("WAYU_FAKE_SNAP_SECRET"),
 		"a variable never looked up must not be copied into the snapshot",
 	)
+}
+
+// A store written by a newer wayu (a higher "version", with fields this
+// version does not know) is reported as such, naming the fix, not as a
+// malformed file.
+@(test)
+test_secrets_store_parse_newer_version :: proc(t: ^testing.T) {
+	text := `{"version": 9, "cipher": "chacha20poly1305", "key_id": "00", "values": {}}`
+	s, err := wayu.secrets_store_parse(text)
+	wayu.secrets_store_destroy(&s)
+	testing.expectf(
+		t,
+		strings.contains(err, "version 9 was written by a newer wayu") &&
+		strings.contains(err, "upgrade wayu"),
+		"got %q",
+		err,
+	)
+	// Not a number, zero or negative: still the generic error.
+	for bad in ([]string {
+			`{"version": 0, "cipher": "chacha20poly1305", "values": {}}`,
+			`{"version": -3, "cipher": "chacha20poly1305", "values": {}}`,
+			`{"version": "9", "cipher": "chacha20poly1305", "values": {}}`,
+		}) {
+		s2, err2 := wayu.secrets_store_parse(bad)
+		wayu.secrets_store_destroy(&s2)
+		testing.expectf(t, len(err2) > 0 && !strings.contains(err2, "newer"), "%q: %q", bad, err2)
+	}
 }

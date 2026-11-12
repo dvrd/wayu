@@ -1,6 +1,6 @@
 # wayu
 
-**v7.0.0** · A shell configuration management CLI written in [Odin](https://odin-lang.org/) with zero external dependencies. Manages PATH entries, aliases, environment variables, completions, and backups across Bash, Zsh, and Fish.
+**v7.0.0** · A shell configuration management CLI written in [Odin](https://odin-lang.org/). Manages PATH entries, aliases, environment variables, completions, and backups across Bash, Zsh, and Fish.
 
 ![wayu demo: path, alias and run-only secret added, constants listed with the secret masked, a Python script created and run with the secret, doctor, then an alias added in the TUI](docs/demo/demo.gif)
 
@@ -10,7 +10,7 @@
 
 - **Multi-shell** -- Automatic Bash/Zsh/Fish detection with shell-specific config files
 - **Dual mode** -- Non-interactive CLI for scripting + interactive TUI (default when run with no args)
-- **PATH management** -- TOML-based keyed entries with deduplication and validation
+- **PATH management** -- Keyed entries in entries.json with deduplication and validation
 - **Alias & constants** -- Add, remove, list with input validation and reserved word checking
 - **Fuzzy matching** -- Smart search with acronym support (e.g., `faak` → `FIREWORKS_AI_API_KEY`)
 - **Completions** -- Manage shell completion scripts (Zsh, Bash, Fish)
@@ -19,10 +19,11 @@
 - **Built-in syntax highlighting** -- opt-in command-line highlighting for zsh (`[settings] highlight = true`) with zsh-syntax-highlighting's styles, using zsh's own lexer, no widget wrapping and no forks; a keystroke re-highlights only the last words
 - **Functions and scripts** -- shell functions (`wayu function`, sourced at startup) and standalone executables in any language (`wayu script`: swift compiled, python/ruby/node/bun/shells/... linked) on PATH; existing scripts can be imported
 - **Backup & restore** -- Automatic timestamped backups before every modification
-- **Shell migration** -- Migrate configs between Bash, Zsh, and Fish
+- **Shared shell entries** -- Use the same PATH entries, aliases and constants in Bash, Zsh, and Fish
+- **Plugin reconstruction** -- Restore missing checkouts from synced metadata, preserving recorded revisions and settings
 - **Dry-run mode** -- Preview any change before applying it
 - **Scriptable** -- BSD sysexits.h exit codes, no interactive prompts in CLI mode
-- **Zero dependencies** -- Pure Odin, ~31K lines, compiles in seconds
+- **Standalone core** -- No interpreter required for the CLI; plugins use Git, and scripts use their language's interpreter or compiler
 
 ## Installation
 
@@ -34,18 +35,34 @@ brew install wayu
 wayu init
 ```
 
-Prebuilt for macOS arm64 (macOS 15 Sequoia or later) and Linux x86_64; on
-other platforms build from source.
+Prebuilt for macOS 15 Sequoia or later (Apple silicon and Intel) and Linux
+(x86_64 and arm64, glibc); on other platforms build from source.
 
 **Tested with** (anything else may work but isn't tested):
 
 | | Versions |
 |---|---|
-| macOS | 15 (CI), 26, 27 |
-| Linux | Ubuntu 24.04 (CI) |
+| macOS | 15 (CI; Intel: CI smoke test), 26, 27 |
+| Linux | Ubuntu 24.04 (CI; arm64: CI smoke test) |
 | zsh | 5.9 |
 | bash | 3.2 (macOS `/bin/bash`), 5.x |
 | fish | 4.x |
+
+### Install script
+
+On the same platforms, without Homebrew:
+
+```bash
+curl -fsSL https://wayu.dvrd.io/install.sh | sh
+wayu init
+```
+
+[`docs/install.sh`](docs/install.sh) (POSIX sh) downloads the release
+archive for your OS and CPU, verifies its SHA-256 (and its build provenance
+attestation when `gh` is installed and logged in), and installs `wayu` to
+`~/.local/bin` atomically. `WAYU_VERSION=vX.Y.Z` pins a release,
+`WAYU_INSTALL_DIR` picks the directory, and it refuses to install next to a
+Homebrew-managed wayu unless `WAYU_FORCE=1`. Run it again to upgrade.
 
 ### From source
 
@@ -65,10 +82,10 @@ odin build build -out:build_it && ./build_it install
 warns when another `wayu` earlier on `PATH` shadows it.
 
 **Use one install method.** While Homebrew manages wayu, `./build_it install`
-refuses to run (`--force` overrides): two copies on `PATH` mean the shell
-runs one version and you upgrade the other. To switch from Homebrew to a
-source build, `brew uninstall wayu` first; to switch back, delete
-`~/.local/bin/wayu`.
+and the install script refuse to run (`--force` / `WAYU_FORCE=1`
+override): two copies on `PATH` mean the shell runs one version and you
+upgrade the other. To switch from Homebrew to a source build or the script,
+`brew uninstall wayu` first; to switch back, delete `~/.local/bin/wayu`.
 
 ## Shell setup
 
@@ -187,6 +204,7 @@ wayu plugin enable zsh-autosuggestions
 wayu plugin disable zsh-autosuggestions
 wayu plugin priority zsh-autosuggestions 50 # lower = loads earlier
 wayu plugin update --all
+wayu plugin restore                         # reconstruct missing checkouts from synced metadata
 wayu plugin remove zsh-autosuggestions --yes
 
 # Extra configuration (scripts that run at shell startup end)
@@ -449,6 +467,47 @@ dir. Every `wayu.toml` table and key (`[tools]`, `[prompt]`, …),
 described in
 [docs/config-reference.md](docs/config-reference.md).
 
+### Recreating your setup on another machine
+
+Keep these source files together in your dotfiles manager (for example,
+chezmoi) or copy them into the corresponding directories on the new machine:
+
+| From the config dir | From the data dir |
+|---|---|
+| `wayu.toml`, `hooks.conf`, `alias-sources.conf`, `extra.*`, `tools.*` | `entries.json`, `plugins.json`, `functions/`, `scripts/`, and any custom completion scripts |
+
+Copy custom completions to `<data>/completions/`. Recreate generated files,
+plugin checkouts and script binaries locally. `entries.json` can contain
+plaintext constants; keep credentials out of a public dotfiles repository.
+For encrypted constants, transfer `entries.json` and `secrets.json` together
+using the [multi-machine secrets workflow](docs/cli.md#multi-machine-secrets-experimental).
+Each machine keeps its own keys: exclude `secret.key`, `identity.key`,
+session caches, backups and generated runtime files from synchronization.
+
+Install wayu and the tools your setup uses (Git for plugins, interpreters or
+compilers for scripts, and programs named in `[tools]`), then run:
+
+```bash
+wayu plugin restore --dry-run
+wayu plugin restore
+wayu init --shell zsh          # repeat for each shell you use: bash, fish
+wayu script build             # recreate links and compiled scripts
+wayu build
+wayu doctor
+```
+
+Restore uses recorded plugin commits, preserves pins and disabled state,
+and replaces saved checkout paths with paths under the current data dir.
+Existing checkouts and local edits are kept; `plugin update` is the explicit
+step to advance them. See [the restore contract](docs/cli.md#wayu-plugin).
+
+Use `wayu path add ~/.local/bin --portable` for home-relative entries you
+intend to share. It stores `$HOME/.local/bin`; the directory must exist on
+the machine adding it. The default still stores an absolute path. Absolute
+entries, custom shell code, external script links and external tool
+installations remain specific to each machine. See the
+[coexistence recipes](docs/compatibility.md) for other shell tools.
+
 ### Functions and scripts
 
 Both live in the data dir and are managed with commands; the directory is
@@ -548,7 +607,9 @@ dir ~/.config/fabric/patterns fabric --pattern {name}
 
 ## Development
 
-Uses [bld](https://github.com/dvrd/bld), an Odin build system library. No external tools required.
+Uses [bld](https://github.com/dvrd/bld), an Odin build system library. Development
+requires the pinned Odin compiler; the full test suite also uses Ruby, Python
+and the supported shells.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and [SECURITY.md](SECURITY.md)
 to report a vulnerability; contributor notes on the code are in [AGENTS.md](AGENTS.md).
 
@@ -573,6 +634,12 @@ ruby tests/integration/run_all.rb
 
 ## Releasing
 
+See [Validation before a release](docs/validation.md) for the failure campaign,
+candidate acceptance gates and retained evidence. Tests cover failed writes,
+full filesystems, interruptions, concurrent mutations, upgrades and repeated
+fresh-shell sessions. Automated trials do not replace a dated daily-driver
+observation or the independent review of experimental secrets v2.
+
 Day-to-day work lands on the **`develop`** branch (CI runs, nothing is
 released). When a batch is ready to ship, `develop` is merged into `main`;
 PRs into `main` are only accepted from `develop` or `hotfix/*`
@@ -581,18 +648,23 @@ PRs into `main` are only accepted from `develop` or `hotfix/*`
 Releases are **automatic**. Every push to `main` runs
 [`.github/workflows/bump.yml`](.github/workflows/bump.yml), which:
 
-1. Runs the full CI workflow (unit, integration, golden, lint); nothing is
-   released unless it passes.
+1. Runs full CI and startup budgets: unit/memory tracking, integration,
+   AddressSanitizer, golden/TUI, strict compiler, compatibility, previous-binary
+   upgrades, failure campaign, fresh installs and candidate session trials.
+   Nothing is released unless the automated gates pass.
 2. Derives the next version from [Conventional Commits](https://www.conventionalcommits.org/)
    since the last tag via [`git-cliff`](https://github.com/orhun/git-cliff)
    (`feat` → minor, `fix`/`refactor`/etc. → patch, `!`/`BREAKING CHANGE` → major).
 3. Bumps `VERSION` in `src/main.odin`, regenerates `CHANGELOG.md`, renames
    the `## Unreleased` section of `docs/UPGRADING.md` to the version, commits
    `chore: release vX.Y.Z`, and tags it.
-4. Builds the release binaries (macOS arm64, Linux x86_64), publishes the
-   GitHub release, and regenerates the Homebrew tap formula
-   (`dvrd/homebrew-wayu`). Other platforms (macOS Intel, Linux arm64) have no
-   prebuilt binary; brew refuses them with an architecture error.
+4. Builds the release binaries
+   ([`release-build.yml`](.github/workflows/release-build.yml): macOS arm64
+   and x86_64, Linux x86_64 and arm64; macOS x86_64 is cross-compiled on
+   arm64, since Odin ships no macOS x86_64 toolchain), smoke-tests each on
+   its own platform, attests them, publishes the GitHub release, and
+   regenerates the Homebrew tap formula (`dvrd/homebrew-wayu`). CI runs the
+   same build and smoke test on every push to `develop` and every PR.
 
 The workflow never deletes or moves an existing tag or release: if the target
 version's tag already exists elsewhere it fails and prints the manual fix.

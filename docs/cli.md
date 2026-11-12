@@ -108,6 +108,13 @@ wayu path list --full
 wayu path clean --dry-run
 ```
 
+`--portable` on `path add <path>` stores a directory under the current home as a
+`$HOME/...` reference, so the same entry works in another home. The directory
+must exist locally and be inside HOME (otherwise `65`). The flag is accepted
+only by `add` (otherwise `64`); `--dry-run` previews the stored reference.
+Without `--portable`, `add` continues to store the resolved absolute path.
+Portable entries use the existing entries.json format and shell expansion.
+
 ### `wayu alias`
 
 Manage aliases (stored in `entries.json`). Default action: `list`. Names:
@@ -250,6 +257,7 @@ Default action: `list`. `<name>` must match an installed plugin exactly.
 | `priority` | `<name> <number>` | Load order, lower first (default 100) |
 | `check` | | Check for updates |
 | `update` | `<name>` or `--all` | Fast-forward to the remote |
+| `restore` | | Reconstruct missing checkouts from plugins.json, using this machine's data dir; `--dry-run` |
 | `help` | | |
 
 | Flag | |
@@ -257,6 +265,36 @@ Default action: `list`. `<name>` must match an installed plugin exactly.
 | `--all`, `-a` | `update`: every plugin |
 | `--category <c>`, `-c <c>`, `--category=<c>` | `search`: filter by category |
 | `--use <glob>`, `--use=<glob>` | `add`: file(s) to load from the repository root (repeatable) |
+
+`wayu plugin restore` is the replay step after copying `plugins.json` to a
+new machine. It replaces the saved `installed_path` values with
+`<data>/plugins/<name>` and clones every missing plugin, including disabled
+ones. The recorded commit is restored even when its branch has advanced;
+commit pins, tag pins, enabled state, file selections, dependencies and
+priorities are preserved. A branch-following plugin stays on its branch,
+so a later explicit `plugin update` can advance it. Without a recorded
+commit, restore uses the saved tag or branch, or the remote's default HEAD.
+
+Existing checkouts are kept, including local edits. A symlink, a non-Git
+destination, or a checkout with a different origin is an error (`78`);
+restore never resets or replaces it. Invalid metadata exits `78`, a clone
+or checkout failure exits `74`, and a plugin with nothing to load exits `65`.
+Before saving local paths, restore backs up plugins.json (failure: `73`).
+A failure before that save removes only checkouts created by this run and
+keeps the original metadata. It then verifies the saved metadata and
+regenerates plugin loaders and initialized shells' runtime files. If loader
+generation fails, it exits `74`; the restored checkouts are kept for
+`wayu build` to retry. `--dry-run` does not clone or save anything.
+
+`plugin add` exits `66` when the named plugin is registered but its checkout
+is missing, and names `wayu plugin restore` as the recovery command.
+
+`plugin get` also attempts to copy the URL to the clipboard. Each clipboard
+helper has a five-second deadline (Linux may try xclip, then xsel). An early
+input close or timeout prints a warning; displaying the plugin information
+still succeeds. `--dry-run` displays the information and previews the copy
+without changing the clipboard. Helpers that fork a background owner are
+supported, including ones that consume input after the foreground helper exits.
 
 ### `wayu init`
 
@@ -502,6 +540,10 @@ Service, or `secret.key` in the config dir). `const get` decrypts,
 | `rekey` | | New master key, re-encrypt every secret, drop the session cache |
 | `lock` | | Delete the decrypted session cache from every dir it was written to (next shell decrypts again) |
 | `run` | `<NAME>... -- <cmd> [args...]` | Run `cmd` with these secrets in its environment |
+| `identity` | `[--name NAME]` | (experimental) Print this machine's age recipient (`age1…`) on stdout, creating its identity the first time; stderr shows the `recipient add` command to run on a machine that reads the secrets (`--name`: the name in that command, default `hostname -s`; `NAME` when the hostname is empty or an IP address) |
+| `recipient` | `list` (`ls`) `[--json]` · `add <age1…> [--name NAME]` · `rm <NAME> --yes` · `rename <OLD> <NEW>` | (experimental) Machines that can read the secrets (see below) |
+| `adopt` | `--yes` | (experimental) Accept the data key in this machine's stanza without a rotation proof: a new machine's first step (prints the fingerprint to compare). Never a key this machine replaced. On a version 1 file this machine knew as version 2: back to one machine |
+| `recovery` | `add [--name NAME]` · `rm --yes` · `unlock` | (experimental) Recovery passphrase (read from stdin, never argv) |
 | `help` | | |
 
 **Run-only secrets.** `wayu const add NAME [VALUE] --run-only` stores a
@@ -533,6 +575,87 @@ not decrypt, the shell prints one `wayu: secrets not loaded: …` line on
 stderr and starts without the secrets. The first `add --secret` creates the
 key; wayu never creates a new key while `secrets.json` holds values (exit
 `78`). Errors reading the store or key exit `78`; write errors `74`.
+
+#### Multi-machine secrets (experimental)
+
+The same `secrets.json` (with `entries.json`) can be read on several
+machines without copying any key between them. Each machine has its own age
+X25519 identity (`AGE-SECRET-KEY-1…`, kept by the `[secrets]` backend), and
+`secrets.json` version 2 wraps one data key to every machine's recipient
+(`age1…`); see [config-reference.md](config-reference.md#multi-machine-secrets-experimental).
+Experimental: these actions and the version 2 format may change in a minor
+release (a format change still migrates automatically). The first use prints
+a one-time notice on stderr.
+
+```bash
+wayu secrets identity                              # on the new machine B: prints age1…
+wayu secrets recipient add age1… --name linux-box  # on machine A: prints the data key fingerprint
+# sync secrets.json (and entries.json) to B, then on B:
+wayu secrets adopt --yes                           # prints the same fingerprint: compare them
+```
+
+- `recipient add <age1…> [--name NAME]` needs the data key. The first one
+  upgrades a version 1 store to version 2 (backup first, then a verify step;
+  a one-time notice says wayu 7.0 cannot read it): the master key becomes the
+  data key unchanged, this machine is added as `hostname -s`, value lines are
+  untouched. `--name` is required for another machine's key (default
+  `hostname -s` for this machine's own; when the hostname is empty or an IP
+  address there is no default: `64`, add this machine first with
+  `wayu secrets recipient add "$(wayu secrets identity)" --name NAME`). It
+  prints the data key's fingerprint (`data key fingerprint: …`) and, for
+  another machine, the `adopt` step to run there. `65`: bad or reserved recipient
+  (post-quantum `age1pq1…` is reserved, not supported), bad name, duplicate
+  name or recipient. `64`: missing `--name` for another machine.
+- `recipient rm <NAME> --yes` drops the machine and always rotates: a new
+  data key, every value re-encrypted, re-wrapped to the remaining recipients,
+  a rotation proof appended, the session cache and backup copies of
+  `secrets.json` dropped. The removed machine can no longer read values
+  stored from then on (it already decrypted the old ones: rotate those
+  credentials upstream). Machines that have not synced since the `rm` are
+  exposed until they do: the removed machine still holds the old key and
+  can sign a rotation from it, which such a machine accepts. The recovery
+  passphrase survives `rm`: if the removed machine knew it, replace it
+  (`recovery rm --yes`, then `recovery add`; `rm` says so). Removing this
+  machine or the last recipient is refused (`65`). Without `--yes`: `64`.
+  An entry that fails the stanza check is dropped before the check runs on
+  the rest, so the `rm` an error names always works.
+- `recipient rename <OLD> <NEW>`, `recipient list [--json]` (marks this
+  machine; also prints the data key's fingerprint).
+- `rekey` on a version 2 store makes a new data key, wraps it to every
+  recipient and appends a rotation proof.
+- Each machine caches the data key it verified in the backend's existing
+  master-key item, with what it verified (local state: that it read
+  version 2, the recipients, the ones it saw removed, the keys it
+  replaced). Shell start uses it while its fingerprint (`key_id`) matches:
+  no public-key operation, no extra fork. A different key is taken from
+  this machine's stanza only when the rotation proofs (at most 16) chain it
+  to the cached key and it lists no machine this one saw removed; stderr
+  prints `adopted data key … (rotation from … verified); recipients: +x,
+  -y`. A machine with nothing cached (a new one) takes no key by itself: it
+  exits `78` naming `wayu secrets adopt --yes`, which prints the
+  fingerprint to compare with the one `recipient add` printed. An unproven
+  key, or one listing a removed machine again, is also `78` naming `adopt`:
+  compare the fingerprint with `recipient list` on another machine first.
+  `adopt` exits `78` when this machine has no stanza.
+- A `secrets.json` under a key this machine replaced (an old copy synced
+  back) exits `78` ("older than this machine's data key"): get the current
+  file again; `adopt` and `recovery unlock` refuse that key too. A version 1
+  file on a machine that read version 2 (a downgrade) exits `78` for every
+  read and write: sync the version 2 file again, or, going back to one
+  machine on purpose, `adopt --yes` (only when every value decrypts with
+  this machine's key).
+- A machine that is not a recipient prints `wayu: secrets not loaded: this
+  machine is not a recipient …; run 'wayu secrets identity' and add it from
+  a machine that is` at shell start.
+- `recovery add` sets a passphrase stanza (argon2id; wayu-only, not an age
+  stanza): `recovery unlock` (passphrase on stdin) recovers the data key on
+  any machine with the file, caches it, and says how to add the machine.
+  `recovery rm --yes` drops it and rotates. A passphrase shorter than 12
+  characters, or a wrong one (or a modified salt: "wrong passphrase, or the
+  recovery entry was modified"): `65`. argon2id parameters other than the
+  ones wayu writes (64 MiB, 3 passes, 4 lanes): `78`, before any work.
+- Every error exits non-zero and names the command that fixes it.
+  `--dry-run` writes nothing (no identity, no key, no notice marker).
 
 ### `wayu optimize`
 
@@ -601,7 +724,7 @@ Prints the global help: commands, flags, command flags, examples, exit codes.
 ## JSON output
 
 `--json` is accepted by `path|alias|const|plugin|backup|script list`,
-`search` and `doctor` (and by any `help`); anywhere else it exits `64`. Output is one
+`secrets recipient list`, `search` and `doctor` (and by any `help`); anywhere else it exits `64`. Output is one
 JSON document on stdout (errors stay on stderr); an empty list is `[]`. The
 shapes below are checked by `tests/integration/test_cli_output.rb` — new
 keys may be added, existing ones keep their meaning.
@@ -614,6 +737,7 @@ keys may be added, existing ones keep their meaning.
 | `plugin list` | `{"plugins": [{"name", "enabled": bool, "priority": int, "shell", "url", "commit", "installed_path", "conflicts": [{"kind", "name", "with"}]}], "count": int, "enabled": int}` |
 | `backup list` | `{"backups": [{"file", "count": int, "entries": [{"index": int, "timestamp", "size_bytes": int, "path", "pre_restore": bool}]}]}` |
 | `script list` | `{"scripts": [{"name", "lang", "source", "bin", "compiled": bool, "stale": bool}], "count": int}` |
+| `secrets recipient list` | `{"recipients": [{"name", "recipient", "this_machine": bool}], "key_id", "recovery": bool}` (experimental); a version 1 store has `"recipients": []` and `"key_id": ""` |
 | `search QUERY` | `{"query", "results": [{"type", "name", "value", "match", "field", "score": int}], "count": int}`; `field` is always `name`; an encrypted constant adds `"secret": true` (its `value` is `""`) |
 | `doctor` | `{"checks": [{"name", "status", "message", "fixable": bool}], "summary": {"ok", "warnings", "errors", "info", "fixable"}}` |
 
@@ -705,6 +829,13 @@ Run against a freshly initialized config (`wayu init`) by
 | `wayu export --eval --check` | 64 |
 | `wayu path list x` | 64 |
 | `wayu secrets lock x` | 64 |
+| `wayu secrets adopt` | 64 |
+| `wayu secrets recipient rm laptop` | 64 |
+| `wayu secrets recipient bogus` | 64 |
+| `wayu secrets recovery rm` | 64 |
+| `wayu secrets identity --json` | 64 |
+| `wayu secrets recipient add age1notakey --name x` | 65 |
+| `wayu secrets recipient add age1pq1qqqqqqqqqqqqqqqq --name x` | 65 |
 | `wayu build --test` | 64 |
 | `wayu build --snapshot` | 64 |
 | `wayu build --full` | 64 |

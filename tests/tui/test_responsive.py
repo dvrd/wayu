@@ -1209,7 +1209,7 @@ def assert_box_sides_cells(s, context=""):
     top = next((r for r in range(s.rows) if "╭" in rows[r]), None)
     bottom = next((r for r in range(s.rows) if "╰" in rows[r]), None)
     if top is None or bottom is None or "╮" not in rows[top]:
-        return AssertResult(False, f"No box found{context}")
+        return AssertResult(False, f"No box found{context}\n{s.snapshot()}")
     left, right = rows[top].index("╭"), rows[top].index("╮")
     bad = [r for r in range(top + 1, bottom) if rows[r][left] != "│" or rows[r][right] != "│"]
     return AssertResult(not bad, f"Side border missing on rows {bad}{context}\n" +
@@ -1250,7 +1250,10 @@ def test_unicode_widths():
     write_entries({"aliases": UNICODE_ALIASES})
     s = TUISession(80, 24, env=constants_env())
     try:
-        ok = open_view(s, "alias", lambda snap: "acute" in snap and "family" in snap)
+        # PTY reads can split a frame after the alias rows but before the
+        # bottom border. Inspect cell alignment only once the box is drawn.
+        ok = open_view(s, "alias", lambda snap: "acute" in snap and "family" in snap
+                       and "╭" in snap and "╮" in snap and "╰" in snap and "╯" in snap)
         test("unicode/renders", AssertResult(ok, s.snapshot()))
         test("unicode/box_sides", assert_box_sides_cells(s, " (unicode aliases)"))
         for i in range(5):

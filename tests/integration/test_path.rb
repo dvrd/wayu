@@ -22,6 +22,7 @@ class PathIntegrationTest
       initialize_wayu
 
       test_add_single_path
+      test_portable_path
       test_add_multiple_paths
       test_list_paths
       test_remove_path_by_name
@@ -52,6 +53,36 @@ class PathIntegrationTest
   end
 
   private
+
+  def test_portable_path
+    print "Test: --portable stores HOME references, keeps default absolute paths, rejects other roots... "
+    dir = "#{@tmp_home}/portable/bin"
+    FileUtils.mkdir_p(dir)
+    out, st = run_wayu("path add portable=#{dir} --portable")
+    rows = JSON.parse(File.read(@entries_file))['paths']
+    good = st.success? && rows.any? { |p| p['key'] == 'portable' && p['dir'] == '$HOME/portable/bin' }
+    before = File.binread(@entries_file)
+    _, bad = run_wayu("path add /usr/bin --portable")
+    _, wrong = run_wayu("path list --portable")
+    preview, dry = run_wayu("path add preview=#{@tmp_home}/.config --portable --dry-run")
+    good &&= bad.exitstatus == 65 && wrong.exitstatus == 64 && dry.success? &&
+             preview.include?('$HOME/.config') && File.binread(@entries_file) == before
+    # A textual prefix is not a HOME directory boundary.
+    sibling = "#{@tmp_home}-sibling"
+    FileUtils.mkdir_p(sibling)
+    _, outside = run_wayu("path add #{sibling} --portable")
+    FileUtils.rm_rf(sibling)
+    good &&= outside.exitstatus == 65
+    literal = "#{@tmp_home}/--portable"
+    FileUtils.mkdir_p(literal)
+    _, _, literal_status = Open3.capture3({ 'HOME' => @tmp_home }, @wayu_bin, 'path', 'add', '--', '--portable', chdir: @tmp_home)
+    rows = JSON.parse(File.read(@entries_file))['paths']
+    good &&= literal_status.success? && rows.any? { |p| p['dir'] == File.realpath(literal) }
+    run_wayu("path rm #{File.realpath(literal)}")
+    puts(good ? '✓' : "✗ #{out}")
+    good ? @passed += 1 : @failed += 1
+    run_wayu('path rm portable')
+  end
 
   def test_add_single_path
     print "Test 1: Add single path... "

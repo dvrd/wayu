@@ -39,7 +39,7 @@
     // Old single-page links (/docs/?p=cli#x) moved to /docs/cli/#x.
     (function () {
       var p = new URLSearchParams(location.search).get('p');
-      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading'}[p.toLowerCase()];
+      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading', 'compatibility': 'compatibility', 'benchmarks': 'benchmarks', 'validation': 'validation', 'security-review': 'security-review'}[p.toLowerCase()];
       if (to) location.replace('/docs/' + to + '/' + location.hash);
     })();
   </script>
@@ -100,8 +100,12 @@
           <li><a href="/docs/quickstart/" data-page="quickstart">Quickstart</a></li>
           <li><a href="/docs/cli/" data-page="cli">CLI reference</a></li>
           <li><a href="/docs/config/" data-page="config">Configuration</a></li>
-          <li><a href="/docs/stability/" data-page="stability" aria-current="page">Stability</a><ul class="toc-list side-toc"><li><a class="l2" href="#stable-changes-only-in-a-major-release" data-id="stable-changes-only-in-a-major-release">Stable (changes only in a major release)</a></li><li><a class="l2" href="#not-stable-may-change-in-any-release" data-id="not-stable-may-change-in-any-release">Not stable (may change in any release)</a></li><li><a class="l2" href="#deprecation" data-id="deprecation">Deprecation</a></li><li><a class="l2" href="#supported-platforms" data-id="supported-platforms">Supported platforms</a></li><li><a class="l2" href="#security-fixes" data-id="security-fixes">Security fixes</a></li></ul></li>
+          <li><a href="/docs/stability/" data-page="stability" aria-current="page">Stability</a><ul class="toc-list side-toc"><li><a class="l2" href="#stable-changes-only-in-a-major-release" data-id="stable-changes-only-in-a-major-release">Stable (changes only in a major release)</a></li><li><a class="l2" href="#not-stable-may-change-in-any-release" data-id="not-stable-may-change-in-any-release">Not stable (may change in any release)</a></li><li><a class="l2" href="#experimental" data-id="experimental">Experimental</a></li><li><a class="l2" href="#deprecation" data-id="deprecation">Deprecation</a></li><li><a class="l2" href="#supported-platforms" data-id="supported-platforms">Supported platforms</a></li><li><a class="l2" href="#security-fixes" data-id="security-fixes">Security fixes</a></li></ul></li>
           <li><a href="/docs/upgrading/" data-page="upgrading">Upgrading</a></li>
+          <li><a href="/docs/compatibility/" data-page="compatibility">Compatibility</a></li>
+          <li><a href="/docs/benchmarks/" data-page="benchmarks">Benchmarks</a></li>
+          <li><a href="/docs/validation/" data-page="validation">Validation</a></li>
+          <li><a href="/docs/security-review/" data-page="security-review">Security review</a></li>
         </ul>
       </nav>
     </aside>
@@ -172,6 +176,19 @@ them; <code class="nw">wayu build</code> regenerates them.
 component modes).
 </li>
 </ul>
+<h2 id="experimental">Experimental<a class="anchor" href="#experimental" aria-label="Link to this section">#</a></h2>
+<p>Marked &quot;(experimental)&quot; in <a href="/docs/cli/">cli.md</a>, <a href="/docs/config/">config-reference.md</a>
+and <code class="nw">wayu help</code>; the first use prints a one-time notice on stderr.</p>
+<ul>
+<li><strong>Multi-machine secrets</strong>: <code class="nw">wayu secrets identity</code>, <code class="nw">recipient</code>, <code class="nw">adopt</code>,
+<code class="nw">recovery</code>, and the <code class="nw">secrets.json</code> version 2 format they write. Their
+commands, flags, output, <code class="nw">--json</code> shape and the version 2 format may
+change in a minor release. A change to the format still migrates
+automatically (backup, verify, one-time notice): no manual step. Version 1
+<code class="nw">secrets.json</code> (one machine) is stable as above and is never rewritten
+unless you opt in with <code class="nw">recipient add</code> / <code class="nw">recovery add</code>.
+</li>
+</ul>
 <h2 id="deprecation">Deprecation<a class="anchor" href="#deprecation" aria-label="Link to this section">#</a></h2>
 <p>A command, action, flag or config key that is going away:</p>
 <ol>
@@ -183,6 +200,11 @@ stderr that names its replacement, and is marked deprecated in
 </li>
 </ol>
 <h2 id="supported-platforms">Supported platforms<a class="anchor" href="#supported-platforms" aria-label="Link to this section">#</a></h2>
+<p><a href="/docs/validation/">Validation before a release</a> describes the automated gates,
+failure campaign, repeated fresh-shell trials and evidence retained by CI.
+Those checks support the contracts above; they are not a guarantee that every
+possible system failure has been tested. Multi-day observation and independent
+review of experimental secrets remain separate records.</p>
 <p>Tested on every release (CI) or by the maintainer; see the README&#39;s
 &quot;Tested with&quot; table. Anything else may work but is not supported.</p>
 <div class="table-wrap"><table>
@@ -195,11 +217,11 @@ stderr that names its replacement, and is marked deprecated in
 <tbody>
 <tr>
 <td>macOS</td>
-<td>15 (CI), 26, 27</td>
+<td>15 (CI; Intel: CI smoke test), 26, 27</td>
 </tr>
 <tr>
 <td>Linux</td>
-<td>Ubuntu 24.04 (CI)</td>
+<td>Ubuntu 24.04 (CI; arm64: CI smoke test)</td>
 </tr>
 <tr>
 <td>zsh</td>
@@ -229,7 +251,7 @@ vulnerabilities privately via GitHub&#39;s &quot;Report a vulnerability&quot;
     <aside class="rail" id="rail" aria-label="On this page">
       <p class="side-label">On this page</p>
       <ul class="toc-list" id="toc">
-        <li><a class="l2" href="#stable-changes-only-in-a-major-release" data-id="stable-changes-only-in-a-major-release">Stable (changes only in a major release)</a></li><li><a class="l2" href="#not-stable-may-change-in-any-release" data-id="not-stable-may-change-in-any-release">Not stable (may change in any release)</a></li><li><a class="l2" href="#deprecation" data-id="deprecation">Deprecation</a></li><li><a class="l2" href="#supported-platforms" data-id="supported-platforms">Supported platforms</a></li><li><a class="l2" href="#security-fixes" data-id="security-fixes">Security fixes</a></li>
+        <li><a class="l2" href="#stable-changes-only-in-a-major-release" data-id="stable-changes-only-in-a-major-release">Stable (changes only in a major release)</a></li><li><a class="l2" href="#not-stable-may-change-in-any-release" data-id="not-stable-may-change-in-any-release">Not stable (may change in any release)</a></li><li><a class="l2" href="#experimental" data-id="experimental">Experimental</a></li><li><a class="l2" href="#deprecation" data-id="deprecation">Deprecation</a></li><li><a class="l2" href="#supported-platforms" data-id="supported-platforms">Supported platforms</a></li><li><a class="l2" href="#security-fixes" data-id="security-fixes">Security fixes</a></li>
       </ul>
     </aside>
   </div>

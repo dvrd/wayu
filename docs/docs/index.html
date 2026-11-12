@@ -39,7 +39,7 @@
     // Old single-page links (/docs/?p=cli#x) moved to /docs/cli/#x.
     (function () {
       var p = new URLSearchParams(location.search).get('p');
-      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading'}[p.toLowerCase()];
+      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading', 'compatibility': 'compatibility', 'benchmarks': 'benchmarks', 'validation': 'validation', 'security-review': 'security-review'}[p.toLowerCase()];
       if (to) location.replace('/docs/' + to + '/' + location.hash);
     })();
   </script>
@@ -102,6 +102,10 @@
           <li><a href="/docs/config/" data-page="config">Configuration</a></li>
           <li><a href="/docs/stability/" data-page="stability">Stability</a></li>
           <li><a href="/docs/upgrading/" data-page="upgrading">Upgrading</a></li>
+          <li><a href="/docs/compatibility/" data-page="compatibility">Compatibility</a></li>
+          <li><a href="/docs/benchmarks/" data-page="benchmarks">Benchmarks</a></li>
+          <li><a href="/docs/validation/" data-page="validation">Validation</a></li>
+          <li><a href="/docs/security-review/" data-page="security-review">Security review</a></li>
         </ul>
       </nav>
     </aside>
@@ -112,7 +116,7 @@
           <p class="doc-meta"><span class="crumb">Docs</span></p>
           <h1>wayu documentation</h1>
           <p>The reference for every command and config file, rendered from the Markdown in the repository, so it always matches the release on <code>main</code>. New here? Start with the <a href="/docs/quickstart/">Quickstart</a>, then keep the CLI reference open.</p>
-          <div class="cards"><a href="/docs/quickstart/"><strong>Quickstart</strong>Install, the one rc line, your first entries and secrets, and bringing over an existing rc file.</a><a href="/docs/cli/"><strong>CLI reference</strong>Every command, action and flag, the --json shapes and the exit codes.</a><a href="/docs/config/"><strong>Configuration</strong>wayu.toml, entries.json, hooks, plugins and the files wayu generates.</a><a href="/docs/stability/"><strong>Stability</strong>What a release promises from 7.0 on: stable surfaces, migrations, deprecation, platforms.</a><a href="/docs/upgrading/"><strong>Upgrading</strong>User-visible behavior changes per release, with the steps to follow.</a></div>
+          <div class="cards"><a href="/docs/quickstart/"><strong>Quickstart</strong>Install, the one rc line, your first entries and secrets, and bringing over an existing rc file.</a><a href="/docs/cli/"><strong>CLI reference</strong>Every command, action and flag, the --json shapes and the exit codes.</a><a href="/docs/config/"><strong>Configuration</strong>wayu.toml, entries.json, hooks, plugins and the files wayu generates.</a><a href="/docs/stability/"><strong>Stability</strong>What a release promises from 7.0 on: stable surfaces, migrations, deprecation, platforms.</a><a href="/docs/upgrading/"><strong>Upgrading</strong>User-visible behavior changes per release, with the steps to follow.</a><a href="/docs/compatibility/"><strong>Compatibility</strong>Coexistence recipes and pinned tests for shell tools and dotfiles managers.</a><a href="/docs/benchmarks/"><strong>Benchmarks</strong>Reproduce startup budgets and comparative measurements with raw evidence.</a><a href="/docs/validation/"><strong>Validation</strong>Release gates, failure testing, candidate trials, evidence and their limits.</a><a href="/docs/security-review/"><strong>Security review</strong>Scope and evidence for the pending independent review of multi-machine secrets.</a></div>
           <p class="foot">Press <kbd>/</kbd> to search every page.</p>
         </div>
       </article>

@@ -39,7 +39,7 @@
     // Old single-page links (/docs/?p=cli#x) moved to /docs/cli/#x.
     (function () {
       var p = new URLSearchParams(location.search).get('p');
-      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading'}[p.toLowerCase()];
+      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading', 'compatibility': 'compatibility', 'benchmarks': 'benchmarks', 'validation': 'validation', 'security-review': 'security-review'}[p.toLowerCase()];
       if (to) location.replace('/docs/' + to + '/' + location.hash);
     })();
   </script>
@@ -102,6 +102,10 @@
           <li><a href="/docs/config/" data-page="config">Configuration</a></li>
           <li><a href="/docs/stability/" data-page="stability">Stability</a></li>
           <li><a href="/docs/upgrading/" data-page="upgrading">Upgrading</a></li>
+          <li><a href="/docs/compatibility/" data-page="compatibility">Compatibility</a></li>
+          <li><a href="/docs/benchmarks/" data-page="benchmarks">Benchmarks</a></li>
+          <li><a href="/docs/validation/" data-page="validation">Validation</a></li>
+          <li><a href="/docs/security-review/" data-page="security-review">Security review</a></li>
         </ul>
       </nav>
     </aside>
@@ -116,19 +120,33 @@ entries, aliases and secrets into it. Every command, flag and exit code is in
 the <a href="/docs/cli/">CLI reference</a>; every config key in the
 <a href="/docs/config/">configuration reference</a>.</p>
 <h2 id="install">Install<a class="anchor" href="#install" aria-label="Link to this section">#</a></h2>
-<p>Homebrew (macOS 15 or later on Apple silicon, Linux on x86_64):</p>
+<p>Homebrew (macOS 15 or later on Apple silicon or Intel, Linux on x86_64 or
+arm64):</p>
 <div class="code"><pre><code class="language-bash">brew tap dvrd/wayu
 brew install wayu
 wayu init
 </code></pre><button type="button" class="icon-btn copy-btn" aria-label="Copy bash code"><svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
-<p>Other platforms (Intel Macs, Linux on arm64) build from source. It needs the
+<p>Or the install script, on the same platforms without Homebrew:</p>
+<div class="code"><pre><code class="language-bash">curl -fsSL https://wayu.dvrd.io/install.sh | sh
+wayu init
+</code></pre><button type="button" class="icon-btn copy-btn" aria-label="Copy bash code"><svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
+<p>It downloads the release archive for your OS and CPU, checks its SHA-256
+(and its <a href="https://github.com/dvrd/wayu/blob/main/SECURITY.md#verifying-release-binaries" rel="noopener">build provenance attestation</a>
+when the GitHub CLI <code class="nw">gh</code> is installed and logged in), and installs <code class="nw">wayu</code> to
+<code class="nw">~/.local/bin</code>, replacing an older one atomically. <code class="nw">WAYU_VERSION=v7.0.0</code>
+installs that release, <code class="nw">WAYU_INSTALL_DIR</code> another directory. It refuses to
+install next to a Homebrew-managed wayu (<code class="nw">WAYU_FORCE=1</code> overrides), and says
+when the directory is not on your <code class="nw">PATH</code>. To upgrade, run it again. Read it
+first if you like: <a href="https://wayu.dvrd.io/install.sh" rel="noopener">install.sh</a>.</p>
+<p>Other platforms (older macOS, musl Linux, the BSDs) build from source. It
+needs the
 <a href="https://odin-lang.org/docs/install/" rel="noopener">Odin compiler</a> at the release named in
 <a href="https://github.com/dvrd/wayu/blob/main/.github/odin-release" rel="noopener"><code class="nw">.github/odin-release</code></a>:</p>
 <div class="code"><pre><code class="language-bash">git clone https://github.com/dvrd/wayu &amp;&amp; cd wayu
 odin build build -out:build_it &amp;&amp; ./build_it install   # installs to ~/.local/bin, runs wayu init
 </code></pre><button type="button" class="icon-btn copy-btn" aria-label="Copy bash code"><svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
 <p>Use one install method: while Homebrew manages wayu, <code class="nw">./build_it install</code>
-refuses to run.</p>
+and the install script refuse to run.</p>
 <h2 id="set-up-your-shell">Set up your shell<a class="anchor" href="#set-up-your-shell" aria-label="Link to this section">#</a></h2>
 <p><code class="nw">wayu init</code> creates <code class="nw">~/.config/wayu/</code> (<code class="nw">wayu.toml</code> and the other files you
 edit) and <code class="nw">~/.local/share/wayu/</code> (your entries and the generated files), and

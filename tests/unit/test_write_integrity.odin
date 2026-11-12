@@ -8,6 +8,7 @@ import "core:fmt"
 import "core:mem"
 import "core:os"
 import "core:strings"
+import "core:sys/posix"
 import "core:testing"
 
 // ---------------------------------------------------------------------------
@@ -123,4 +124,29 @@ test_write_file_atomic_follows_symlink :: proc(t: ^testing.T) {
 	testing.expect_value(t, lfi.type, os.File_Type.Symlink)
 	data, _ := os.read_entire_file(real, context.temp_allocator)
 	testing.expect_value(t, string(data), "new")
+}
+
+@(test)
+test_write_file_atomic_follows_bare_relative_symlink :: proc(t: ^testing.T) {
+	dir := test_tmp("wayu-test-atomic-relative-link")
+	os.make_directory(dir)
+	defer os.remove_all(dir)
+	cwd, err := os.getwd(context.allocator)
+	testing.expect_value(t, err, nil)
+	defer delete(cwd)
+	testing.expect(t, posix.chdir(strings.clone_to_cstring(dir, context.temp_allocator)) == .OK)
+	defer posix.chdir(strings.clone_to_cstring(cwd, context.temp_allocator))
+
+	testing.expect_value(t, os.symlink("real.toml", "wayu.toml"), nil)
+	testing.expect_value(
+		t,
+		wayu.write_file_atomic("wayu.toml", transmute([]byte)string("new")),
+		nil,
+	)
+	data, read_err := os.read_entire_file("real.toml", context.temp_allocator)
+	testing.expect_value(t, read_err, nil)
+	testing.expect_value(t, string(data), "new")
+	lfi, lerr := os.lstat("wayu.toml", context.temp_allocator)
+	testing.expect_value(t, lerr, nil)
+	testing.expect_value(t, lfi.type, os.File_Type.Symlink)
 }

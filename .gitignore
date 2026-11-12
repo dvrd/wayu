@@ -20,3 +20,4 @@ HANDOFF.md
 
 *.dSYM/
 __pycache__/
+/evidence/

@@ -5,9 +5,13 @@ description: >
   .github/odin-release.sha256. No third-party action, no token, no fallback:
   a missing asset or a checksum mismatch fails the job.
 
-  Bumping Odin: change .github/odin-release and replace both lines of
+  Bumping Odin: change .github/odin-release and replace every line of
   .github/odin-release.sha256 (`gh release download <tag> -R odin-lang/Odin
-  -p 'odin-linux-amd64-*' -p 'odin-macos-arm64-*'`, then `shasum -a 256`).
+  -p 'odin-linux-amd64-*' -p 'odin-linux-arm64-*' -p 'odin-macos-arm64-*'`,
+  then `shasum -a 256`).
+
+  Odin publishes no macOS x86_64 toolchain: the macOS Intel release binary
+  is cross-compiled on an arm64 Mac (`./build_it build --target=darwin_amd64`).
 
 runs:
   using: composite
@@ -23,10 +27,15 @@ runs:
           exit 1
         fi
 
-        # Only the runners the workflows use (ubuntu-24.04, macos-15).
+        # Only the runners the workflows build on (ubuntu-24.04,
+        # ubuntu-24.04-arm, macos-15). Intel Macs only run binaries.
         case "$RUNNER_OS/$RUNNER_ARCH" in
           Linux/X64)   platform=linux-amd64 ;;
+          Linux/ARM64) platform=linux-arm64 ;;
           macOS/ARM64) platform=macos-arm64 ;;
+          macOS/X64)
+            echo "::error::Odin ships no macOS x86_64 toolchain; build on macos-15 with ./build_it build --target=darwin_amd64"
+            exit 1 ;;
           *) echo "::error::no pinned Odin asset for $RUNNER_OS/$RUNNER_ARCH"; exit 1 ;;
         esac
         asset="odin-${platform}-${release}.tar.gz"
@@ -62,8 +71,14 @@ runs:
 
         # Odin links through the system clang. Ubuntu 24.04 images ship
         # LLVM 18 there (what laytan/setup-odin used to add to PATH).
-        if [ "$RUNNER_OS" = "Linux" ] && [ -d /usr/lib/llvm-18/bin ]; then
-          echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
+        if [ "$RUNNER_OS" = "Linux" ]; then
+          if [ -d /usr/lib/llvm-18/bin ]; then
+            echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
+          elif ! command -v clang >/dev/null 2>&1; then
+            # A runner image without clang (e.g. a slimmer arm64 image).
+            BREW_PACKAGES=llvm LINK_BINS=opt/llvm/bin/clang \
+              "$GITHUB_WORKSPACE/.github/scripts/apt-install.sh" clang
+          fi
         fi
 
     - name: Show Odin version

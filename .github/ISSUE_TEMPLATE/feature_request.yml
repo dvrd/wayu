@@ -2,6 +2,12 @@ name: Feature request
 description: Suggest a new command, option or behavior
 labels: [enhancement]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Not sure yet, or a question about how to do something today? Start in [Discussions](https://github.com/dvrd/wayu/discussions).
+        Please don't paste secrets (API keys, tokens) in examples: use placeholders.
+
   - type: textarea
     id: problem
     attributes:
@@ -34,3 +40,10 @@ body:
         - bash
         - fish
         - not shell-specific
+
+  - type: input
+    id: version
+    attributes:
+      label: wayu version
+      description: Output of `wayu --version` (the feature may already exist in a newer release)
+      placeholder: wayu v7.0.0

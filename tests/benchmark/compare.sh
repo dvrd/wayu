@@ -66,6 +66,11 @@ ONLY=${ONLY:-"floor plain plain-c wayu wayu-defer wayu-suggest oh-my-zsh zinit z
 SCENARIOS=${SCENARIOS:-"stack optimize"}
 KEEP=${KEEP:-0}
 JSON=${JSON:-}
+PYTHON_EXE=$(command -v python3)
+SHELDON_BIN=${SHELDON_BIN:-}
+TIMED_RUNNER=$PWD/tests/benchmark/run_with_timeout.py
+BENCHMARK_TIMEOUT=${BENCHMARK_TIMEOUT:-300}
+RAW_DIR=${RAW_DIR:-}
 
 # Pinned third-party commits (2026-11-08).
 OMZ_REPO=https://github.com/ohmyzsh/ohmyzsh.git                      OMZ_SHA=cca3bdfbef8c52ef8939ce7911ff68852b949daa
@@ -84,10 +89,24 @@ GIT_EXE=$(command -v git) || { echo "git not found" >&2; exit 1; }
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/wayu-compare.XXXXXX")
 work=$(cd "$work" && pwd -P)
-[ "$KEEP" = 1 ] && echo "work dir: $work" || trap 'chmod -R u+w "$work" 2>/dev/null; rm -rf "$work"' EXIT
+cleanup() {
+  if [ -n "$RAW_DIR" ]; then
+    mkdir -p "$RAW_DIR"
+    cp -R "$work/results/." "$RAW_DIR/"
+  fi
+  if [ "$KEEP" != 1 ]; then chmod -R u+w "$work" 2>/dev/null; rm -rf "$work"; fi
+}
+trap cleanup EXIT
+if [ "$KEEP" = 1 ]; then echo "work dir: $work"; fi
 mkdir -p "$work/src" "$work/bin" "$work/results"
 ln -s "$WAYU_BIN" "$work/bin/wayu"
 ln -s "$GIT_EXE" "$work/bin/git"
+case " $ONLY " in
+  *" sheldon "*|*" sheldon-static "*)
+    [ -n "$SHELDON_BIN" ] || SHELDON_BIN=$(command -v sheldon)
+    [ -x "$SHELDON_BIN" ] || { echo 'Sheldon is required for this contender' >&2; exit 1; }
+    ln -s "$SHELDON_BIN" "$work/bin/sheldon" ;;
+esac
 # The PATH every benchmarked shell starts with (wayu reachable, as installed).
 BASE_PATH=$work/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
@@ -98,6 +117,14 @@ in_home() {
 		SHELL="$ZSH_EXE" TERM=xterm-256color LANG=en_US.UTF-8 TMPDIR="${TMPDIR:-/tmp}" \
 		PATH="$BASE_PATH" "$@")
 }
+
+# A compinit confirmation prompt consumes zsh-bench's PTY handshake. Refuse
+# insecure system completion paths before fetching sources or timing anything.
+if ! in_home "$work" "$ZSH_EXE" -fc 'autoload -Uz compaudit; compaudit' > "$work/results/preflight.audit" 2>&1; then
+  cat "$work/results/preflight.audit" >&2
+  echo 'Secure the reported completion directories before benchmarking; compinit auditing remains enabled.' >&2
+  exit 78
+fi
 
 # fetch <url> <sha> <dest>: a shallow checkout of exactly <sha>.
 fetch() {
@@ -255,6 +282,26 @@ setup_zinit() { # $1 = HOME, $2 = turbo (0|1)
 	} > "$1/.zshrc"
 }
 
+setup_sheldon() { # $1 = HOME, $2 = static (0|1)
+	mkdir -p "$1/.config/sheldon"
+	cat > "$1/.config/sheldon/plugins.toml" <<EOF
+shell = "zsh"
+[plugins.autosuggestions]
+local = "$work/src/zsh-autosuggestions"
+use = ["zsh-autosuggestions.zsh"]
+[plugins.highlighting]
+local = "$work/src/zsh-syntax-highlighting"
+use = ["zsh-syntax-highlighting.zsh"]
+EOF
+	if [ "$2" = 1 ]; then in_home "$1" sheldon source > "$1/.sheldon.zsh"; fi
+	{
+		workload_rc "$1"
+		echo 'autoload -Uz compinit && compinit'
+		if [ "$2" = 1 ]; then echo 'source "$HOME/.sheldon.zsh"'; else echo 'eval "$(sheldon source)"'; fi
+		echo "$PROMPT_LINE"
+	} > "$1/.zshrc"
+}
+
 setup_antidote() { # $1 = HOME, $2 = defer (0|1)
 	local ah=$1/.cache/antidote kind=
 	[ "$2" = 1 ] && kind=' kind:defer'
@@ -331,13 +378,14 @@ setup() { # $1 = contender name, $2 = HOME
 		zinit-turbo) setup_zinit "$2" 1 ;;
 		antidote) setup_antidote "$2" 0 ;;
 		antidote-defer) setup_antidote "$2" 1 ;;
+		sheldon) setup_sheldon "$2" 0 ;;
+		sheldon-static) setup_sheldon "$2" 1 ;;
 		rc-before) setup_rc_stack "$2" ;;
 		rc-wayu-optimize) setup_rc_optimized "$2" ;;
 		*) echo "unknown contender: $1" >&2; exit 64 ;;
 	esac
 }
 
-METRICS="first_prompt_lag_ms first_command_lag_ms command_lag_ms input_lag_ms exit_time_ms"
 
 # median <metric> <raw file>
 median() {
@@ -350,14 +398,17 @@ bench() { # $1 = contender
 	local h out
 	h=$(new_home "$1")
 	setup "$1" "$h"
+	in_home "$h" "$ZSH_EXE" -fc 'autoload -Uz compaudit; compaudit' > "$work/results/$1.audit" 2>&1 || true
+	# A single cold process-exit diagnostic, kept separate from PTY latency.
+	in_home "$h" "$PYTHON_EXE" "$TIMED_RUNNER" --seconds 30 --elapsed "$ZSH_EXE" -lic exit > "$work/results/$1.cold" 2> "$work/results/$1.cold.err"
 	# Warm: dumps, .zwc, bundles, zinit's compiled plugins.
-	in_home "$h" "$ZSH_EXE" -lic exit </dev/null >/dev/null 2>&1 || true
+	in_home "$h" "$PYTHON_EXE" "$TIMED_RUNNER" --seconds 30 "$ZSH_EXE" -lic 'print -r -- "BENCH_READY comps=${+functions[compdef]} suggest=${+_ZSH_AUTOSUGGEST_BIND_COUNTS} highlight=${+ZSH_HIGHLIGHT_VERSION}"' </dev/null > "$work/results/$1.startup" 2>&1
 	sleep 1
-	in_home "$h" "$ZSH_EXE" -lic exit </dev/null >/dev/null 2>&1 || true
+	in_home "$h" "$PYTHON_EXE" "$TIMED_RUNNER" --seconds 30 "$ZSH_EXE" -lic exit </dev/null >> "$work/results/$1.startup" 2>&1
 	sleep 1
 	out=$work/results/$1.raw
 	printf '%-18s' "$1"
-	if ! in_home "$h" "$ZSH_EXE" "$work/src/zsh-bench/zsh-bench" --raw --iters "$ITERS" --git no </dev/null >"$out" 2>"$out.err"; then
+	if ! in_home "$h" "$PYTHON_EXE" "$TIMED_RUNNER" --seconds "$BENCHMARK_TIMEOUT" "$ZSH_EXE" "$work/src/zsh-bench/zsh-bench" --raw --iters "$ITERS" --git no </dev/null >"$out" 2>"$out.err"; then
 		echo "zsh-bench failed:"; cat "$out.err"; return 1
 	fi
 	printf '%9s %9s %9s %9s %9s   %s%s%s\n' \
@@ -385,20 +436,9 @@ echo
 echo "csh = has_compsys / has_autosuggestions / has_syntax_highlighting as zsh-bench detected them"
 
 if [ -n "$JSON" ]; then
-	{
-		echo '{'
-		printf '  "iters": %s,\n  "zsh": "%s",\n  "results": {\n' "$ITERS" "$("$ZSH_EXE" --version)"
-		first=1
-		for f in "$work"/results/*.raw; do
-			n=$(basename "$f" .raw)
-			[ $first = 1 ] || echo ','
-			first=0
-			printf '    "%s": {' "$n"
-			sep=
-			for m in $METRICS; do printf '%s"%s": %s' "$sep" "$m" "$(median $m "$f")"; sep=', '; done
-			printf '}'
-		done
-		printf '\n  }\n}\n'
-	} > "$JSON"
-	echo "wrote $JSON"
+  "$PYTHON_EXE" tests/benchmark/report.py --results "$work/results" --output "$JSON" \
+    --binary "$WAYU_BIN" --zsh "$ZSH_EXE" --iters "$ITERS" \
+    --pin "oh-my-zsh=$OMZ_SHA" --pin "zinit=$ZINIT_SHA" --pin "antidote=$ANTIDOTE_SHA" \
+    --pin "autosuggestions=$ZSA_SHA" --pin "highlighting=$ZSH_HL_SHA" --pin "zsh-defer=$ZSH_DEFER_SHA" \
+    --pin "zsh-bench=$ZSH_BENCH_SHA" --pin "sheldon=$([ -z "$SHELDON_BIN" ] || "$SHELDON_BIN" --version)"
 fi

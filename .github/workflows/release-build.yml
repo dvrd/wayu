@@ -1,0 +1,231 @@
+name: Release build
+
+# The release binaries, built, packaged and smoke-tested on every target.
+# Reusable only: ci.yml runs it on develop/PRs (no publishing, so a broken
+# target fails before a release), bump.yml runs it at the release tag and
+# attests + publishes what it uploads.
+#
+# Targets: native builds on ubuntu-24.04, ubuntu-24.04-arm and macos-15;
+# macOS x86_64 is cross-compiled on macos-15 (Odin ships no macOS x86_64
+# toolchain) and smoke-tested on a real Intel Mac (macos-15-intel).
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to build (default: the triggering commit)"
+        type: string
+        default: ''
+      version:
+        description: "vX.Y.Z the binaries must report (release only)"
+        type: string
+        default: ''
+      artifact-prefix:
+        description: "Prefix for the uploaded artifact names (keeps CI's apart from the release's in one run)"
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.artifact }}
+    runs-on: ${{ matrix.os }}
+    # Read-only: the build (odin, ./build_it) never holds a token that can
+    # sign or write. bump.yml's attest job signs what this job uploads.
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: wayu-linux-amd64
+            os: ubuntu-24.04
+            target: linux_amd64
+          - artifact: wayu-linux-arm64
+            os: ubuntu-24.04-arm
+            target: linux_arm64
+          - artifact: wayu-macos-arm64
+            os: macos-15
+            target: darwin_arm64
+          - artifact: wayu-macos-amd64
+            os: macos-15
+            target: darwin_amd64
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        ref: ${{ inputs.ref }}
+        persist-credentials: false
+
+    - name: Setup Odin
+      uses: ./.github/actions/setup-odin
+
+    # ./build_it build is the one release build: on macOS targets it passes
+    # -minimum-os-version from .github/macos-minimum-version (Odin otherwise
+    # stamps the runner's macOS, and the binary refuses to start on older Macs).
+    - name: Build optimized release
+      env:
+        TARGET: ${{ matrix.target }}
+      run: |
+        odin build build -out:build_it
+        ./build_it build "--target=$TARGET"
+        chmod +x bin/wayu
+
+    - name: Check macOS minimum version
+      if: runner.os == 'macOS'
+      run: .github/scripts/check-macos-minos.sh bin/wayu
+
+    # The formula and install.sh map each asset to a CPU: the binary must
+    # be that CPU's (cross builds included).
+    - name: Check binary architecture
+      env:
+        TARGET: ${{ matrix.target }}
+      run: |
+        set -euo pipefail
+        desc=$(file -b bin/wayu)
+        echo "$desc"
+        case "$TARGET" in
+          darwin_arm64) want='Mach-O 64-bit executable arm64' ;;
+          darwin_amd64) want='Mach-O 64-bit executable x86_64' ;;
+          linux_amd64)  want='ELF 64-bit LSB *x86-64' ;;
+          linux_arm64)  want='ELF 64-bit LSB *ARM aarch64' ;;
+          *) echo "::error::unknown target $TARGET"; exit 1 ;;
+        esac
+        # shellcheck disable=SC2254 # $want is a glob on purpose
+        case "$desc" in
+          $want*) ;;
+          *) echo "::error::bin/wayu is '$desc', expected '$want' for $TARGET"; exit 1 ;;
+        esac
+
+    # Reproducible archive: same binary → same tarball bytes. One entry,
+    # mode 0755, owner 0:0 without names, mtime = the commit's time
+    # (SOURCE_DATE_EPOCH), ustar (no pax atime/ctime), no macOS xattrs,
+    # gzip -n (no name/timestamp in the gzip header).
+    - name: Package and compute SHA256
+      env:
+        ARTIFACT: ${{ matrix.artifact }}
+      run: |
+        set -euo pipefail
+        SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+        export SOURCE_DATE_EPOCH
+        stage="$RUNNER_TEMP/package"
+        rm -rf "$stage"
+        mkdir -p "$stage"
+        cp bin/wayu "$stage/wayu"
+        chmod 0755 "$stage/wayu"
+        if [[ "$RUNNER_OS" == "macOS" ]]; then
+          # bsdtar has no --mtime/--sort: set the file's mtime instead.
+          TZ=UTC touch -t "$(date -u -r "$SOURCE_DATE_EPOCH" +%Y%m%d%H%M.%S)" "$stage/wayu"
+          tar --format ustar --uid 0 --gid 0 --numeric-owner \
+            --no-mac-metadata --no-xattrs --no-acls --no-fflags \
+            -cf - -C "$stage" wayu | gzip -n -9 > "$ARTIFACT.tar.gz"
+          shasum -a 256 "$ARTIFACT.tar.gz" > "$ARTIFACT.sha256"
+        else
+          tar --format=ustar --sort=name --mtime="@$SOURCE_DATE_EPOCH" \
+            --owner=0 --group=0 --numeric-owner \
+            -cf - -C "$stage" wayu | gzip -n -9 > "$ARTIFACT.tar.gz"
+          sha256sum "$ARTIFACT.tar.gz" > "$ARTIFACT.sha256"
+        fi
+        tar -tvzf "$ARTIFACT.tar.gz"
+        # "<hash>  <file>": `shasum -a 256 -c` / `sha256sum -c` accept it.
+        echo "SHA256=$(awk '{print $1}' "$ARTIFACT.sha256")"
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: ${{ inputs.artifact-prefix }}${{ matrix.artifact }}
+        path: |
+          ${{ matrix.artifact }}.tar.gz
+          ${{ matrix.artifact }}.sha256
+        if-no-files-found: error
+
+  # Each archive, unpacked and run on its own platform's hardware, as a user
+  # would: checksum, one entry, --version, doctor in an empty HOME.
+  smoke:
+    name: Smoke ${{ matrix.artifact }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: wayu-linux-amd64
+            os: ubuntu-24.04
+            arch: x86_64
+          - artifact: wayu-linux-arm64
+            os: ubuntu-24.04-arm
+            arch: aarch64
+          - artifact: wayu-macos-arm64
+            os: macos-15
+            arch: arm64
+          - artifact: wayu-macos-amd64
+            os: macos-15-intel
+            arch: x86_64
+
+    steps:
+    - name: Download build artifact
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: ${{ inputs.artifact-prefix }}${{ matrix.artifact }}
+        path: dist
+
+    # A runner image that changed CPU would make this test prove nothing.
+    - name: Check runner architecture
+      env:
+        EXPECTED: ${{ matrix.arch }}
+      run: |
+        ACTUAL=$(uname -m)
+        if [ "$ACTUAL" != "$EXPECTED" ]; then
+          echo "::error::Runner is $ACTUAL, expected $EXPECTED"
+          exit 1
+        fi
+
+    - name: Check checksum and unpack
+      working-directory: dist
+      env:
+        ARTIFACT: ${{ matrix.artifact }}
+      run: |
+        set -euo pipefail
+        if command -v sha256sum >/dev/null 2>&1; then
+          sha256sum -c "$ARTIFACT.sha256"
+        else
+          shasum -a 256 -c "$ARTIFACT.sha256"
+        fi
+        [ "$(tar -tzf "$ARTIFACT.tar.gz")" = "wayu" ] || {
+          echo "::error::$ARTIFACT.tar.gz must hold exactly one entry, wayu"
+          exit 1
+        }
+        mkdir -p bin
+        tar -xzf "$ARTIFACT.tar.gz" -C bin wayu
+
+    - name: Run wayu --version and doctor in an empty HOME
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        bin="$GITHUB_WORKSPACE/dist/bin/wayu"
+        home=$(mktemp -d)
+        run() {
+          env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u WAYU_CONFIG_DIR -u WAYU_DATA_DIR \
+            HOME="$home" SHELL=/bin/bash NO_COLOR=1 "$bin" "$@"
+        }
+        OUT=$(run --version | head -1)
+        echo "$OUT"
+        case "$OUT" in
+          "wayu v"*) ;;
+          *) echo "::error::--version printed '$OUT'"; exit 1 ;;
+        esac
+        if [ -n "$VERSION" ] && [ "$OUT" != "wayu $VERSION" ]; then
+          echo "::error::binary reports '$OUT', expected wayu $VERSION"
+          exit 1
+        fi
+        # doctor exits 78 when a check reports an error.
+        run doctor
+        run init --shell bash < /dev/null
+        run path add /usr/bin
+        run path list --json
+        run doctor

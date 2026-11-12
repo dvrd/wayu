@@ -39,7 +39,7 @@
     // Old single-page links (/docs/?p=cli#x) moved to /docs/cli/#x.
     (function () {
       var p = new URLSearchParams(location.search).get('p');
-      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading'}[p.toLowerCase()];
+      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading', 'compatibility': 'compatibility', 'benchmarks': 'benchmarks', 'validation': 'validation', 'security-review': 'security-review'}[p.toLowerCase()];
       if (to) location.replace('/docs/' + to + '/' + location.hash);
     })();
   </script>
@@ -102,6 +102,10 @@
           <li><a href="/docs/config/" data-page="config">Configuration</a></li>
           <li><a href="/docs/stability/" data-page="stability">Stability</a></li>
           <li><a href="/docs/upgrading/" data-page="upgrading">Upgrading</a></li>
+          <li><a href="/docs/compatibility/" data-page="compatibility">Compatibility</a></li>
+          <li><a href="/docs/benchmarks/" data-page="benchmarks">Benchmarks</a></li>
+          <li><a href="/docs/validation/" data-page="validation">Validation</a></li>
+          <li><a href="/docs/security-review/" data-page="security-review">Security review</a></li>
         </ul>
       </nav>
     </aside>
@@ -291,6 +295,12 @@ names on stderr; it never acts on a guess.</p>
 wayu path list --full
 wayu path clean --dry-run
 </code></pre><button type="button" class="icon-btn copy-btn" aria-label="Copy bash code"><svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
+<p><code class="nw">--portable</code> on <code class="nw">path add &lt;path&gt;</code> stores a directory under the current home as a
+<code class="nw">$HOME/...</code> reference, so the same entry works in another home. The directory
+must exist locally and be inside HOME (otherwise <code class="nw">65</code>). The flag is accepted
+only by <code class="nw">add</code> (otherwise <code class="nw">64</code>); <code class="nw">--dry-run</code> previews the stored reference.
+Without <code class="nw">--portable</code>, <code class="nw">add</code> continues to store the resolved absolute path.
+Portable entries use the existing entries.json format and shell expansion.</p>
 <h3 id="wayu-alias"><code class="nw">wayu alias</code><a class="anchor" href="#wayu-alias" aria-label="Link to this section">#</a></h3>
 <p>Manage aliases (stored in <code class="nw">entries.json</code>). Default action: <code class="nw">list</code>. Names:
 printable ASCII except whitespace, quotes, <code class="nw">$</code> <code class="nw">`</code> <code class="nw">\</code> <code class="nw">=</code> <code class="nw">/</code> <code class="nw">^</code> <code class="nw">;</code> <code class="nw">&amp;</code>
@@ -596,6 +606,11 @@ values were encrypted with the old key) restore entries.json only.</p>
 <td>Fast-forward to the remote</td>
 </tr>
 <tr>
+<td><code class="nw">restore</code></td>
+<td></td>
+<td>Reconstruct missing checkouts from plugins.json, using this machine&#39;s data dir; <code class="nw">--dry-run</code></td>
+</tr>
+<tr>
 <td><code class="nw">help</code></td>
 <td></td>
 <td></td>
@@ -624,6 +639,32 @@ values were encrypted with the old key) restore entries.json only.</p>
 </tr>
 </tbody>
 </table></div>
+<p><code class="nw">wayu plugin restore</code> is the replay step after copying <code class="nw">plugins.json</code> to a
+new machine. It replaces the saved <code class="nw">installed_path</code> values with
+<code class="nw">&lt;data&gt;/plugins/&lt;name&gt;</code> and clones every missing plugin, including disabled
+ones. The recorded commit is restored even when its branch has advanced;
+commit pins, tag pins, enabled state, file selections, dependencies and
+priorities are preserved. A branch-following plugin stays on its branch,
+so a later explicit <code class="nw">plugin update</code> can advance it. Without a recorded
+commit, restore uses the saved tag or branch, or the remote&#39;s default HEAD.</p>
+<p>Existing checkouts are kept, including local edits. A symlink, a non-Git
+destination, or a checkout with a different origin is an error (<code class="nw">78</code>);
+restore never resets or replaces it. Invalid metadata exits <code class="nw">78</code>, a clone
+or checkout failure exits <code class="nw">74</code>, and a plugin with nothing to load exits <code class="nw">65</code>.
+Before saving local paths, restore backs up plugins.json (failure: <code class="nw">73</code>).
+A failure before that save removes only checkouts created by this run and
+keeps the original metadata. It then verifies the saved metadata and
+regenerates plugin loaders and initialized shells&#39; runtime files. If loader
+generation fails, it exits <code class="nw">74</code>; the restored checkouts are kept for
+<code class="nw">wayu build</code> to retry. <code class="nw">--dry-run</code> does not clone or save anything.</p>
+<p><code class="nw">plugin add</code> exits <code class="nw">66</code> when the named plugin is registered but its checkout
+is missing, and names <code class="nw">wayu plugin restore</code> as the recovery command.</p>
+<p><code class="nw">plugin get</code> also attempts to copy the URL to the clipboard. Each clipboard
+helper has a five-second deadline (Linux may try xclip, then xsel). An early
+input close or timeout prints a warning; displaying the plugin information
+still succeeds. <code class="nw">--dry-run</code> displays the information and previews the copy
+without changing the clipboard. Helpers that fork a background owner are
+supported, including ones that consume input after the foreground helper exits.</p>
 <h3 id="wayu-init"><code class="nw">wayu init</code><a class="anchor" href="#wayu-init" aria-label="Link to this section">#</a></h3>
 <p><code>wayu init [--template &lt;name&gt;]</code>: create the config dir
 (<code class="nw">~/.config/wayu</code>) and the data dir (<code>${XDG_DATA_HOME:-~/.local/share}/wayu</code>),
@@ -1084,6 +1125,26 @@ Service, or <code class="nw">secret.key</code> in the config dir). <code class="
 <td>Run <code class="nw">cmd</code> with these secrets in its environment</td>
 </tr>
 <tr>
+<td><code class="nw">identity</code></td>
+<td><code class="nw">[--name NAME]</code></td>
+<td>(experimental) Print this machine&#39;s age recipient (<code class="nw">age1…</code>) on stdout, creating its identity the first time; stderr shows the <code class="nw">recipient add</code> command to run on a machine that reads the secrets (<code class="nw">--name</code>: the name in that command, default <code class="nw">hostname -s</code>; <code class="nw">NAME</code> when the hostname is empty or an IP address)</td>
+</tr>
+<tr>
+<td><code class="nw">recipient</code></td>
+<td><code class="nw">list</code> (<code class="nw">ls</code>) <code class="nw">[--json]</code> · <code class="nw">add &lt;age1…&gt; [--name NAME]</code> · <code class="nw">rm &lt;NAME&gt; --yes</code> · <code class="nw">rename &lt;OLD&gt; &lt;NEW&gt;</code></td>
+<td>(experimental) Machines that can read the secrets (see below)</td>
+</tr>
+<tr>
+<td><code class="nw">adopt</code></td>
+<td><code class="nw">--yes</code></td>
+<td>(experimental) Accept the data key in this machine&#39;s stanza without a rotation proof: a new machine&#39;s first step (prints the fingerprint to compare). Never a key this machine replaced. On a version 1 file this machine knew as version 2: back to one machine</td>
+</tr>
+<tr>
+<td><code class="nw">recovery</code></td>
+<td><code class="nw">add [--name NAME]</code> · <code class="nw">rm --yes</code> · <code class="nw">unlock</code></td>
+<td>(experimental) Recovery passphrase (read from stdin, never argv)</td>
+</tr>
+<tr>
 <td><code class="nw">help</code></td>
 <td></td>
 <td></td>
@@ -1115,6 +1176,90 @@ not decrypt, the shell prints one <code class="nw">wayu: secrets not loaded: …
 stderr and starts without the secrets. The first <code class="nw">add --secret</code> creates the
 key; wayu never creates a new key while <code class="nw">secrets.json</code> holds values (exit
 <code class="nw">78</code>). Errors reading the store or key exit <code class="nw">78</code>; write errors <code class="nw">74</code>.</p>
+<h4 id="multi-machine-secrets-experimental">Multi-machine secrets (experimental)<a class="anchor" href="#multi-machine-secrets-experimental" aria-label="Link to this section">#</a></h4>
+<p>The same <code class="nw">secrets.json</code> (with <code class="nw">entries.json</code>) can be read on several
+machines without copying any key between them. Each machine has its own age
+X25519 identity (<code class="nw">AGE-SECRET-KEY-1…</code>, kept by the <code class="nw">[secrets]</code> backend), and
+<code class="nw">secrets.json</code> version 2 wraps one data key to every machine&#39;s recipient
+(<code class="nw">age1…</code>); see <a href="/docs/config/#multi-machine-secrets-experimental">config-reference.md</a>.
+Experimental: these actions and the version 2 format may change in a minor
+release (a format change still migrates automatically). The first use prints
+a one-time notice on stderr.</p>
+<div class="code"><pre><code class="language-bash">wayu secrets identity                              # on the new machine B: prints age1…
+wayu secrets recipient add age1… --name linux-box  # on machine A: prints the data key fingerprint
+# sync secrets.json (and entries.json) to B, then on B:
+wayu secrets adopt --yes                           # prints the same fingerprint: compare them
+</code></pre><button type="button" class="icon-btn copy-btn" aria-label="Copy bash code"><svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
+<ul>
+<li><code>recipient add &lt;age1…&gt; [--name NAME]</code> needs the data key. The first one
+upgrades a version 1 store to version 2 (backup first, then a verify step;
+a one-time notice says wayu 7.0 cannot read it): the master key becomes the
+data key unchanged, this machine is added as <code class="nw">hostname -s</code>, value lines are
+untouched. <code class="nw">--name</code> is required for another machine&#39;s key (default
+<code class="nw">hostname -s</code> for this machine&#39;s own; when the hostname is empty or an IP
+address there is no default: <code class="nw">64</code>, add this machine first with
+<code>wayu secrets recipient add &quot;$(wayu secrets identity)&quot; --name NAME</code>). It
+prints the data key&#39;s fingerprint (<code class="nw">data key fingerprint: …</code>) and, for
+another machine, the <code class="nw">adopt</code> step to run there. <code class="nw">65</code>: bad or reserved recipient
+(post-quantum <code class="nw">age1pq1…</code> is reserved, not supported), bad name, duplicate
+name or recipient. <code class="nw">64</code>: missing <code class="nw">--name</code> for another machine.
+</li>
+<li><code class="nw">recipient rm &lt;NAME&gt; --yes</code> drops the machine and always rotates: a new
+data key, every value re-encrypted, re-wrapped to the remaining recipients,
+a rotation proof appended, the session cache and backup copies of
+<code class="nw">secrets.json</code> dropped. The removed machine can no longer read values
+stored from then on (it already decrypted the old ones: rotate those
+credentials upstream). Machines that have not synced since the <code class="nw">rm</code> are
+exposed until they do: the removed machine still holds the old key and
+can sign a rotation from it, which such a machine accepts. The recovery
+passphrase survives <code class="nw">rm</code>: if the removed machine knew it, replace it
+(<code class="nw">recovery rm --yes</code>, then <code class="nw">recovery add</code>; <code class="nw">rm</code> says so). Removing this
+machine or the last recipient is refused (<code class="nw">65</code>). Without <code class="nw">--yes</code>: <code class="nw">64</code>.
+An entry that fails the stanza check is dropped before the check runs on
+the rest, so the <code class="nw">rm</code> an error names always works.
+</li>
+<li><code class="nw">recipient rename &lt;OLD&gt; &lt;NEW&gt;</code>, <code class="nw">recipient list [--json]</code> (marks this
+machine; also prints the data key&#39;s fingerprint).
+</li>
+<li><code class="nw">rekey</code> on a version 2 store makes a new data key, wraps it to every
+recipient and appends a rotation proof.
+</li>
+<li>Each machine caches the data key it verified in the backend&#39;s existing
+master-key item, with what it verified (local state: that it read
+version 2, the recipients, the ones it saw removed, the keys it
+replaced). Shell start uses it while its fingerprint (<code class="nw">key_id</code>) matches:
+no public-key operation, no extra fork. A different key is taken from
+this machine&#39;s stanza only when the rotation proofs (at most 16) chain it
+to the cached key and it lists no machine this one saw removed; stderr
+prints <code>adopted data key … (rotation from … verified); recipients: +x, -y</code>. A machine with nothing cached (a new one) takes no key by itself: it
+exits <code class="nw">78</code> naming <code class="nw">wayu secrets adopt --yes</code>, which prints the
+fingerprint to compare with the one <code class="nw">recipient add</code> printed. An unproven
+key, or one listing a removed machine again, is also <code class="nw">78</code> naming <code class="nw">adopt</code>:
+compare the fingerprint with <code class="nw">recipient list</code> on another machine first.
+<code class="nw">adopt</code> exits <code class="nw">78</code> when this machine has no stanza.
+</li>
+<li>A <code class="nw">secrets.json</code> under a key this machine replaced (an old copy synced
+back) exits <code class="nw">78</code> (&quot;older than this machine&#39;s data key&quot;): get the current
+file again; <code class="nw">adopt</code> and <code class="nw">recovery unlock</code> refuse that key too. A version 1
+file on a machine that read version 2 (a downgrade) exits <code class="nw">78</code> for every
+read and write: sync the version 2 file again, or, going back to one
+machine on purpose, <code class="nw">adopt --yes</code> (only when every value decrypts with
+this machine&#39;s key).
+</li>
+<li>A machine that is not a recipient prints <code>wayu: secrets not loaded: this machine is not a recipient …; run &#39;wayu secrets identity&#39; and add it from a machine that is</code> at shell start.
+</li>
+<li><code class="nw">recovery add</code> sets a passphrase stanza (argon2id; wayu-only, not an age
+stanza): <code class="nw">recovery unlock</code> (passphrase on stdin) recovers the data key on
+any machine with the file, caches it, and says how to add the machine.
+<code class="nw">recovery rm --yes</code> drops it and rotates. A passphrase shorter than 12
+characters, or a wrong one (or a modified salt: &quot;wrong passphrase, or the
+recovery entry was modified&quot;): <code class="nw">65</code>. argon2id parameters other than the
+ones wayu writes (64 MiB, 3 passes, 4 lanes): <code class="nw">78</code>, before any work.
+</li>
+<li>Every error exits non-zero and names the command that fixes it.
+<code class="nw">--dry-run</code> writes nothing (no identity, no key, no notice marker).
+</li>
+</ul>
 <h3 id="wayu-optimize"><code class="nw">wayu optimize</code><a class="anchor" href="#wayu-optimize" aria-label="Link to this section">#</a></h3>
 <p><code>wayu optimize [--check] [--dry-run] [--yes]</code>: move the lines installers
 append to your shell startup files into wayu, and remove them from the file.
@@ -1206,7 +1351,7 @@ scripts and regenerates under the config lock, like the CLI.</p>
 <p>Prints the global help: commands, flags, command flags, examples, exit codes.</p>
 <h2 id="json-output">JSON output<a class="anchor" href="#json-output" aria-label="Link to this section">#</a></h2>
 <p><code class="nw">--json</code> is accepted by <code>path|alias|const|plugin|backup|script list</code>,
-<code class="nw">search</code> and <code class="nw">doctor</code> (and by any <code class="nw">help</code>); anywhere else it exits <code class="nw">64</code>. Output is one
+<code class="nw">secrets recipient list</code>, <code class="nw">search</code> and <code class="nw">doctor</code> (and by any <code class="nw">help</code>); anywhere else it exits <code class="nw">64</code>. Output is one
 JSON document on stdout (errors stay on stderr); an empty list is <code class="nw">[]</code>. The
 shapes below are checked by <code>tests/integration/test_cli_output.rb</code> — new
 keys may be added, existing ones keep their meaning.</p>
@@ -1241,6 +1386,10 @@ keys may be added, existing ones keep their meaning.</p>
 <tr>
 <td><code class="nw">script list</code></td>
 <td><code>{&quot;scripts&quot;: [{&quot;name&quot;, &quot;lang&quot;, &quot;source&quot;, &quot;bin&quot;, &quot;compiled&quot;: bool, &quot;stale&quot;: bool}], &quot;count&quot;: int}</code></td>
+</tr>
+<tr>
+<td><code class="nw">secrets recipient list</code></td>
+<td><code>{&quot;recipients&quot;: [{&quot;name&quot;, &quot;recipient&quot;, &quot;this_machine&quot;: bool}], &quot;key_id&quot;, &quot;recovery&quot;: bool}</code> (experimental); a version 1 store has <code class="nw">&quot;recipients&quot;: []</code> and <code class="nw">&quot;key_id&quot;: &quot;&quot;</code></td>
 </tr>
 <tr>
 <td><code class="nw">search QUERY</code></td>
@@ -1540,6 +1689,34 @@ Ctrl-C, <code class="nw">143</code> for <code class="nw">SIGTERM</code>, <code c
 <tr>
 <td><code class="nw">wayu secrets lock x</code></td>
 <td>64</td>
+</tr>
+<tr>
+<td><code class="nw">wayu secrets adopt</code></td>
+<td>64</td>
+</tr>
+<tr>
+<td><code>wayu secrets recipient rm laptop</code></td>
+<td>64</td>
+</tr>
+<tr>
+<td><code class="nw">wayu secrets recipient bogus</code></td>
+<td>64</td>
+</tr>
+<tr>
+<td><code class="nw">wayu secrets recovery rm</code></td>
+<td>64</td>
+</tr>
+<tr>
+<td><code class="nw">wayu secrets identity --json</code></td>
+<td>64</td>
+</tr>
+<tr>
+<td><code>wayu secrets recipient add age1notakey --name x</code></td>
+<td>65</td>
+</tr>
+<tr>
+<td><code>wayu secrets recipient add age1pq1qqqqqqqqqqqqqqqq --name x</code></td>
+<td>65</td>
 </tr>
 <tr>
 <td><code class="nw">wayu build --test</code></td>

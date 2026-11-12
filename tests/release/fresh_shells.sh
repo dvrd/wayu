@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/zsh -f
 # Release check: `./build_it install` from a clean clone into an empty HOME,
 # then the README rc lines for zsh/bash/fish: PATH, const, alias,
 # completions in a new shell of each; doctor.
@@ -36,4 +36,9 @@ if [[ -n $FISH ]]; then
 fi
 $E SHELL=/bin/zsh wayu doctor >$H/doc 2>&1;                              ok $? "doctor"
 grep -E '✗|⚠' $H/doc | sed 's/^/    doctor: /' | head -8
-[[ $fails == 0 ]] && print ALL OK || print "$fails FAILED"
+if [[ $fails == 0 ]]; then
+  print ALL OK
+else
+  print "$fails FAILED"
+  exit 1
+fi

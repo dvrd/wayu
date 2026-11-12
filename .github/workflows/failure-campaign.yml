@@ -1,0 +1,93 @@
+name: Failure campaign and candidate trial
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  campaign:
+    name: Failure campaign on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/setup-odin
+    - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+      with:
+        ruby-version: '3.3'
+    - name: Install shells (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        .github/scripts/apt-install.sh zsh fish
+        sudo chmod go-w /usr/share/zsh /usr/share/zsh/vendor-completions
+    - name: Install shells (macOS)
+      if: runner.os == 'macOS'
+      run: brew install fish bash
+    - name: Build candidate
+      run: |
+        odin build build -out:build_it
+        ./build_it build
+        mkdir -p evidence
+    - name: Filesystem and process failures (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      env:
+        WAYU_BIN: bin/wayu
+      run: ruby tests/scenarios/failure_campaign.scenario.test.rb | tee evidence/failure-campaign.txt
+    - name: Real full filesystem and process failures (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        WAYU_BIN: bin/wayu
+      run: |
+        mount_root=$(mktemp -d "$RUNNER_TEMP/wayu-full-disk.XXXXXX")
+        mounted=0
+        cleanup() {
+          if [ "$mounted" = 0 ]; then rmdir "$mount_root"; return; fi
+          # Runtime zcompile is asynchronous. Wait for its file handles
+          # without lazy-unmounting or treating a stuck mount as success.
+          for attempt in {1..50}; do
+            if sudo umount "$mount_root" 2>"$RUNNER_TEMP/wayu-unmount.err"; then
+              rmdir "$mount_root"
+              return
+            fi
+            if [ "$attempt" = 1 ]; then sudo fuser -vm "$mount_root" || true; fi
+            sleep 0.1
+          done
+          cat "$RUNNER_TEMP/wayu-unmount.err" >&2
+          return 1
+        }
+        trap cleanup EXIT
+        sudo mount -t tmpfs -o size=8M,nr_inodes=4096 tmpfs "$mount_root"
+        mounted=1
+        sudo chown "$(id -u):$(id -g)" "$mount_root"
+        WAYU_FULL_DISK_ROOT="$mount_root" ruby tests/scenarios/failure_campaign.scenario.test.rb --require-enospc | tee evidence/failure-campaign.txt
+    - name: Repeated fresh-shell candidate trial
+      shell: bash
+      env:
+        WAYU_BIN: bin/wayu
+        WAYU_TRIAL_ROUNDS: '20'
+        WAYU_TRIAL_REPORT: evidence/candidate-trial.json
+      run: ruby tests/release/candidate_trial.rb | tee evidence/candidate-trial.txt
+    - name: Fresh source install and shell trial
+      shell: bash
+      run: tests/release/fresh_shells.sh | tee evidence/fresh-install.txt
+    - name: Bash version trial
+      shell: bash
+      run: sh tests/release/bash_trial.sh "$PWD/bin/wayu" | tee evidence/bash-trial.txt
+    - name: Keep campaign evidence
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: candidate-campaign-${{ matrix.os }}
+        path: evidence/
+        if-no-files-found: error
