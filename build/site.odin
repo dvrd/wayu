@@ -61,6 +61,24 @@ DOC_PAGES :: [?]Doc_Page {
 		"Upgrading",
 		"User-visible behavior changes per release, with the steps to follow.",
 	},
+	{
+		"compatibility",
+		"compatibility.md",
+		"Compatibility",
+		"Coexistence recipes and pinned tests for shell tools and dotfiles managers.",
+	},
+	{
+		"benchmarks",
+		"benchmarks.md",
+		"Benchmarks",
+		"Reproduce startup budgets and comparative measurements with raw evidence.",
+	},
+	{
+		"security-review",
+		"security-review.md",
+		"Security review",
+		"Scope and evidence for the pending independent review of multi-machine secrets.",
+	},
 }
 
 OVERVIEW_DESC :: "wayu documentation: quickstart, CLI reference, configuration reference, stability guarantees and upgrade guide."

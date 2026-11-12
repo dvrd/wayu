@@ -827,6 +827,10 @@ into `core.<ext>`. They are not read from `wayu.toml`; a `[paths]`,
 
 ### PATH entries
 
+`wayu path add ~/.local/bin --portable` stores `$HOME/.local/bin` for use
+across machines. This opt-in only applies inside HOME; the default still
+resolves and stores an absolute directory. The file format is unchanged.
+
 `wayu path add ~/.local/bin`, `wayu path add go_bin='$GOPATH/bin'`: each
 entry is a `key` (a label) and a `dir`.
 
@@ -995,6 +999,14 @@ naming it); a `timeout = <seconds>` line in hooks.conf changes that limit
 `$WAYU_DATA_DIR/plugins.json` (JSON5: comments and trailing commas allowed)
 is written by `wayu plugin ...` and may be hand-edited or synced. Plugins are
 cloned to `$WAYU_DATA_DIR/plugins/<name>`.
+
+After syncing this file to a new machine, run `wayu plugin restore` (or
+preview with `--dry-run`). It backs up the imported file, replaces
+`installed_path` with this machine's `<data>/plugins/<name>`, restores missing
+checkouts at their recorded revisions and regenerates the loaders. The
+version remains `"1.0"`; ordinary commands still reject paths outside the
+current plugins directory. Existing checkouts are kept, including edits;
+use `plugin update` explicitly to advance them. See [cli.md](cli.md#wayu-plugin).
 
 ```json5
 {

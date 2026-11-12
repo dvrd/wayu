@@ -73,6 +73,21 @@ Golden files for TUI components live in `tests/golden/`; each needs a line in
 all (`run_all.rb` includes it). Regenerate one with
 `./bin/wayu -c=<component> --snapshot <args>` and review the diff.
 
+Release verification also upgrades a verified published binary to the current
+candidate in temporary homes. To reproduce with a downloaded release:
+
+```bash
+WAYU_PREVIOUS_BIN=/path/to/released/wayu WAYU_BIN=$PWD/bin/wayu ruby tests/release/upgrade.rb
+```
+
+The pinned real-upstream suite and benchmark workflow are described in
+[docs/compatibility.md](docs/compatibility.md) and
+[docs/benchmarks.md](docs/benchmarks.md). They require network access and
+temporary upstream binaries, separate from offline integration tests.
+The release workflow depends explicitly on both CI and startup budgets;
+CI includes previous-binary upgrades and upstream compatibility on macOS/Linux.
+The pending independent secrets review has a [review brief](docs/security-review.md).
+
 ## Formatting
 
 Format every Odin file you touch with `odinfmt` (from

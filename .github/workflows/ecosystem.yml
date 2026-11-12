@@ -1,0 +1,74 @@
+name: Ecosystem evidence
+
+# Real upstream smoke tests and comparisons are explicit network jobs.
+# Ordinary integration tests remain offline. Reports are evidence for the
+# named pins and runners, not a claim of universal compatibility.
+on:
+  workflow_call:
+    inputs:
+      benchmarks:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      benchmarks:
+        description: Run comparative benchmarks as well as smoke tests
+        type: boolean
+        default: true
+  schedule:
+    - cron: '23 8 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  ecosystem:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/setup-odin
+    - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+      with:
+        ruby-version: '3.3'
+    - name: Install shells (Linux)
+      if: runner.os == 'Linux'
+      run: .github/scripts/apt-install.sh zsh fish
+    - name: Install fish (macOS)
+      if: runner.os == 'macOS'
+      run: brew install fish
+    - name: Build candidate
+      run: |
+        odin build build -out:build_it
+        ./build_it build
+    - name: Fetch checksum and commit pinned upstreams
+      run: python3 tests/ecosystem/fetch.py "$RUNNER_TEMP/wayu-ecosystem"
+    - name: Exercise actual upstream integrations
+      env:
+        WAYU_ECOSYSTEM_DIR: ${{ runner.temp }}/wayu-ecosystem
+        WAYU_BIN: bin/wayu
+      run: |
+        mkdir -p evidence
+        ruby tests/ecosystem/smoke.rb | tee evidence/ecosystem.txt
+        cp "$RUNNER_TEMP/wayu-ecosystem/tools.json" evidence/tools.json
+    - name: Compare equal workloads
+      if: github.event_name == 'schedule' || inputs.benchmarks
+      env:
+        SHELDON_BIN: ${{ runner.temp }}/wayu-ecosystem/bin/sheldon
+        ONLY: floor plain wayu wayu-native oh-my-zsh antidote zinit sheldon sheldon-static wayu-defer antidote-defer zinit-turbo
+        ITERS: '32'
+        JSON: evidence/benchmark.json
+      run: tests/benchmark/compare.sh | tee evidence/benchmark.txt
+    - name: Keep evidence
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: ecosystem-${{ matrix.os }}
+        path: evidence/
+        if-no-files-found: error

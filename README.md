@@ -1,6 +1,6 @@
 # wayu
 
-**v7.0.0** · A shell configuration management CLI written in [Odin](https://odin-lang.org/) with zero external dependencies. Manages PATH entries, aliases, environment variables, completions, and backups across Bash, Zsh, and Fish.
+**v7.0.0** · A shell configuration management CLI written in [Odin](https://odin-lang.org/). Manages PATH entries, aliases, environment variables, completions, and backups across Bash, Zsh, and Fish.
 
 ![wayu demo: path, alias and run-only secret added, constants listed with the secret masked, a Python script created and run with the secret, doctor, then an alias added in the TUI](docs/demo/demo.gif)
 
@@ -10,7 +10,7 @@
 
 - **Multi-shell** -- Automatic Bash/Zsh/Fish detection with shell-specific config files
 - **Dual mode** -- Non-interactive CLI for scripting + interactive TUI (default when run with no args)
-- **PATH management** -- TOML-based keyed entries with deduplication and validation
+- **PATH management** -- Keyed entries in entries.json with deduplication and validation
 - **Alias & constants** -- Add, remove, list with input validation and reserved word checking
 - **Fuzzy matching** -- Smart search with acronym support (e.g., `faak` → `FIREWORKS_AI_API_KEY`)
 - **Completions** -- Manage shell completion scripts (Zsh, Bash, Fish)
@@ -19,10 +19,11 @@
 - **Built-in syntax highlighting** -- opt-in command-line highlighting for zsh (`[settings] highlight = true`) with zsh-syntax-highlighting's styles, using zsh's own lexer, no widget wrapping and no forks; a keystroke re-highlights only the last words
 - **Functions and scripts** -- shell functions (`wayu function`, sourced at startup) and standalone executables in any language (`wayu script`: swift compiled, python/ruby/node/bun/shells/... linked) on PATH; existing scripts can be imported
 - **Backup & restore** -- Automatic timestamped backups before every modification
-- **Shell migration** -- Migrate configs between Bash, Zsh, and Fish
+- **Shared shell entries** -- Use the same PATH entries, aliases and constants in Bash, Zsh, and Fish
+- **Plugin reconstruction** -- Restore missing checkouts from synced metadata, preserving recorded revisions and settings
 - **Dry-run mode** -- Preview any change before applying it
 - **Scriptable** -- BSD sysexits.h exit codes, no interactive prompts in CLI mode
-- **Zero dependencies** -- Pure Odin, ~31K lines, compiles in seconds
+- **Standalone core** -- No interpreter required for the CLI; plugins use Git, and scripts use their language's interpreter or compiler
 
 ## Installation
 
@@ -203,6 +204,7 @@ wayu plugin enable zsh-autosuggestions
 wayu plugin disable zsh-autosuggestions
 wayu plugin priority zsh-autosuggestions 50 # lower = loads earlier
 wayu plugin update --all
+wayu plugin restore                         # reconstruct missing checkouts from synced metadata
 wayu plugin remove zsh-autosuggestions --yes
 
 # Extra configuration (scripts that run at shell startup end)
@@ -464,6 +466,47 @@ dir. Every `wayu.toml` table and key (`[tools]`, `[prompt]`, …),
 `entries.json`, `hooks.conf`, `plugins.json` and the other files are
 described in
 [docs/config-reference.md](docs/config-reference.md).
+
+### Recreating your setup on another machine
+
+Keep these source files together in your dotfiles manager (for example,
+chezmoi) or copy them into the corresponding directories on the new machine:
+
+| From the config dir | From the data dir |
+|---|---|
+| `wayu.toml`, `hooks.conf`, `alias-sources.conf`, `extra.*`, `tools.*` | `entries.json`, `plugins.json`, `functions/`, `scripts/`, and any custom completion scripts |
+
+Copy custom completions to `<data>/completions/`. Recreate generated files,
+plugin checkouts and script binaries locally. `entries.json` can contain
+plaintext constants; keep credentials out of a public dotfiles repository.
+For encrypted constants, transfer `entries.json` and `secrets.json` together
+using the [multi-machine secrets workflow](docs/cli.md#multi-machine-secrets-experimental).
+Each machine keeps its own keys: exclude `secret.key`, `identity.key`,
+session caches, backups and generated runtime files from synchronization.
+
+Install wayu and the tools your setup uses (Git for plugins, interpreters or
+compilers for scripts, and programs named in `[tools]`), then run:
+
+```bash
+wayu plugin restore --dry-run
+wayu plugin restore
+wayu init --shell zsh          # repeat for each shell you use: bash, fish
+wayu script build             # recreate links and compiled scripts
+wayu build
+wayu doctor
+```
+
+Restore uses recorded plugin commits, preserves pins and disabled state,
+and replaces saved checkout paths with paths under the current data dir.
+Existing checkouts and local edits are kept; `plugin update` is the explicit
+step to advance them. See [the restore contract](docs/cli.md#wayu-plugin).
+
+Use `wayu path add ~/.local/bin --portable` for home-relative entries you
+intend to share. It stores `$HOME/.local/bin`; the directory must exist on
+the machine adding it. The default still stores an absolute path. Absolute
+entries, custom shell code, external script links and external tool
+installations remain specific to each machine. See the
+[coexistence recipes](docs/compatibility.md) for other shell tools.
 
 ### Functions and scripts
 

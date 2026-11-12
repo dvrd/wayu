@@ -300,7 +300,7 @@ main :: proc() {
 
 	switch parsed.command {
 	case .PATH:
-		handle_path_command(parsed.action, parsed.args)
+		handle_path_command(parsed.action, parsed.args, parsed.path_portable)
 	case .ALIAS:
 		handle_alias_command(parsed.action, parsed.args)
 	case .CONSTANTS:

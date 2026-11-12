@@ -22,7 +22,7 @@ get_plugins_dir :: proc() -> string {
 }
 
 // Read JSON5 configuration file
-read_plugin_config_json :: proc() -> (config: PluginConfigJSON, ok: bool) {
+read_plugin_config_json :: proc(relocate := false) -> (config: PluginConfigJSON, ok: bool) {
 	sync.lock(&_plugins_json_mutex)
 	defer sync.unlock(&_plugins_json_mutex)
 
@@ -68,6 +68,16 @@ read_plugin_config_json :: proc() -> (config: PluginConfigJSON, ok: bool) {
 	if problem := plugin_json_resolve_enums(data, &config); problem != "" {
 		fmt.eprintfln("Error: Invalid plugins.json (%s): %s", config_file, problem)
 		return config, false
+	}
+	// Only explicit `plugin restore` treats installed_path as machine-local
+	// metadata. Never read, write or remove a path copied from another host.
+	if relocate {
+		plugins_dir := get_plugins_dir()
+		defer delete(plugins_dir)
+		for &p in config.plugins {
+			delete(p.installed_path)
+			p.installed_path = fmt.aprintf("%s/%s", plugins_dir, p.name)
+		}
 	}
 	if problem := validate_plugin_config_entries(&config); problem != "" {
 		fmt.eprintfln("Error: Invalid plugins.json (%s): %s", config_file, problem)

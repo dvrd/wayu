@@ -39,7 +39,7 @@
     // Old single-page links (/docs/?p=cli#x) moved to /docs/cli/#x.
     (function () {
       var p = new URLSearchParams(location.search).get('p');
-      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading'}[p.toLowerCase()];
+      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading', 'compatibility': 'compatibility', 'benchmarks': 'benchmarks', 'security-review': 'security-review'}[p.toLowerCase()];
       if (to) location.replace('/docs/' + to + '/' + location.hash);
     })();
   </script>
@@ -102,6 +102,9 @@
           <li><a href="/docs/config/" data-page="config">Configuration</a></li>
           <li><a href="/docs/stability/" data-page="stability">Stability</a></li>
           <li><a href="/docs/upgrading/" data-page="upgrading">Upgrading</a></li>
+          <li><a href="/docs/compatibility/" data-page="compatibility">Compatibility</a></li>
+          <li><a href="/docs/benchmarks/" data-page="benchmarks">Benchmarks</a></li>
+          <li><a href="/docs/security-review/" data-page="security-review">Security review</a></li>
         </ul>
       </nav>
     </aside>

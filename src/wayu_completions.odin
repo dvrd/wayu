@@ -97,6 +97,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec {
 		json = {.LIST},
 		arg_names = .PATH,
 		arg_name_actions = {.REMOVE, .GET},
+		flags = {{"--portable", "add: store a home-relative $HOME path"}},
 		actions = {
 			{"add", .ADD, "Add a PATH entry"},
 			{"remove", .REMOVE, "Remove a PATH entry"},
@@ -244,6 +245,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec {
 			{"priority", .PRIORITY, "Set plugin load priority"},
 			{"check", .CHECK, "Check for updates"},
 			{"update", .UPDATE, "Update plugins"},
+			{"restore", .RESTORE, "Restore missing checkouts from plugins.json"},
 			{"help", .HELP, "Show help"},
 		},
 		flags = {

@@ -8,6 +8,27 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+**Portable PATH entries and release evidence**
+
+- New: `path add <path> --portable` stores home-relative directories as
+  `$HOME/...`. Default adds still freeze absolute paths. Existing data needs
+  no migration; the flag writes the already-supported entry representation.
+- Release CI now includes startup budgets and real previous-release binary
+  upgrades across zsh/bash/fish on macOS and Linux. Pinned upstream
+  coexistence smoke tests run in CI; comparative benchmarks run weekly or
+  on demand and retain raw samples and tool/source metadata.
+
+**Reconstruct plugin checkouts on a new machine**
+
+- New: `wayu plugin restore [--dry-run]` reads a copied `plugins.json`,
+  restores missing checkouts at the recorded commits, and saves paths under
+  this machine's data dir (backup first, then verification). Pins, disabled
+  state and other plugin settings are preserved; existing checkouts and
+  local edits are kept. No data-format change is required.
+- `plugin add` now exits `66` and names `wayu plugin restore` when a plugin
+  is registered but its checkout is missing. Previously it exited `0` and
+  reported the plugin as already installed.
+
 **Prebuilt binaries for Intel Macs and Linux on arm64**
 
 - Releases now ship `wayu-macos-amd64` (macOS 15 or later on Intel) and

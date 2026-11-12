@@ -108,6 +108,13 @@ wayu path list --full
 wayu path clean --dry-run
 ```
 
+`--portable` on `path add <path>` stores a directory under the current home as a
+`$HOME/...` reference, so the same entry works in another home. The directory
+must exist locally and be inside HOME (otherwise `65`). The flag is accepted
+only by `add` (otherwise `64`); `--dry-run` previews the stored reference.
+Without `--portable`, `add` continues to store the resolved absolute path.
+Portable entries use the existing entries.json format and shell expansion.
+
 ### `wayu alias`
 
 Manage aliases (stored in `entries.json`). Default action: `list`. Names:
@@ -250,6 +257,7 @@ Default action: `list`. `<name>` must match an installed plugin exactly.
 | `priority` | `<name> <number>` | Load order, lower first (default 100) |
 | `check` | | Check for updates |
 | `update` | `<name>` or `--all` | Fast-forward to the remote |
+| `restore` | | Reconstruct missing checkouts from plugins.json, using this machine's data dir; `--dry-run` |
 | `help` | | |
 
 | Flag | |
@@ -257,6 +265,29 @@ Default action: `list`. `<name>` must match an installed plugin exactly.
 | `--all`, `-a` | `update`: every plugin |
 | `--category <c>`, `-c <c>`, `--category=<c>` | `search`: filter by category |
 | `--use <glob>`, `--use=<glob>` | `add`: file(s) to load from the repository root (repeatable) |
+
+`wayu plugin restore` is the replay step after copying `plugins.json` to a
+new machine. It replaces the saved `installed_path` values with
+`<data>/plugins/<name>` and clones every missing plugin, including disabled
+ones. The recorded commit is restored even when its branch has advanced;
+commit pins, tag pins, enabled state, file selections, dependencies and
+priorities are preserved. A branch-following plugin stays on its branch,
+so a later explicit `plugin update` can advance it. Without a recorded
+commit, restore uses the saved tag or branch, or the remote's default HEAD.
+
+Existing checkouts are kept, including local edits. A symlink, a non-Git
+destination, or a checkout with a different origin is an error (`78`);
+restore never resets or replaces it. Invalid metadata exits `78`, a clone
+or checkout failure exits `74`, and a plugin with nothing to load exits `65`.
+Before saving local paths, restore backs up plugins.json (failure: `73`).
+A failure before that save removes only checkouts created by this run and
+keeps the original metadata. It then verifies the saved metadata and
+regenerates plugin loaders and initialized shells' runtime files. If loader
+generation fails, it exits `74`; the restored checkouts are kept for
+`wayu build` to retry. `--dry-run` does not clone or save anything.
+
+`plugin add` exits `66` when the named plugin is registered but its checkout
+is missing, and names `wayu plugin restore` as the recovery command.
 
 ### `wayu init`
 

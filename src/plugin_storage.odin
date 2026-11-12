@@ -742,7 +742,11 @@ handle_plugin_add :: proc(args: []string) {
 	// Already installed (exact match — fuzzy would treat e.g. "git" as
 	// installed whenever "forgit" is): nothing to do, no hook.
 	plugin_add_exit_if_installed :: proc(config: ^PluginConfigJSON, name: string) {
-		if _, found := find_plugin_json(config, name); found {
+		if plugin, found := find_plugin_json(config, name); found {
+			if !os.exists(plugin.installed_path) {
+				print_error_simple("Plugin '%s' has no checkout; run: wayu plugin restore", name)
+				wayu_exit(EXIT_NOINPUT)
+			}
 			print_warning("Plugin '%s' is already installed", name)
 			wayu_exit(EXIT_SUCCESS)
 		}

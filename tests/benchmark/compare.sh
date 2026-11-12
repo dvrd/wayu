@@ -66,6 +66,8 @@ ONLY=${ONLY:-"floor plain plain-c wayu wayu-defer wayu-suggest oh-my-zsh zinit z
 SCENARIOS=${SCENARIOS:-"stack optimize"}
 KEEP=${KEEP:-0}
 JSON=${JSON:-}
+PYTHON_EXE=$(command -v python3)
+SHELDON_BIN=${SHELDON_BIN:-}
 
 # Pinned third-party commits (2026-11-08).
 OMZ_REPO=https://github.com/ohmyzsh/ohmyzsh.git                      OMZ_SHA=cca3bdfbef8c52ef8939ce7911ff68852b949daa
@@ -88,6 +90,12 @@ work=$(cd "$work" && pwd -P)
 mkdir -p "$work/src" "$work/bin" "$work/results"
 ln -s "$WAYU_BIN" "$work/bin/wayu"
 ln -s "$GIT_EXE" "$work/bin/git"
+case " $ONLY " in
+  *" sheldon "*|*" sheldon-static "*)
+    [ -n "$SHELDON_BIN" ] || SHELDON_BIN=$(command -v sheldon)
+    [ -x "$SHELDON_BIN" ] || { echo 'Sheldon is required for this contender' >&2; exit 1; }
+    ln -s "$SHELDON_BIN" "$work/bin/sheldon" ;;
+esac
 # The PATH every benchmarked shell starts with (wayu reachable, as installed).
 BASE_PATH=$work/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
@@ -255,6 +263,26 @@ setup_zinit() { # $1 = HOME, $2 = turbo (0|1)
 	} > "$1/.zshrc"
 }
 
+setup_sheldon() { # $1 = HOME, $2 = static (0|1)
+	mkdir -p "$1/.config/sheldon"
+	cat > "$1/.config/sheldon/plugins.toml" <<EOF
+shell = "zsh"
+[plugins.autosuggestions]
+local = "$work/src/zsh-autosuggestions"
+use = ["zsh-autosuggestions.zsh"]
+[plugins.highlighting]
+local = "$work/src/zsh-syntax-highlighting"
+use = ["zsh-syntax-highlighting.zsh"]
+EOF
+	if [ "$2" = 1 ]; then in_home "$1" sheldon source > "$1/.sheldon.zsh"; fi
+	{
+		workload_rc "$1"
+		echo 'autoload -Uz compinit && compinit'
+		if [ "$2" = 1 ]; then echo 'source "$HOME/.sheldon.zsh"'; else echo 'eval "$(sheldon source)"'; fi
+		echo "$PROMPT_LINE"
+	} > "$1/.zshrc"
+}
+
 setup_antidote() { # $1 = HOME, $2 = defer (0|1)
 	local ah=$1/.cache/antidote kind=
 	[ "$2" = 1 ] && kind=' kind:defer'
@@ -331,13 +359,14 @@ setup() { # $1 = contender name, $2 = HOME
 		zinit-turbo) setup_zinit "$2" 1 ;;
 		antidote) setup_antidote "$2" 0 ;;
 		antidote-defer) setup_antidote "$2" 1 ;;
+		sheldon) setup_sheldon "$2" 0 ;;
+		sheldon-static) setup_sheldon "$2" 1 ;;
 		rc-before) setup_rc_stack "$2" ;;
 		rc-wayu-optimize) setup_rc_optimized "$2" ;;
 		*) echo "unknown contender: $1" >&2; exit 64 ;;
 	esac
 }
 
-METRICS="first_prompt_lag_ms first_command_lag_ms command_lag_ms input_lag_ms exit_time_ms"
 
 # median <metric> <raw file>
 median() {
@@ -350,6 +379,8 @@ bench() { # $1 = contender
 	local h out
 	h=$(new_home "$1")
 	setup "$1" "$h"
+	# A single cold process-exit diagnostic, kept separate from PTY latency.
+	in_home "$h" "$PYTHON_EXE" -c 'import subprocess,sys,time; t=time.perf_counter(); subprocess.run(sys.argv[1:],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); print((time.perf_counter()-t)*1000)' "$ZSH_EXE" -lic exit > "$work/results/$1.cold"
 	# Warm: dumps, .zwc, bundles, zinit's compiled plugins.
 	in_home "$h" "$ZSH_EXE" -lic exit </dev/null >/dev/null 2>&1 || true
 	sleep 1
@@ -385,20 +416,9 @@ echo
 echo "csh = has_compsys / has_autosuggestions / has_syntax_highlighting as zsh-bench detected them"
 
 if [ -n "$JSON" ]; then
-	{
-		echo '{'
-		printf '  "iters": %s,\n  "zsh": "%s",\n  "results": {\n' "$ITERS" "$("$ZSH_EXE" --version)"
-		first=1
-		for f in "$work"/results/*.raw; do
-			n=$(basename "$f" .raw)
-			[ $first = 1 ] || echo ','
-			first=0
-			printf '    "%s": {' "$n"
-			sep=
-			for m in $METRICS; do printf '%s"%s": %s' "$sep" "$m" "$(median $m "$f")"; sep=', '; done
-			printf '}'
-		done
-		printf '\n  }\n}\n'
-	} > "$JSON"
-	echo "wrote $JSON"
+  "$PYTHON_EXE" tests/benchmark/report.py --results "$work/results" --output "$JSON" \
+    --binary "$WAYU_BIN" --zsh "$ZSH_EXE" --iters "$ITERS" \
+    --pin "oh-my-zsh=$OMZ_SHA" --pin "zinit=$ZINIT_SHA" --pin "antidote=$ANTIDOTE_SHA" \
+    --pin "autosuggestions=$ZSA_SHA" --pin "highlighting=$ZSH_HL_SHA" --pin "zsh-defer=$ZSH_DEFER_SHA" \
+    --pin "zsh-bench=$ZSH_BENCH_SHA" --pin "sheldon=$([ -z "$SHELDON_BIN" ] || "$SHELDON_BIN" --version)"
 fi

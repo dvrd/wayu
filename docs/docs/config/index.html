@@ -39,7 +39,7 @@
     // Old single-page links (/docs/?p=cli#x) moved to /docs/cli/#x.
     (function () {
       var p = new URLSearchParams(location.search).get('p');
-      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading'}[p.toLowerCase()];
+      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading', 'compatibility': 'compatibility', 'benchmarks': 'benchmarks', 'security-review': 'security-review'}[p.toLowerCase()];
       if (to) location.replace('/docs/' + to + '/' + location.hash);
     })();
   </script>
@@ -102,6 +102,9 @@
           <li><a href="/docs/config/" data-page="config" aria-current="page">Configuration</a><ul class="toc-list side-toc"><li><a class="l2" href="#contents" data-id="contents">Contents</a></li><li><a class="l2" href="#directories" data-id="directories">Directories</a></li><li><a class="l2" href="#wayutoml" data-id="wayutoml">wayu.toml</a></li><li><a class="l3" href="#complete-example" data-id="complete-example">Complete example</a></li><li><a class="l3" href="#toml-syntax-wayu-accepts" data-id="toml-syntax-wayu-accepts">TOML syntax wayu accepts</a></li><li><a class="l3" href="#strict-and-lenient-reading" data-id="strict-and-lenient-reading">Strict and lenient reading</a></li><li><a class="l3" href="#shell" data-id="shell">[shell]</a></li><li><a class="l3" href="#settings" data-id="settings">[settings]</a></li><li><a class="l3" href="#tools" data-id="tools">[tools]</a></li><li><a class="l3" href="#prompt" data-id="prompt">[prompt]</a></li><li><a class="l3" href="#scripts" data-id="scripts">[scripts]</a></li><li><a class="l3" href="#secrets" data-id="secrets">[secrets]</a></li><li><a class="l3" href="#keys-wayu-does-not-read" data-id="keys-wayu-does-not-read">Keys wayu does not read</a></li><li><a class="l2" href="#managed-data" data-id="managed-data">Managed data</a></li><li><a class="l3" href="#entriesjson" data-id="entriesjson">entries.json</a></li><li><a class="l3" href="#path-entries" data-id="path-entries">PATH entries</a></li><li><a class="l3" href="#aliases" data-id="aliases">Aliases</a></li><li><a class="l3" href="#constants" data-id="constants">Constants</a></li><li><a class="l2" href="#other-files-you-edit" data-id="other-files-you-edit">Other files you edit</a></li><li><a class="l3" href="#hooksconf" data-id="hooksconf">hooks.conf</a></li><li><a class="l3" href="#pluginsjson" data-id="pluginsjson">plugins.json</a></li><li><a class="l3" href="#extraext-and-toolsext" data-id="extraext-and-toolsext">extra.&lt;ext&gt; and tools.&lt;ext&gt;</a></li><li><a class="l3" href="#configext" data-id="configext">config.&lt;ext&gt;</a></li><li><a class="l3" href="#functions" data-id="functions">functions/</a></li><li><a class="l3" href="#scripts-and-bin" data-id="scripts-and-bin">scripts/ and bin/</a></li><li><a class="l3" href="#completions" data-id="completions">completions/</a></li><li><a class="l3" href="#alias-sourcesconf" data-id="alias-sourcesconf">alias-sources.conf</a></li><li><a class="l2" href="#generated-files" data-id="generated-files">Generated files</a></li><li><a class="l2" href="#load-order" data-id="load-order">Load order</a></li></ul></li>
           <li><a href="/docs/stability/" data-page="stability">Stability</a></li>
           <li><a href="/docs/upgrading/" data-page="upgrading">Upgrading</a></li>
+          <li><a href="/docs/compatibility/" data-page="compatibility">Compatibility</a></li>
+          <li><a href="/docs/benchmarks/" data-page="benchmarks">Benchmarks</a></li>
+          <li><a href="/docs/security-review/" data-page="security-review">Security review</a></li>
         </ul>
       </nav>
     </aside>
@@ -1494,6 +1497,9 @@ afterwards (open shells also notice a newer file, see
 </li>
 </ul>
 <h3 id="path-entries">PATH entries<a class="anchor" href="#path-entries" aria-label="Link to this section">#</a></h3>
+<p><code>wayu path add ~/.local/bin --portable</code> stores <code class="nw">$HOME/.local/bin</code> for use
+across machines. This opt-in only applies inside HOME; the default still
+resolves and stores an absolute directory. The file format is unchanged.</p>
 <p><code class="nw">wayu path add ~/.local/bin</code>, <code>wayu path add go_bin=&#39;$GOPATH/bin&#39;</code>: each
 entry is a <code class="nw">key</code> (a label) and a <code class="nw">dir</code>.</p>
 <ul>
@@ -1778,6 +1784,13 @@ naming it); a <code class="nw">timeout = &lt;seconds&gt;</code> line in hooks.co
 <p><code class="nw">$WAYU_DATA_DIR/plugins.json</code> (JSON5: comments and trailing commas allowed)
 is written by <code class="nw">wayu plugin ...</code> and may be hand-edited or synced. Plugins are
 cloned to <code>$WAYU_DATA_DIR/plugins/&lt;name&gt;</code>.</p>
+<p>After syncing this file to a new machine, run <code class="nw">wayu plugin restore</code> (or
+preview with <code class="nw">--dry-run</code>). It backs up the imported file, replaces
+<code class="nw">installed_path</code> with this machine&#39;s <code class="nw">&lt;data&gt;/plugins/&lt;name&gt;</code>, restores missing
+checkouts at their recorded revisions and regenerates the loaders. The
+version remains <code class="nw">&quot;1.0&quot;</code>; ordinary commands still reject paths outside the
+current plugins directory. Existing checkouts are kept, including edits;
+use <code class="nw">plugin update</code> explicitly to advance them. See <a href="/docs/cli/#wayu-plugin">cli.md</a>.</p>
 <div class="code"><pre><code class="language-json5">{
   &quot;version&quot;: &quot;1.0&quot;,
   &quot;last_updated&quot;: &quot;2026-11-07T14:35:37Z&quot;,

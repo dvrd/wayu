@@ -703,6 +703,8 @@ handle_plugin_command :: proc(action: Action, args: []string) {
 		handle_plugin_check(args)
 	case .UPDATE:
 		handle_plugin_update(args)
+	case .RESTORE:
+		handle_plugin_restore(args)
 	case .ENABLE:
 		handle_plugin_enable(args)
 	case .DISABLE:
@@ -739,6 +741,7 @@ print_plugin_help :: proc() {
 	fmt.println("  get <name>              Show plugin info and copy URL to clipboard")
 	fmt.println("  check                   Check all plugins for updates")
 	fmt.println("  update <name|--all>     Update specific plugin or all plugins")
+	fmt.println("  restore                 Restore missing checkouts from plugins.json")
 	fmt.println("  search [query]          Browse popular plugins (filter by optional query)")
 	fmt.println("  help                    Show this help message")
 	fmt.println()

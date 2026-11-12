@@ -29,7 +29,12 @@ permissions:
   contents: read
 
 jobs:
-  # Full CI (unit + integration + golden + lint) gates every release.
+  startup-budget:
+    name: Startup budget
+    uses: ./.github/workflows/startup-budget.yml
+
+  # Full CI, including previous-release upgrades and startup budgets,
+  # gates every release before a version is bumped or a tag is created.
   ci:
     name: CI
     uses: ./.github/workflows/ci.yml
@@ -39,7 +44,7 @@ jobs:
 
   bump:
     name: Bump version
-    needs: ci
+    needs: [ci, startup-budget]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:

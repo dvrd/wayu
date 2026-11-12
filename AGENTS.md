@@ -131,6 +131,7 @@ needs a deprecation warning for at least one minor release first.
 | `src/plugin_json.odin` | Plugin JSON config read/write + migration |
 | `src/plugin_ops.odin` | Git ops, dependency resolution, conflict detection |
 | `src/plugin_storage.odin` | Plugin command handlers (add, remove, list, update, etc.) |
+| `src/plugin_restore.odin` | `plugin restore`: rebase copied metadata to the local data dir and reconstruct missing checkouts at recorded revisions |
 | `src/plugin_loader.odin` | Generates runtime plugin loader shell scripts |
 | `src/backup.odin` | Timestamped backups (once per CLI run, pruned to 5 on every write), restore by index/file |
 | `src/doctor.odin` | Health check orchestrator + individual checks |

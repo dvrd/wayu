@@ -39,7 +39,7 @@
     // Old single-page links (/docs/?p=cli#x) moved to /docs/cli/#x.
     (function () {
       var p = new URLSearchParams(location.search).get('p');
-      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading'}[p.toLowerCase()];
+      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading', 'compatibility': 'compatibility', 'benchmarks': 'benchmarks', 'security-review': 'security-review'}[p.toLowerCase()];
       if (to) location.replace('/docs/' + to + '/' + location.hash);
     })();
   </script>
@@ -102,6 +102,9 @@
           <li><a href="/docs/config/" data-page="config">Configuration</a></li>
           <li><a href="/docs/stability/" data-page="stability">Stability</a></li>
           <li><a href="/docs/upgrading/" data-page="upgrading">Upgrading</a></li>
+          <li><a href="/docs/compatibility/" data-page="compatibility">Compatibility</a></li>
+          <li><a href="/docs/benchmarks/" data-page="benchmarks">Benchmarks</a></li>
+          <li><a href="/docs/security-review/" data-page="security-review">Security review</a></li>
         </ul>
       </nav>
     </aside>
@@ -291,6 +294,12 @@ names on stderr; it never acts on a guess.</p>
 wayu path list --full
 wayu path clean --dry-run
 </code></pre><button type="button" class="icon-btn copy-btn" aria-label="Copy bash code"><svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
+<p><code class="nw">--portable</code> on <code class="nw">path add &lt;path&gt;</code> stores a directory under the current home as a
+<code class="nw">$HOME/...</code> reference, so the same entry works in another home. The directory
+must exist locally and be inside HOME (otherwise <code class="nw">65</code>). The flag is accepted
+only by <code class="nw">add</code> (otherwise <code class="nw">64</code>); <code class="nw">--dry-run</code> previews the stored reference.
+Without <code class="nw">--portable</code>, <code class="nw">add</code> continues to store the resolved absolute path.
+Portable entries use the existing entries.json format and shell expansion.</p>
 <h3 id="wayu-alias"><code class="nw">wayu alias</code><a class="anchor" href="#wayu-alias" aria-label="Link to this section">#</a></h3>
 <p>Manage aliases (stored in <code class="nw">entries.json</code>). Default action: <code class="nw">list</code>. Names:
 printable ASCII except whitespace, quotes, <code class="nw">$</code> <code class="nw">`</code> <code class="nw">\</code> <code class="nw">=</code> <code class="nw">/</code> <code class="nw">^</code> <code class="nw">;</code> <code class="nw">&amp;</code>
@@ -596,6 +605,11 @@ values were encrypted with the old key) restore entries.json only.</p>
 <td>Fast-forward to the remote</td>
 </tr>
 <tr>
+<td><code class="nw">restore</code></td>
+<td></td>
+<td>Reconstruct missing checkouts from plugins.json, using this machine&#39;s data dir; <code class="nw">--dry-run</code></td>
+</tr>
+<tr>
 <td><code class="nw">help</code></td>
 <td></td>
 <td></td>
@@ -624,6 +638,26 @@ values were encrypted with the old key) restore entries.json only.</p>
 </tr>
 </tbody>
 </table></div>
+<p><code class="nw">wayu plugin restore</code> is the replay step after copying <code class="nw">plugins.json</code> to a
+new machine. It replaces the saved <code class="nw">installed_path</code> values with
+<code class="nw">&lt;data&gt;/plugins/&lt;name&gt;</code> and clones every missing plugin, including disabled
+ones. The recorded commit is restored even when its branch has advanced;
+commit pins, tag pins, enabled state, file selections, dependencies and
+priorities are preserved. A branch-following plugin stays on its branch,
+so a later explicit <code class="nw">plugin update</code> can advance it. Without a recorded
+commit, restore uses the saved tag or branch, or the remote&#39;s default HEAD.</p>
+<p>Existing checkouts are kept, including local edits. A symlink, a non-Git
+destination, or a checkout with a different origin is an error (<code class="nw">78</code>);
+restore never resets or replaces it. Invalid metadata exits <code class="nw">78</code>, a clone
+or checkout failure exits <code class="nw">74</code>, and a plugin with nothing to load exits <code class="nw">65</code>.
+Before saving local paths, restore backs up plugins.json (failure: <code class="nw">73</code>).
+A failure before that save removes only checkouts created by this run and
+keeps the original metadata. It then verifies the saved metadata and
+regenerates plugin loaders and initialized shells&#39; runtime files. If loader
+generation fails, it exits <code class="nw">74</code>; the restored checkouts are kept for
+<code class="nw">wayu build</code> to retry. <code class="nw">--dry-run</code> does not clone or save anything.</p>
+<p><code class="nw">plugin add</code> exits <code class="nw">66</code> when the named plugin is registered but its checkout
+is missing, and names <code class="nw">wayu plugin restore</code> as the recovery command.</p>
 <h3 id="wayu-init"><code class="nw">wayu init</code><a class="anchor" href="#wayu-init" aria-label="Link to this section">#</a></h3>
 <p><code>wayu init [--template &lt;name&gt;]</code>: create the config dir
 (<code class="nw">~/.config/wayu</code>) and the data dir (<code>${XDG_DATA_HOME:-~/.local/share}/wayu</code>),

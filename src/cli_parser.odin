@@ -20,6 +20,7 @@ ParsedArgs :: struct {
 	args:                []string,
 	shell:               ShellType,
 	tui:                 bool, // TUI mode flag
+	path_portable:       bool, // path add --portable, never a literal after --
 
 	// Component testing (PRP-13)
 	component_test:      bool,
@@ -54,6 +55,7 @@ GlobalFlags :: struct {
 	component_snapshot: bool,
 	component_verify:   bool,
 	json:               bool,
+	path_portable:      bool,
 	// --reveal: position-independent like --full, but only commands whose
 	// command_accepts_flag lists it (list views that mask secrets) take it.
 	reveal:             bool,
@@ -282,6 +284,8 @@ parse_global_flags :: proc(
 			continue
 		}
 		switch {
+		case arg == "--portable" && len(filtered_args) > 0 && filtered_args[0] == "path":
+			flags.path_portable = true
 		case arg == "--full" || arg == "-f":
 			flags.source_filter = "all"
 			flags.source_flag = arg
@@ -463,6 +467,13 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	}
 
 	parse_command_and_action(filtered_args[:], &parsed)
+	if flags.path_portable {
+		if parsed.action == .ADD {
+			parsed.path_portable = true
+		} else if parsed.action != .HELP {
+			parsed.unknown_flag = "--portable"
+		}
+	}
 	parsed.ambiguous_tail_flag = flags.ambiguous_tail
 	// Flags that mean nothing for this command are usage errors, not
 	// silently ignored (OKAMI-353): --snapshot/--test only go with -c=,
