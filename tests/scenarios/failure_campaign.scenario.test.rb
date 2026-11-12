@@ -80,6 +80,25 @@ class FailureCampaign
       status.exited? && status.exitstatus == 74 && !err.empty?
   end
 
+  def verify_full_disk_root!(root)
+    # Refuse normal disks, ancestor mounts and large/shared tmpfs volumes.
+    # This deliberately destructive fixture must be an owned, dedicated,
+    # small Linux tmpfs created by the workflow, never a normal data dir.
+    raise 'Real ENOSPC requires the isolated Linux tmpfs fixture' unless File.file?('/proc/self/mountinfo')
+    real = File.realpath(root)
+    raise 'Unexpected full-disk fixture name/owner' unless File.basename(real).start_with?('wayu-full-disk.') && File.stat(real).uid == Process.uid
+    entry = File.readlines('/proc/self/mountinfo').find do |line|
+      target = line.split[4].gsub(/\\([0-7]{3})/) { Regexp.last_match(1).to_i(8).chr }
+      target == real
+    end
+    tail = entry && entry.split(' - ', 2)[1].split
+    raise 'Full-disk fixture must be its own tmpfs mount' unless tail && tail[0] == 'tmpfs'
+    size = tail[2].split(',').find { |v| v.start_with?('size=') }
+    match = size && size.match(/\Asize=(\d+)([kmg]?)\z/i)
+    bytes = match && match[1].to_i * { '' => 1, 'k' => 1024, 'm' => 1024**2, 'g' => 1024**3 }.fetch(match[2].downcase)
+    raise 'Full-disk fixture must have an explicit size of at most 16 MiB' unless bytes && bytes > 0 && bytes <= 16 * 1024**2
+  end
+
   def run
     # A small old store can be backed up; the larger replacement exceeds
     # the kernel's per-file limit during the atomic temp-file write.
@@ -176,12 +195,13 @@ class FailureCampaign
     raise 'This run requires WAYU_FULL_DISK_ROOT on an isolated full-disk fixture' if ARGV.include?('--require-enospc') && !full_root
     if full_root
       raise 'Full-disk root must be a directory supplied by the isolated CI mount' unless File.directory?(full_root)
+      verify_full_disk_root!(full_root)
       sandbox('real-enospc', data_parent: full_root) do |env, data, _|
         before = entries(data)
         filler = "#{data}/fill-space"
         begin
-          File.open(filler, 'wb') { |f| loop { f.write('x' * 65_536) } }
-          raise 'filesystem did not fill'
+          File.open(filler, 'wb') { |f| 256.times { f.write('x' * 65_536) } }
+          raise 'filesystem did not fill within the 16 MiB fixture bound'
         rescue Errno::ENOSPC
           # This is a real ENOSPC, distinct from the portable EFBIG case.
         end
