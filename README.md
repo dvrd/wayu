@@ -607,7 +607,9 @@ dir ~/.config/fabric/patterns fabric --pattern {name}
 
 ## Development
 
-Uses [bld](https://github.com/dvrd/bld), an Odin build system library. No external tools required.
+Uses [bld](https://github.com/dvrd/bld), an Odin build system library. Development
+requires the pinned Odin compiler; the full test suite also uses Ruby, Python
+and the supported shells.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and [SECURITY.md](SECURITY.md)
 to report a vulnerability; contributor notes on the code are in [AGENTS.md](AGENTS.md).
 
@@ -632,6 +634,12 @@ ruby tests/integration/run_all.rb
 
 ## Releasing
 
+See [Validation before a release](docs/validation.md) for the failure campaign,
+candidate acceptance gates and retained evidence. Tests cover failed writes,
+full filesystems, interruptions, concurrent mutations, upgrades and repeated
+fresh-shell sessions. Automated trials do not replace a dated daily-driver
+observation or the independent review of experimental secrets v2.
+
 Day-to-day work lands on the **`develop`** branch (CI runs, nothing is
 released). When a batch is ready to ship, `develop` is merged into `main`;
 PRs into `main` are only accepted from `develop` or `hotfix/*`
@@ -640,8 +648,10 @@ PRs into `main` are only accepted from `develop` or `hotfix/*`
 Releases are **automatic**. Every push to `main` runs
 [`.github/workflows/bump.yml`](.github/workflows/bump.yml), which:
 
-1. Runs the full CI workflow (unit, integration, golden, lint); nothing is
-   released unless it passes.
+1. Runs full CI and startup budgets: unit/memory tracking, integration,
+   AddressSanitizer, golden/TUI, strict compiler, compatibility, previous-binary
+   upgrades, failure campaign, fresh installs and candidate session trials.
+   Nothing is released unless the automated gates pass.
 2. Derives the next version from [Conventional Commits](https://www.conventionalcommits.org/)
    since the last tag via [`git-cliff`](https://github.com/orhun/git-cliff)
    (`feat` → minor, `fix`/`refactor`/etc. → patch, `!`/`BREAKING CHANGE` → major).

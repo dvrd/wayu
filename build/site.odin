@@ -74,6 +74,12 @@ DOC_PAGES :: [?]Doc_Page {
 		"Reproduce startup budgets and comparative measurements with raw evidence.",
 	},
 	{
+		"validation",
+		"validation.md",
+		"Validation",
+		"Release gates, failure testing, candidate trials, evidence and their limits.",
+	},
+	{
 		"security-review",
 		"security-review.md",
 		"Security review",

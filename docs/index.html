@@ -578,9 +578,10 @@
         <ul class="trust" aria-label="Project facts">
           <li><a href="https://github.com/dvrd/wayu/blob/main/LICENSE">MIT licensed</a></li>
           <li>zsh · bash · fish</li>
-          <li>One binary, no runtime dependencies</li>
+          <li>Standalone CLI · Git for plugins</li>
           <li><a href="https://github.com/dvrd/wayu/tree/main/tests" data-gen="unit-tests">700+ unit tests</a> + end-to-end suites</li>
           <li><a href="docs/stability/">Stable from 7.0 on</a></li>
+          <li><a href="docs/validation/">Failure and upgrade checks</a></li>
         </ul>
 
         <!-- ── Command → generated code (real output: wayu build in a throwaway HOME, home dir shown as /Users/ana) ── -->
@@ -706,7 +707,7 @@ _wayu_prompt_full() {
             <summary>Show the numbers as a table, with the versions measured</summary>
             <div id="bench-table"></div>
           </details>
-          <noscript><p class="bench-cap">Time until the first command runs (zsh-bench, median of 32, Apple M1 Max): zsh, no config 19.9 ms; wayu 58.9 ms; hand-written (compinit -C) 65.2 ms; hand-written .zshrc 77.3 ms; antidote 86.8 ms; oh-my-zsh 105.0 ms; zinit 111.1 ms.</p></noscript>
+          <noscript><p class="bench-cap">Recorded macOS arm64 run, 2026-11-12, source 67a4d1a; median of 32: wayu 75.9 ms, hand-written 83.8 ms, antidote 102.7 ms, oh-my-zsh 133.2 ms, zinit 122.8 ms, Sheldon dynamic 102.9 ms, Sheldon static 94.5 ms. <a href="docs/benchmarks/">Raw samples and limits</a>.</p></noscript>
         </div>
       </div>
     </section>
@@ -714,111 +715,124 @@ _wayu_prompt_full() {
     <!-- BENCH DATA: from tests/benchmark/compare.sh -->
     <script type="application/json" id="bench-data">
 {
-  "machine": "Apple M1 Max, macOS 27.2, zsh 5.9",
-  "method": "romkatv/zsh-bench in a pty, interactive login zsh, warm caches, each contender in its own throwaway HOME; value = median of 32 iterations.",
+  "machine": "GitHub Actions macos-15, arm64, zsh 5.9",
+  "method": "Recorded at source 67a4d1a; zsh-bench PTY, interactive login zsh, warmed caches, isolated homes; median of 32 samples. Separate from current candidate validation",
   "runs": 32,
-  "date": "2026-11-09",
+  "date": "2026-11-12",
   "scenarios": [
     {
       "id": "first-command",
       "tab": "Everything loaded",
       "title": "Time until the first command runs",
-      "metric": "first command lag · ms (lower is better)",
-      "note": "Same workload everywhere: compinit, zsh-autosuggestions + zsh-syntax-highlighting, 20 aliases, 10 PATH entries, 5 env vars; no prompt theme (PROMPT='%1~ %# '), all loaded before the first prompt. 'zsh, no config' is the floor (zsh + /etc/zshrc). 'hand-written (compinit -C)' skips compinit's security audit and dump freshness check.",
+      "metric": "first command lag \u00b7 ms (lower is better)",
+      "note": "Same plugin workload: compinit, zsh-autosuggestions + zsh-syntax-highlighting, 20 aliases, 10 PATH entries, 5 env vars and a minimal prompt. All three features were detected in every shared-workload sample. The no-config row is the shell floor. Sheldon dynamic and pre-generated static loaders are separate configurations.",
       "results": [
         {
           "name": "zsh, no config",
-          "value": 19.9
+          "value": 21.4
         },
         {
           "name": "wayu",
-          "value": 58.9,
+          "value": 75.9,
           "highlight": true
         },
         {
-          "name": "hand-written (compinit -C)",
-          "value": 65.2
-        },
-        {
           "name": "hand-written .zshrc",
-          "value": 77.3
+          "value": 83.8
         },
         {
           "name": "antidote",
-          "value": 86.8
+          "value": 102.7
         },
         {
           "name": "oh-my-zsh",
-          "value": 105.0
+          "value": 133.2
         },
         {
           "name": "zinit",
-          "value": 111.1
+          "value": 122.8
+        },
+        {
+          "name": "sheldon",
+          "value": 102.9
+        },
+        {
+          "name": "sheldon static loader",
+          "value": 94.5
         }
       ],
       "versions": {
-        "wayu": "6bf570c (7.0 pre-release)",
-        "oh-my-zsh": "cca3bdf",
-        "zinit": "cb49681 (v3.17.1+10)",
-        "antidote": "e661279 (v2.3.0+3)",
-        "zsh-autosuggestions": "85919cd (v0.7.1+6)",
-        "zsh-syntax-highlighting": "e6683f2 (0.8.0+8)",
-        "zsh-bench": "28b1b1b"
+        "oh-my-zsh": "cca3bdfbef8c52ef8939ce7911ff68852b949daa",
+        "zinit": "cb4968123979cf073384e93aa8066d8fd450580f",
+        "antidote": "e6612794db27e6fae70eddbcff08201a6cba0748",
+        "autosuggestions": "85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5",
+        "highlighting": "e6683f20e5c38d3e5447f45845d04ddda75d0f23",
+        "zsh-defer": "53a26e287fbbe2dcebb3aa1801546c6de32416fa",
+        "zsh-bench": "28b1b1bc888159f0a2cf50f9d29381758341aba1",
+        "sheldon": "sheldon 0.8.5 (344dfc75e 2025-07-22)",
+        "wayu": "67a4d1a1 (recorded candidate)"
       }
     },
     {
       "id": "deferred",
       "tab": "Deferred plugins",
       "title": "Time to first prompt with deferred plugin loading",
-      "metric": "first prompt lag · ms (lower is better)",
+      "metric": "first prompt lag \u00b7 ms (lower is better)",
       "note": "Same workload; plugins load after the prompt is drawn (wayu defer_plugins = true, antidote kind:defer, zinit turbo per its README, which also defers compinit; wayu and antidote run compinit before the prompt). Plugins are not active yet when the very first command runs.",
       "results": [
         {
           "name": "wayu (defer_plugins)",
-          "value": 36.4,
+          "value": 29.3,
           "highlight": true
         },
         {
           "name": "antidote (kind:defer)",
-          "value": 58.3
+          "value": 52.3
         },
         {
           "name": "zinit (turbo)",
-          "value": 61.8
+          "value": 49.5
         }
       ],
       "versions": {
-        "wayu": "6bf570c (7.0 pre-release)",
-        "zinit": "cb49681 (v3.17.1+10)",
-        "antidote": "e661279 (v2.3.0+3)",
-        "zsh-defer": "53a26e2",
-        "zsh-autosuggestions": "85919cd (v0.7.1+6)",
-        "zsh-syntax-highlighting": "e6683f2 (0.8.0+8)",
-        "zsh-bench": "28b1b1b"
+        "oh-my-zsh": "cca3bdfbef8c52ef8939ce7911ff68852b949daa",
+        "zinit": "cb4968123979cf073384e93aa8066d8fd450580f",
+        "antidote": "e6612794db27e6fae70eddbcff08201a6cba0748",
+        "autosuggestions": "85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5",
+        "highlighting": "e6683f20e5c38d3e5447f45845d04ddda75d0f23",
+        "zsh-defer": "53a26e287fbbe2dcebb3aa1801546c6de32416fa",
+        "zsh-bench": "28b1b1bc888159f0a2cf50f9d29381758341aba1",
+        "sheldon": "sheldon 0.8.5 (344dfc75e 2025-07-22)",
+        "wayu": "67a4d1a1 (recorded candidate)"
       }
     },
     {
       "id": "optimize",
       "tab": "wayu optimize",
       "title": "A hand-grown .zshrc before and after wayu optimize",
-      "metric": "first command lag · ms (lower is better)",
+      "metric": "first command lag \u00b7 ms (lower is better)",
       "note": "A .zshrc with the same workload plus plain compinit and eval \"$(tool completion zsh)\" for 3 CLIs that take ~25 ms to start (simulated); after `wayu optimize --yes` the PATH/env/alias lines move to wayu, compinit is wayu's, and the completion output is cached.",
       "results": [
         {
           "name": "after wayu optimize",
-          "value": 72.1,
+          "value": 60.9,
           "highlight": true
         },
         {
           "name": "before",
-          "value": 240.4
+          "value": 492.9
         }
       ],
       "versions": {
-        "wayu": "6bf570c (7.0 pre-release)",
-        "zsh-autosuggestions": "85919cd (v0.7.1+6)",
-        "zsh-syntax-highlighting": "e6683f2 (0.8.0+8)",
-        "zsh-bench": "28b1b1b"
+        "oh-my-zsh": "cca3bdfbef8c52ef8939ce7911ff68852b949daa",
+        "zinit": "cb4968123979cf073384e93aa8066d8fd450580f",
+        "antidote": "e6612794db27e6fae70eddbcff08201a6cba0748",
+        "autosuggestions": "85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5",
+        "highlighting": "e6683f20e5c38d3e5447f45845d04ddda75d0f23",
+        "zsh-defer": "53a26e287fbbe2dcebb3aa1801546c6de32416fa",
+        "zsh-bench": "28b1b1bc888159f0a2cf50f9d29381758341aba1",
+        "sheldon": "sheldon 0.8.5 (344dfc75e 2025-07-22)",
+        "wayu": "67a4d1a1 (recorded candidate)"
       }
     }
   ]
@@ -1218,6 +1232,13 @@ git status -sb</pre>
         </div>
         <div class="faq reveal">
           <details>
+            <summary><span>How is wayu checked before a release?</span></summary>
+            <div>
+              <p>CI checks memory handling, real shell sessions, upgrades, failed writes, interrupted operations and a full filesystem. Candidate trials repeat fresh sessions in Zsh, Bash and Fish on macOS and Linux. <a href="docs/validation/">See the gates, retained evidence and limits →</a></p>
+              <p>Automated sessions do not replace multi-day use. Multi-machine secrets remain experimental while their independent review is pending.</p>
+            </div>
+          </details>
+          <details>
             <summary><span>What does it change in my rc file, and how do I undo it?</span></summary>
             <div>
               <p><code>wayu init</code> asks before it adds one <code>source</code> line to your rc file (it only prints the line when it isn't run in a terminal). Everything else lives in <code>~/.config/wayu</code> and <code>~/.local/share/wayu</code>.</p>
@@ -1336,7 +1357,8 @@ git status -sb</pre>
         </nav>
         <nav aria-labelledby="f-more"><h2 id="f-more">More</h2>
           <ul>
-            <li><a href="https://github.com/dvrd/wayu/tree/main/tests/benchmark">Benchmarks</a></li>
+            <li><a href="docs/benchmarks/">Benchmarks</a></li>
+            <li><a href="docs/validation/">Validation and evidence</a></li>
             <li><a href="https://github.com/dvrd/wayu/tree/main/docs/demo">Demo tape</a></li>
             <li><a href="https://github.com/dvrd/homebrew-wayu">Homebrew tap</a></li>
             <li><a href="https://github.com/dvrd/wayu/blob/main/CONTRIBUTING.md">Contributing</a></li>
@@ -1491,7 +1513,7 @@ git status -sb</pre>
 
       $('bench-cap').innerHTML = esc(data.machine) + ' · ' + esc(data.method) + (data.date ? ' · ' + esc(data.date) : '') +
         '. Replay runs ' + slow + '× slower than real time so the bars are visible; bars grow at the same rate, so their lengths are the real proportions. ' +
-        '<a href="https://github.com/dvrd/wayu/tree/main/tests/benchmark">Reproduce it</a>, or run <code>wayu build profile</code> on your own setup.';
+        '<a href="docs/benchmarks/">Raw samples and methodology</a>; timings from different runners are separate experiments. Run <code>wayu build profile</code> on your own setup.';
 
       $('bench-table').innerHTML = scen.map(function (s) {
         return '<table class="data-table"><caption>' + esc(s.title) + '</caption><thead><tr><th scope="col">Run</th><th scope="col" style="text-align:right">Median</th></tr></thead><tbody>' +

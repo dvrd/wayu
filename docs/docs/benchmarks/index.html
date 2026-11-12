@@ -39,7 +39,7 @@
     // Old single-page links (/docs/?p=cli#x) moved to /docs/cli/#x.
     (function () {
       var p = new URLSearchParams(location.search).get('p');
-      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading', 'compatibility': 'compatibility', 'benchmarks': 'benchmarks', 'security-review': 'security-review'}[p.toLowerCase()];
+      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading', 'compatibility': 'compatibility', 'benchmarks': 'benchmarks', 'validation': 'validation', 'security-review': 'security-review'}[p.toLowerCase()];
       if (to) location.replace('/docs/' + to + '/' + location.hash);
     })();
   </script>
@@ -103,7 +103,8 @@
           <li><a href="/docs/stability/" data-page="stability">Stability</a></li>
           <li><a href="/docs/upgrading/" data-page="upgrading">Upgrading</a></li>
           <li><a href="/docs/compatibility/" data-page="compatibility">Compatibility</a></li>
-          <li><a href="/docs/benchmarks/" data-page="benchmarks" aria-current="page">Benchmarks</a><ul class="toc-list side-toc"><li><a class="l2" href="#what-the-report-records" data-id="what-the-report-records">What the report records</a></li></ul></li>
+          <li><a href="/docs/benchmarks/" data-page="benchmarks" aria-current="page">Benchmarks</a><ul class="toc-list side-toc"><li><a class="l2" href="#recorded-comparison" data-id="recorded-comparison">Recorded comparison</a></li><li><a class="l2" href="#reproduce" data-id="reproduce">Reproduce</a></li><li><a class="l2" href="#what-the-report-records" data-id="what-the-report-records">What the report records</a></li></ul></li>
+          <li><a href="/docs/validation/" data-page="validation">Validation</a></li>
           <li><a href="/docs/security-review/" data-page="security-review">Security review</a></li>
         </ul>
       </nav>
@@ -114,6 +115,18 @@
         <p class="doc-meta"><span class="crumb">Docs / Benchmarks</span><a href="https://github.com/dvrd/wayu/blob/main/docs/benchmarks.md">Source: docs/benchmarks.md</a></p>
         <div class="md">
 <h1 id="reproducing-performance-evidence">Reproducing performance evidence</h1>
+<h2 id="recorded-comparison">Recorded comparison<a class="anchor" href="#recorded-comparison" aria-label="Link to this section">#</a></h2>
+<p>The landing page displays the dated <strong>2026-11-12 macOS arm64</strong> experiment at
+source <code class="nw">67a4d1a</code>, with 32 raw samples per metric. Retained reports:
+<a href="https://github.com/dvrd/wayu/blob/main/docs/evidence/benchmark-2026-11-12-macos.json">macOS JSON</a> and
+<a href="https://github.com/dvrd/wayu/blob/main/docs/evidence/benchmark-2026-11-12-linux.json">Linux JSON</a>. Each records its own
+commit, binary hash, machine and tool pins. The Linux and macOS results are
+separate experiments; the landing does not combine their numbers.</p>
+<p>These are recorded measurements, not a claim that every later commit was
+remeasured. Current candidates are gated by startup budgets and the
+<a href="/docs/validation/">validation campaign</a>. Native/deferred configurations and
+simulated completion-generator workloads remain separate in the reports.</p>
+<h2 id="reproduce">Reproduce<a class="anchor" href="#reproduce" aria-label="Link to this section">#</a></h2>
 <p><code class="nw">tests/benchmark/budget.sh</code> gates CI and releases: a fixed representative
 configuration is timed against an empty shell on macOS and Linux. It tests
 loaded state before timing, uses interleaved runs, and reports the difference
@@ -175,14 +188,14 @@ See the pinned revisions and workload in the script. Performance evidence is
 separate from <a href="/docs/compatibility/">compatibility checks</a> and from an independent
 security review.</p>
         </div>
-        <nav class="pager" aria-label="Previous and next page"><a class="prev" href="/docs/compatibility/"><span>Previous</span>Compatibility</a><a class="next" href="/docs/security-review/"><span>Next</span>Security review</a></nav>
+        <nav class="pager" aria-label="Previous and next page"><a class="prev" href="/docs/compatibility/"><span>Previous</span>Compatibility</a><a class="next" href="/docs/validation/"><span>Next</span>Validation</a></nav>
       </article>
     </main>
 
     <aside class="rail" id="rail" aria-label="On this page">
       <p class="side-label">On this page</p>
       <ul class="toc-list" id="toc">
-        <li><a class="l2" href="#what-the-report-records" data-id="what-the-report-records">What the report records</a></li>
+        <li><a class="l2" href="#recorded-comparison" data-id="recorded-comparison">Recorded comparison</a></li><li><a class="l2" href="#reproduce" data-id="reproduce">Reproduce</a></li><li><a class="l2" href="#what-the-report-records" data-id="what-the-report-records">What the report records</a></li>
       </ul>
     </aside>
   </div>

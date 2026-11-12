@@ -39,7 +39,7 @@
     // Old single-page links (/docs/?p=cli#x) moved to /docs/cli/#x.
     (function () {
       var p = new URLSearchParams(location.search).get('p');
-      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading', 'compatibility': 'compatibility', 'benchmarks': 'benchmarks', 'security-review': 'security-review'}[p.toLowerCase()];
+      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading', 'compatibility': 'compatibility', 'benchmarks': 'benchmarks', 'validation': 'validation', 'security-review': 'security-review'}[p.toLowerCase()];
       if (to) location.replace('/docs/' + to + '/' + location.hash);
     })();
   </script>
@@ -104,6 +104,7 @@
           <li><a href="/docs/upgrading/" data-page="upgrading">Upgrading</a></li>
           <li><a href="/docs/compatibility/" data-page="compatibility">Compatibility</a></li>
           <li><a href="/docs/benchmarks/" data-page="benchmarks">Benchmarks</a></li>
+          <li><a href="/docs/validation/" data-page="validation">Validation</a></li>
           <li><a href="/docs/security-review/" data-page="security-review" aria-current="page">Security review</a><ul class="toc-list side-toc"><li><a class="l2" href="#scope-and-trust-boundaries" data-id="scope-and-trust-boundaries">Scope and trust boundaries</a></li><li><a class="l2" href="#questions-for-the-assessor" data-id="questions-for-the-assessor">Questions for the assessor</a></li><li><a class="l2" href="#known-limits-to-assess-not-stronger-claims" data-id="known-limits-to-assess-not-stronger-claims">Known limits to assess, not stronger claims</a></li><li><a class="l2" href="#evidence-and-completion-criteria" data-id="evidence-and-completion-criteria">Evidence and completion criteria</a></li></ul></li>
         </ul>
       </nav>
@@ -220,7 +221,7 @@ severity, remediation commits, and assessor verification of remediation. Track
 unresolved findings explicitly. A maintainer must approve promotion after that
 evidence exists. Report privately through <a href="https://github.com/dvrd/wayu/blob/main/docs/../SECURITY.md">SECURITY.md</a>.</p>
         </div>
-        <nav class="pager" aria-label="Previous and next page"><a class="prev" href="/docs/benchmarks/"><span>Previous</span>Benchmarks</a></nav>
+        <nav class="pager" aria-label="Previous and next page"><a class="prev" href="/docs/validation/"><span>Previous</span>Validation</a></nav>
       </article>
     </main>
 

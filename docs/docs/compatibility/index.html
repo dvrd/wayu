@@ -39,7 +39,7 @@
     // Old single-page links (/docs/?p=cli#x) moved to /docs/cli/#x.
     (function () {
       var p = new URLSearchParams(location.search).get('p');
-      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading', 'compatibility': 'compatibility', 'benchmarks': 'benchmarks', 'security-review': 'security-review'}[p.toLowerCase()];
+      var to = p && {'quickstart': 'quickstart', 'cli': 'cli', 'config': 'config', 'config-reference': 'config', 'stability': 'stability', 'upgrading': 'upgrading', 'compatibility': 'compatibility', 'benchmarks': 'benchmarks', 'validation': 'validation', 'security-review': 'security-review'}[p.toLowerCase()];
       if (to) location.replace('/docs/' + to + '/' + location.hash);
     })();
   </script>
@@ -104,6 +104,7 @@
           <li><a href="/docs/upgrading/" data-page="upgrading">Upgrading</a></li>
           <li><a href="/docs/compatibility/" data-page="compatibility" aria-current="page">Compatibility</a><ul class="toc-list side-toc"><li><a class="l2" href="#mise-starship-and-direnv" data-id="mise-starship-and-direnv">mise, Starship and direnv</a></li><li><a class="l2" href="#chezmoi" data-id="chezmoi">chezmoi</a></li><li><a class="l2" href="#oh-my-zsh-and-antidote" data-id="oh-my-zsh-and-antidote">Oh My Zsh and Antidote</a></li><li><a class="l2" href="#fisher" data-id="fisher">Fisher</a></li><li><a class="l2" href="#sheldon" data-id="sheldon">Sheldon</a></li><li><a class="l2" href="#reproducing-the-evidence" data-id="reproducing-the-evidence">Reproducing the evidence</a></li></ul></li>
           <li><a href="/docs/benchmarks/" data-page="benchmarks">Benchmarks</a></li>
+          <li><a href="/docs/validation/" data-page="validation">Validation</a></li>
           <li><a href="/docs/security-review/" data-page="security-review">Security review</a></li>
         </ul>
       </nav>

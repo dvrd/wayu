@@ -1,5 +1,21 @@
 # Reproducing performance evidence
 
+## Recorded comparison
+
+The landing page displays the dated **2026-11-12 macOS arm64** experiment at
+source `67a4d1a`, with 32 raw samples per metric. Retained reports:
+[macOS JSON](evidence/benchmark-2026-11-12-macos.json) and
+[Linux JSON](evidence/benchmark-2026-11-12-linux.json). Each records its own
+commit, binary hash, machine and tool pins. The Linux and macOS results are
+separate experiments; the landing does not combine their numbers.
+
+These are recorded measurements, not a claim that every later commit was
+remeasured. Current candidates are gated by startup budgets and the
+[validation campaign](validation.md). Native/deferred configurations and
+simulated completion-generator workloads remain separate in the reports.
+
+## Reproduce
+
 `tests/benchmark/budget.sh` gates CI and releases: a fixed representative
 configuration is timed against an empty shell on macOS and Linux. It tests
 loaded state before timing, uses interleaved runs, and reports the difference

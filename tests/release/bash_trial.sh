@@ -37,4 +37,9 @@ for B in /bin/bash /opt/homebrew/bin/bash /usr/local/bin/bash; do
   run "$W" --shell bash doctor >/dev/null 2>&1;                 ok $? "doctor"
   rm -rf "$H"
 done
-[ "$fails" = 0 ] && echo "ALL OK" || echo "$fails FAILED"
+if [ "$fails" = 0 ]; then
+  echo "ALL OK"
+else
+  echo "$fails FAILED"
+  exit 1
+fi

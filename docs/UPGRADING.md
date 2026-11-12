@@ -8,6 +8,16 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+**Failure campaign and candidate acceptance**
+
+- CI now runs a risk-mapped failure campaign, actual ENOSPC on an isolated
+  Linux filesystem, fresh source installs and 20 repeated sessions per shell
+  on macOS and Linux. Reports retain the candidate binary hash and results.
+- The manual Bash/fresh-shell validation scripts now exit nonzero when a
+  check fails; previously their final failure message could leave exit 0.
+- See [Validation](validation.md) for acceptance gates and explicit limits.
+  Automated runs do not claim multi-day human use or independent crypto review.
+
 **Clipboard helpers and subprocess input**
 
 - `plugin get` now reports clipboard-copy failure when the clipboard helper

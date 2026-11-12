@@ -54,6 +54,12 @@ A command, action, flag or config key that is going away:
 
 ## Supported platforms
 
+[Validation before a release](validation.md) describes the automated gates,
+failure campaign, repeated fresh-shell trials and evidence retained by CI.
+Those checks support the contracts above; they are not a guarantee that every
+possible system failure has been tested. Multi-day observation and independent
+review of experimental secrets remain separate records.
+
 Tested on every release (CI) or by the maintainer; see the README's
 "Tested with" table. Anything else may work but is not supported.
 

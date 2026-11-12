@@ -1,5 +1,16 @@
 # Contributing to wayu
 
+For candidate acceptance, see [Validation](docs/validation.md) and
+[the failure campaign](tests/scenarios/campaign.md).
+It maps 24 scenarios across 12 risk dimensions to executable checks, including
+an isolated full-filesystem test in Linux CI and repeated fresh-shell trials
+on macOS and Linux. Run the portable campaign with
+`WAYU_BIN="$PWD/bin/wayu" ruby tests/scenarios/failure_campaign.scenario.test.rb`
+and the automated session trial with
+`WAYU_BIN="$PWD/bin/wayu" ruby tests/release/candidate_trial.rb` after building.
+The trial is automated evidence; a dated daily-driver observation and the
+experimental secrets-v2 independent review remain separate acceptance records.
+
 Thanks for helping. This page covers building, testing, the branch flow and
 the commit rules that drive releases. Code conventions are in
 [`CODE_STYLE.md`](CODE_STYLE.md); the source map is in
