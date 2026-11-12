@@ -50,8 +50,25 @@ jobs:
         WAYU_BIN: bin/wayu
       run: |
         mount_root=$(mktemp -d "$RUNNER_TEMP/wayu-full-disk.XXXXXX")
-        trap 'sudo umount "$mount_root"; rmdir "$mount_root"' EXIT
+        mounted=0
+        cleanup() {
+          if [ "$mounted" = 0 ]; then rmdir "$mount_root"; return; fi
+          # Runtime zcompile is asynchronous. Wait for its file handles
+          # without lazy-unmounting or treating a stuck mount as success.
+          for attempt in {1..50}; do
+            if sudo umount "$mount_root" 2>"$RUNNER_TEMP/wayu-unmount.err"; then
+              rmdir "$mount_root"
+              return
+            fi
+            if [ "$attempt" = 1 ]; then sudo fuser -vm "$mount_root" || true; fi
+            sleep 0.1
+          done
+          cat "$RUNNER_TEMP/wayu-unmount.err" >&2
+          return 1
+        }
+        trap cleanup EXIT
         sudo mount -t tmpfs -o size=8M,nr_inodes=4096 tmpfs "$mount_root"
+        mounted=1
         sudo chown "$(id -u):$(id -g)" "$mount_root"
         WAYU_FULL_DISK_ROOT="$mount_root" ruby tests/scenarios/failure_campaign.scenario.test.rb --require-enospc | tee evidence/failure-campaign.txt
     - name: Repeated fresh-shell candidate trial
