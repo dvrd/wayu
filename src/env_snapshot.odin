@@ -1,4 +1,4 @@
-// env_snapshot.odin - Cross-reference TOML data with actual shell environment
+// env_snapshot.odin - Cross-reference managed entries with actual shell environment
 //
 // Provides snapshots of:
 // - PATH (colon-separated)
@@ -14,13 +14,6 @@ import "core:crypto"
 import "core:os"
 import "core:strings"
 import "core:sys/posix"
-
-EntrySource :: enum {
-	WAYU_ACTIVE, // in wayu.toml AND in current env
-	WAYU_INACTIVE, // in wayu.toml but NOT in current env
-	EXTERNAL, // in current env but NOT in wayu.toml
-	SHADOWED, // in both but values differ
-}
 
 // Cached snapshot (per-invocation). Each cache has its own init flag: a
 // single shared flag made snapshot_env_var skip populating env_vars whenever
@@ -243,31 +236,6 @@ fish_unquote_word :: proc(s: string) -> string {
 		strings.write_byte(&sb, c)
 	}
 	return strings.to_string(sb)
-}
-
-// classify_entry determines the source of an entry
-// wayu_value is the value declared in wayu.toml (or empty string if not present)
-// env_value is the value from the shell environment (or nil if not present)
-// For aliases, pass empty wayu_value and check the aliases map directly.
-classify_entry :: proc(name: string, wayu_value: string, env_value: Maybe(string)) -> EntrySource {
-	has_wayu := wayu_value != ""
-	has_env := env_value != nil
-
-	if has_wayu && has_env {
-		// Both present — check if they match (for values, not names)
-		if env_value == wayu_value {
-			return .WAYU_ACTIVE
-		} else {
-			return .SHADOWED
-		}
-	} else if has_wayu {
-		return .WAYU_INACTIVE
-	} else if has_env {
-		return .EXTERNAL
-	}
-
-	// Neither — shouldn't happen in normal usage
-	return .EXTERNAL
 }
 
 // cleanup_env_snapshot frees the cached snapshot (call at program end)

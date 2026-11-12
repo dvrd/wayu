@@ -6,6 +6,41 @@ import "core:testing"
 import "core:time"
 
 @(test)
+test_subprocess_deadline_includes_stalled_stdin :: proc(t: ^testing.T) {
+	input := strings.repeat("x", 1024 * 1024)
+	defer delete(input)
+	start := time.tick_now()
+	r := wayu.run_command_timeout([]string{"sh", "-c", "sleep 2"}, 100, stdin_data = input)
+	defer wayu.command_result_destroy(&r)
+	testing.expect(t, r.timed_out && !r.ok, "a stalled stdin reader must obey the deadline")
+	testing.expect(t, time.tick_since(start) < time.Second)
+}
+
+@(test)
+test_clipboard_stdin_early_close_and_large_transfer :: proc(t: ^testing.T) {
+	input := strings.repeat("x", 1024 * 1024)
+	defer delete(input)
+	testing.expect(
+		t,
+		!wayu.run_command_with_stdin([]string{"sh", "-c", "exec 0<&-; sleep 0.05"}, input),
+		"a broken clipboard pipe must report failure, not terminate wayu",
+	)
+	r := wayu.run_command_timeout([]string{"wc", "-c"}, 5000, stdin_data = input)
+	defer wayu.command_result_destroy(&r)
+	testing.expect(t, r.ok && r.stdout == "1048576", "all input bytes must arrive")
+	// The child fills stderr before reading stdin. Simultaneous drainage
+	// prevents the two full pipes from deadlocking each other.
+	duplex := wayu.run_command_timeout(
+		[]string{"sh", "-c", "head -c 100000 /dev/zero >&2; wc -c"},
+		5000,
+		stdin_data = input,
+	)
+	defer wayu.command_result_destroy(&duplex)
+	testing.expect(t, duplex.ok && duplex.stdout == "1048576")
+	testing.expect_value(t, len(duplex.stderr), 64 * 1024)
+}
+
+@(test)
 test_run_command_timeout_after_output_closed :: proc(t: ^testing.T) {
 	start := time.tick_now()
 	r := wayu.run_command_timeout([]string{"sh", "-c", "exec >/dev/null 2>&1; sleep 2"}, 100)
@@ -146,5 +181,5 @@ test_run_command_timeout_stdin :: proc(t: ^testing.T) {
 	// A child that exits without reading must not take us down (SIGPIPE).
 	e := wayu.run_command_timeout([]string{"true"}, 5000, stdin_data = "fake")
 	defer wayu.command_result_destroy(&e)
-	testing.expect(t, e.ok)
+	testing.expect(t, !e.timed_out && e.exit_code == 0)
 }

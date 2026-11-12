@@ -8,6 +8,15 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+**Clipboard helpers and subprocess input**
+
+- `plugin get` now reports clipboard-copy failure when the clipboard helper
+  closes its input early, instead of potentially terminating wayu on SIGPIPE.
+  Each clipboard helper is limited to five seconds.
+- Subprocess stdin is streamed while capturing output, so a large input or
+  stalled reader cannot block deadline/cancellation checks. An incomplete
+  input transfer is reported as a command failure, even if the child exits 0.
+
 **Subprocess deadlines and relative symlink writes**
 
 - Commands run with a deadline now remain bounded after closing stdout and

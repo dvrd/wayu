@@ -290,81 +290,12 @@ capture_command :: proc(args: []string) -> string {
 	return strings.clone(trimmed)
 }
 
-// run_command_with_stdin runs a subprocess and writes input to its stdin.
-// Returns true if the process exits with code 0, false otherwise.
-// Stdout and stderr are redirected to /dev/null.
-// Used for clipboard commands (pbcopy, xclip) that read from stdin.
+// Clipboard helpers are best-effort: bound their lifetime and share the
+// runner's nonblocking input, partial-write and SIGPIPE handling.
 run_command_with_stdin :: proc(args: []string, input: string) -> bool {
-	if len(args) == 0 {
-		return false
-	}
-
-	// Build null-terminated argv
-	argv := make([dynamic]cstring, len(args) + 1)
-	defer {
-		for i in 0 ..< len(args) {
-			delete(argv[i])
-		}
-		delete(argv)
-	}
-	for arg, i in args {
-		argv[i] = strings.clone_to_cstring(arg)
-	}
-	argv[len(args)] = nil
-
-	// Create pipe for stdin: pipefd[0] = read end (child stdin), pipefd[1] = write end (parent writes)
-	pipefd: [2]posix.FD
-	if posix.pipe(&pipefd) != .OK {
-		return false
-	}
-
-	// Open /dev/null for stdout+stderr
-	devnull := posix.open("/dev/null", {.WRONLY})
-
-	guarded := child_guard_begin(false)
-	pid := posix.fork()
-	if pid < 0 {
-		child_guard_end(guarded)
-		posix.close(pipefd[0])
-		posix.close(pipefd[1])
-		if devnull >= 0 {
-			posix.close(devnull)
-		}
-		return false
-	}
-
-	if pid == 0 {
-		// Child: redirect stdin from read end of pipe
-		posix.close(pipefd[1]) // Close unused write end
-		posix.dup2(pipefd[0], posix.FD(0)) // stdin ← pipe read end
-		posix.close(pipefd[0]) // Close original read end (dup2'd)
-		if devnull >= 0 {
-			posix.dup2(devnull, posix.FD(1)) // stdout → /dev/null
-			posix.dup2(devnull, posix.FD(2)) // stderr → /dev/null
-			posix.close(devnull)
-		}
-		posix.execvp(argv[0], raw_data(argv[:]))
-		posix._exit(1)
-	}
-	child_guard_set_pid(guarded, pid)
-
-	// Parent: write input to write end, then close it (signals EOF to child)
-	posix.close(pipefd[0]) // Close read end — child owns it
-	if devnull >= 0 {
-		posix.close(devnull)
-	}
-
-	if len(input) > 0 {
-		input_bytes := transmute([]byte)input
-		posix.write(pipefd[1], raw_data(input_bytes), c.size_t(len(input_bytes)))
-	}
-	posix.close(pipefd[1]) // EOF signal to child
-
-	// Wait for child
-	status: c.int = 0
-	for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
-	child_guard_end(guarded)
-	return posix.WIFEXITED(status) && posix.WEXITSTATUS(status) == 0
+	r := run_command_timeout(args, 5_000, stdin_data = input)
+	defer command_result_destroy(&r)
+	return r.ok
 }
 
 // run_background_shell fires a shell command in the background and returns
@@ -499,7 +430,7 @@ Env_Default :: struct {
 // Outcome of run_command_timeout. stdout/stderr are trimmed and ALLOCATED
 // (possibly empty) — release with command_result_destroy.
 Command_Result :: struct {
-	ok:        bool, // exited 0 before the deadline
+	ok:        bool, // all stdin delivered, exited 0 before the deadline
 	timed_out: bool, // killed at the deadline (ok is false)
 	cancelled: bool, // killed because subprocess_cancel_check said so (ok is false)
 	exit_code: int, // the child's exit status when it exited normally, else -1
@@ -533,8 +464,7 @@ SUBPROCESS_CANCEL_POLL_MS :: 100
 // env_defaults are set in the child only when not already set.
 //
 // stdin_data, when non-empty, is the child's stdin instead of /dev/null
-// (written whole, then closed; meant for small inputs such as a key that must
-// stay off argv: at most one pipe buffer, so the write never blocks).
+// (streamed without blocking output capture or the deadline, then closed).
 //
 // cwd, when non-empty, is the child's working directory (it exits 127 when
 // it cannot change to it): compilers such as bun, deno or go read config
@@ -609,6 +539,22 @@ run_command_timeout :: proc(
 		return
 	}
 
+	// Set only the parent's write end nonblocking; the child still reads
+	// ordinary blocking stdin. Fail before fork if this cannot be arranged.
+	if in_pipe[1] >= 0 && posix.fcntl(in_pipe[1], .SETFL, c.int(posix.O_NONBLOCK)) < 0 {
+		for fd in ([]posix.FD {
+				out_pipe[0],
+				out_pipe[1],
+				err_pipe[0],
+				err_pipe[1],
+				in_pipe[0],
+				in_pipe[1],
+			}) {posix.close(fd)}
+		result.stdout = strings.clone("")
+		result.stderr = strings.clone("")
+		return
+	}
+
 	guarded := child_guard_begin(true)
 	pid := posix.fork()
 	if pid < 0 {
@@ -661,24 +607,14 @@ run_command_timeout :: proc(
 
 	posix.close(out_pipe[1])
 	posix.close(err_pipe[1])
-	if in_pipe[0] >= 0 {
-		posix.close(in_pipe[0])
-		// A child that exits without reading must not kill us with SIGPIPE.
-		prev := posix.signal(.SIGPIPE, auto_cast posix.SIG_IGN)
-		data := transmute([]byte)stdin_data
-		for len(data) > 0 {
-			n := posix.write(in_pipe[1], raw_data(data), c.size_t(len(data)))
-			if n < 0 && posix.errno() == .EINTR {
-				continue
-			}
-			if n <= 0 {
-				break
-			}
-			data = data[n:]
-		}
-		posix.close(in_pipe[1])
-		posix.signal(.SIGPIPE, prev)
-	}
+	has_input := in_pipe[0] >= 0
+	if has_input do posix.close(in_pipe[0])
+	// Install in the parent after fork, so the child retains its own signal
+	// behavior. Keep it active until every possible pipe write is finished.
+	prev_sigpipe := posix.signal(.SIGPIPE, auto_cast posix.SIG_IGN) if has_input else nil
+	defer if has_input do posix.signal(.SIGPIPE, prev_sigpipe)
+	input := transmute([]byte)stdin_data
+	input_failed := false
 
 	MAX_CAPTURE :: 64 * 1024
 	out_sb := strings.builder_make()
@@ -686,7 +622,11 @@ run_command_timeout :: proc(
 	defer strings.builder_destroy(&out_sb)
 	defer strings.builder_destroy(&err_sb)
 
-	fds := [2]posix.pollfd{{fd = out_pipe[0], events = {.IN}}, {fd = err_pipe[0], events = {.IN}}}
+	fds := [3]posix.pollfd {
+		{fd = out_pipe[0], events = {.IN}},
+		{fd = err_pipe[0], events = {.IN}},
+		{fd = in_pipe[1], events = {.OUT}},
+	}
 	open_count := 2
 	start := time.tick_now()
 	buf: [4096]byte
@@ -723,7 +663,7 @@ run_command_timeout :: proc(
 		}
 		if open_count == 0 && (wait_ms < 0 || wait_ms > 10) do wait_ms = 10
 
-		n := posix.poll(raw_data(fds[:]), 2, wait_ms)
+		n := posix.poll(raw_data(fds[:]), len(fds), wait_ms)
 		if n < 0 {
 			if posix.errno() == .EINTR {
 				continue
@@ -738,6 +678,20 @@ run_command_timeout :: proc(
 			if p.fd < 0 || p.revents == {} {
 				continue
 			}
+			if i == 2 {
+				n := posix.write(p.fd, raw_data(input), c.size_t(len(input)))
+				if n < 0 && (posix.errno() == .EINTR || posix.errno() == .EAGAIN) do continue
+				if n > 0 {
+					input = input[n:]
+				} else {
+					input_failed = true
+				}
+				if input_failed || len(input) == 0 {
+					posix.close(p.fd); p.fd = -1
+				}
+				continue
+			}
+
 			got := posix.read(p.fd, raw_data(buf[:]), len(buf))
 			if got <= 0 {
 				posix.close(p.fd)
@@ -779,6 +733,8 @@ run_command_timeout :: proc(
 
 	result.exit_code = int(posix.WEXITSTATUS(status)) if reaped && posix.WIFEXITED(status) else -1
 	result.ok =
+		!input_failed &&
+		len(input) == 0 &&
 		reaped &&
 		!result.timed_out &&
 		!result.cancelled &&
