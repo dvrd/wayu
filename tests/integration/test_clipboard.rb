@@ -66,7 +66,9 @@ class ClipboardTest
       # must not truncate the transfer to that background reader.
       FileUtils.rm_f("#{@tmp_home}/copied")
       %w[pbcopy xclip xsel].each do |name|
-        File.write("#{fake_bin}/#{name}", "#!/bin/sh\n(sleep 0.05; cat > \"$WAYU_CLIP_FIXTURE\") <&0 >/dev/null 2>&1 &\nexit 0\n")
+        # Save stdin before the shell assigns /dev/null to an asynchronous
+        # list's fd 0 (dash does this even for an explicit <&0).
+        File.write("#{fake_bin}/#{name}", "#!/bin/sh\nexec 3<&0\n(sleep 0.05; cat > \"$WAYU_CLIP_FIXTURE\") <&3 3<&- >/dev/null 2>&1 &\nexit 0\n")
       end
       out, err, status = Open3.capture3(env, @wayu_bin, 'plugin', 'get', 'demo')
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
@@ -74,7 +76,7 @@ class ClipboardTest
         break if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
         sleep 0.01
       end
-      abort "background reader received incomplete input: #{status}" unless
+      abort "background reader received incomplete input: #{status}; copied=#{File.exist?("#{@tmp_home}/copied") ? File.size("#{@tmp_home}/copied") : 'missing'}, expected=#{url.bytesize}; success_message=#{(out + err).include?('URL copied to clipboard')}" unless
         status.success? && (out + err).include?('URL copied to clipboard') &&
         File.binread("#{@tmp_home}/copied") == url
       puts 'PASS clipboard: a background reader receives the complete URL'
