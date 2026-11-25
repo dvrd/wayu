@@ -18,7 +18,7 @@ docs/UPGRADING.md "## Unreleased" has an entry.
 ## Checks
 
 - [ ] `./build_it check` and `./build_it test`
-- [ ] `ruby tests/integration/run_all.rb`
+- [ ] `./build_it integration`
 - [ ] `odin build src -out:bin/lint -vet -warnings-as-errors`
 - [ ] `odinfmt -w` on every touched `.odin` file
 - [ ] `tests/benchmark/budget.sh` (if generated shell code changed)

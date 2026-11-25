@@ -34,7 +34,7 @@
       "score": 12,
       "severity": "HIGH",
       "code_ref": "src/cli_parser.odin:441",
-      "command": "ruby tests/integration/test_exit_codes.rb",
+      "command": "./build_it integration integration.exit_codes",
       "evidence_scope": "ordinary + ASan integration"
     },
     {

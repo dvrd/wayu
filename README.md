@@ -629,7 +629,7 @@ odin build build -out:build_it
 ./build_it help           # show all targets
 
 # Integration Tests (Ruby)
-ruby tests/integration/run_all.rb
+./build_it integration
 ```
 
 ## Releasing

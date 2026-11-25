@@ -10,7 +10,7 @@ comes from one table in the source, `WAYU_COMMAND_SPECS`
 (`src/wayu_completions.odin`), which also drives dispatch, `wayu help` and
 wayu's own shell completions. `tests/unit/test_cli_doc.odin` fails when this
 file misses a command, alias, action or flag from that table, and
-`tests/integration/test_exit_codes.rb` runs the [exit code
+`tests/integration/exit_codes.odin` runs the [exit code
 examples](#exit-code-examples) below.
 
 The config file format is described in [config-reference.md](config-reference.md);
@@ -726,7 +726,7 @@ Prints the global help: commands, flags, command flags, examples, exit codes.
 `--json` is accepted by `path|alias|const|plugin|backup|script list`,
 `secrets recipient list`, `search` and `doctor` (and by any `help`); anywhere else it exits `64`. Output is one
 JSON document on stdout (errors stay on stderr); an empty list is `[]`. The
-shapes below are checked by `tests/integration/test_cli_output.rb` — new
+shapes below are checked by `tests/integration/cli_output.odin` — new
 keys may be added, existing ones keep their meaning.
 
 | Command | Document |
@@ -777,7 +777,7 @@ Ctrl-C, `143` for `SIGTERM`, `129` for `SIGHUP`).
 ### Exit code examples
 
 Run against a freshly initialized config (`wayu init`) by
-`tests/integration/test_exit_codes.rb`; keep the table format
+`tests/integration/exit_codes.odin`; keep the table format
 (`` | `wayu …` | code | `` ).
 
 | Command | Exit |

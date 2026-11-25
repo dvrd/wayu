@@ -145,7 +145,7 @@ jobs:
         WAYU_BIN: bin/wayu
       run: |
         mkdir -p evidence
-        ruby tests/integration/run_all.rb 2>&1 | tee evidence/integration.txt
+        ./build_it integration 2>&1 | tee evidence/integration.txt
 
     - name: Run TUI layout tests (pyte)
       shell: bash
@@ -204,7 +204,7 @@ jobs:
       env:
         WAYU_BIN: bin/asan/wayu
         ASAN_OPTIONS: detect_leaks=0:halt_on_error=1:abort_on_error=0:disable_coredump=0
-      run: ruby tests/integration/run_all.rb
+      run: ./build_it integration
 
   lint:
     name: Lint

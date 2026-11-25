@@ -50,7 +50,7 @@ main :: proc() {
 	}
 
 	switch target {
-	case "build", "debug", "test", "check", "install", "dev", "release":
+	case "build", "debug", "test", "integration", "check", "install", "dev", "release":
 		warn_if_odin_unpinned()
 	}
 
@@ -61,6 +61,10 @@ main :: proc() {
 		do_debug()
 	case "test":
 		do_test()
+	case "integration":
+		if !run_integration_tests() {
+			os.exit(1)
+		}
 	case "check":
 		do_check()
 	case "clean":
@@ -256,6 +260,54 @@ do_test :: proc() {
 		os.exit(1)
 	}
 	bld.log_info("All tests passed")
+}
+
+run_integration_tests :: proc() -> bool {
+	if _, supplied := os.lookup_env("WAYU_BIN", context.temp_allocator); !supplied {
+		do_build()
+	}
+	dir, ok := make_private_tmp_dir("wayu_integration_*")
+	if !ok {
+		return false
+	}
+	defer remove_private_tmp_dir(dir)
+	defines := make([dynamic]bld.Define, context.temp_allocator)
+	append(
+		&defines,
+		bld.Define{name = "ODIN_TEST_THREADS", value = "1"},
+		bld.Define{name = "ODIN_TEST_FAIL_ON_BAD_MEMORY", value = "true"},
+	)
+	if len(os.args) > 2 {
+		append(&defines, bld.Define{name = "ODIN_TEST_NAMES", value = os.args[2]})
+	}
+	passed := bld.test(
+		{
+			package_path = "tests/integration",
+			out = fmt.tprintf("%s/integration", dir),
+			defines = defines[:],
+			ignore_unused_defineables = true,
+		},
+	)
+	if len(os.args) > 2 {
+		return passed
+	}
+
+	// Keep unported suites in the same local and CI gate during migration.
+	suites, err := os.glob("tests/integration/test_*.rb", context.temp_allocator)
+	if err != nil {
+		bld.log_error("Cannot enumerate integration suites: %v", err); return false
+	}
+	for suite in suites {
+		if strings.has_suffix(suite, "/test_helper.rb") {
+			continue
+		}
+		cmd := bld.cmd_create(context.temp_allocator)
+		bld.cmd_append(&cmd, "ruby", suite)
+		if !bld.cmd_run(&cmd) {
+			passed = false
+		}
+	}
+	return passed
 }
 
 // Run the unit tests with HOME sandboxed, then restore HOME and remove the
@@ -974,6 +1026,7 @@ do_help :: proc() {
 	fmt.println("  build     Optimized release build (default) [--target=darwin_amd64|...]")
 	fmt.println("  debug     Debug build with symbols")
 	fmt.println("  test      Run unit tests (optional: NAME[,NAME] to run only those)")
+	fmt.println("  integration Run CLI integration suites (optional: integration.NAME[,NAME...])")
 	fmt.println("  check     Type-check only")
 	fmt.println("  clean     Remove build artifacts")
 	fmt.println(

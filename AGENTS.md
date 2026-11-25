@@ -32,11 +32,11 @@ User docs: [README.md](README.md) (install, shell setup, upgrade), [docs/cli.md]
 ./build_it dev path list   # debug build + run
 ```
 
-**Integration tests** (Ruby, stdlib only; each suite builds `bin/wayu` first unless `WAYU_BIN` is set, and runs in a temp HOME):
+**Integration tests** (Odin and remaining Ruby suites; each suite builds `bin/wayu` first unless `WAYU_BIN` is set, and runs in a temp HOME):
 ```bash
-ruby tests/integration/run_all.rb          # every tests/integration/test_*.rb
+./build_it integration          # every Odin and Ruby integration suite
 ruby tests/integration/test_path.rb        # one suite
-WAYU_BIN=$PWD/bin/wayu ruby tests/integration/test_exit_codes.rb   # skip the rebuild
+WAYU_BIN=$PWD/bin/wayu ./build_it integration integration.exit_codes   # skip the rebuild
 ```
 
 **TUI layout tests** (Python, needs `pip install pyte`; uses `bin/wayu`, override with `WAYU_BIN`; runs in a temp HOME with a fixed config; also run by CI):
@@ -46,7 +46,7 @@ WAYU_BIN=$PWD/bin/wayu ruby tests/integration/test_exit_codes.rb   # skip the re
 
 **Visual regression (golden files)**:
 ```bash
-ruby tests/integration/test_golden.rb             # compare every golden (also run by run_all.rb)
+./build_it integration integration.golden             # compare every golden (included in the full integration run)
 ./bin/wayu -c=header --test width=40 height=3 title=PATH count=10      # check one component
 ./bin/wayu -c=header --snapshot width=40 height=3 title=PATH count=10  # regenerate one golden
 ```
@@ -238,7 +238,7 @@ Every exit goes through `wayu_exit(code)` (`src/tui_io.odin`), which restores th
 ```
 tests/
 ├── unit/          # Odin unit tests, one file per module (test_cli_doc.odin checks docs/cli.md against WAYU_COMMAND_SPECS)
-├── golden/        # Component goldens + cases.txt (checked by integration/test_golden.rb)
+├── golden/        # Component goldens + cases.txt (checked by integration/golden.odin)
 ├── integration/   # Ruby, end-to-end CLI behavior (run_all.rb; fixtures/init-prev.zsh = previous release's init.zsh; test_exit_codes.rb runs docs/cli.md's exit code table)
 ├── tui/           # TUI tests (Python/pyte: test_responsive.py) + gen_rune_width.py
 ├── release/       # Pre-ship checks, run by hand (macOS): upgrade_from_release.sh (previous tag → this build), fresh_shells.sh (clean install, zsh/bash/fish), bash_trial.sh
@@ -263,8 +263,8 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 - `--no-color`: disables ANSI colors (equivalent to `NO_COLOR=1`)
 - `--yes` / `-y`: confirm destructive operations (required by: `path clean`, `path dedup`, `backup restore`, `backup rm`, `plugin remove`, `function remove`, `script remove`, `config scan --fix`, `doctor --fix`, `optimize`, `secrets recipient rm`, `secrets adopt`, `secrets recovery rm`); without it they exit 64
 - `--`: ends flag parsing; in `alias add` / `const add` the rest of the line after the first value word is the value (see `docs/cli.md`). Unknown options exit 64
-- `--json`: machine-readable output for `path|alias|const|plugin|backup|script list`, `secrets recipient list`, `search`, `doctor` (the `json` bit_set in `WAYU_COMMAND_SPECS`; elsewhere exit 64). Schemas are documented in `docs/cli.md` "JSON output" and pinned by `test_json_schema` in `tests/integration/test_cli_output.rb` — update both when a shape changes
-- `docs/cli.md` is the CLI contract: when you add/rename a command, action or flag in `WAYU_COMMAND_SPECS`, or change an exit code, update it (`tests/unit/test_cli_doc.odin` and `tests/integration/test_exit_codes.rb` fail otherwise)
+- `--json`: machine-readable output for `path|alias|const|plugin|backup|script list`, `secrets recipient list`, `search`, `doctor` (the `json` bit_set in `WAYU_COMMAND_SPECS`; elsewhere exit 64). Schemas are documented in `docs/cli.md` "JSON output" and pinned by `integration.cli_output` in `tests/integration/cli_output.odin` — update both when a shape changes
+- `docs/cli.md` is the CLI contract: when you add/rename a command, action or flag in `WAYU_COMMAND_SPECS`, or change an exit code, update it (`tests/unit/test_cli_doc.odin` and `tests/integration/exit_codes.odin` fail otherwise)
 - `wayu doctor` exits `EXIT_CONFIG` (78) when any check reports an error, so it can gate CI
 - `--dry-run`: show what would happen without writing
 

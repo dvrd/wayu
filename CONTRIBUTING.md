@@ -60,7 +60,7 @@ Run these before opening a pull request; CI runs the same set.
 ```bash
 ./build_it test                                   # unit tests (tests/unit/); leaks and bad frees fail
 ./build_it test test_wayu.test_x,test_wayu.test_y # only these unit tests
-ruby tests/integration/run_all.rb                 # every integration suite (incl. golden files)
+./build_it integration                 # every integration suite (incl. golden files)
 python3 tests/tui/test_responsive.py              # TUI layout + behavior (uses bin/wayu, or $WAYU_BIN)
 odin build src -out:bin/lint -vet -warnings-as-errors   # the CI lint
 tests/benchmark/budget.sh                         # startup-time budget (uses bin/wayu)
@@ -80,8 +80,8 @@ HOME=$(mktemp -d) ./bin/wayu init
 ```
 
 Golden files for TUI components live in `tests/golden/`; each needs a line in
-`tests/golden/cases.txt`. `ruby tests/integration/test_golden.rb` compares them
-all (`run_all.rb` includes it). Regenerate one with
+`tests/golden/cases.txt`. `./build_it integration integration.golden` compares them
+all (`./build_it integration` includes it). Regenerate one with
 `./bin/wayu -c=<component> --snapshot <args>` and review the diff.
 
 Release verification also upgrades a verified published binary to the current
@@ -145,7 +145,7 @@ both.
 - [`docs/cli.md`](docs/cli.md) is the CLI contract: every command, action,
   flag, `--json` shape and exit code. Change it in the same pull request as
   `WAYU_COMMAND_SPECS`; `tests/unit/test_cli_doc.odin` and
-  `tests/integration/test_exit_codes.rb` fail when they disagree.
+  `tests/integration/exit_codes.odin` fail when they disagree.
 - [`docs/STABILITY.md`](docs/STABILITY.md) says what may change and when.
   A change to a data file format (`entries.json`, `plugins.json`,
   `secrets.json`) or to where wayu keeps a file, directory or keychain item

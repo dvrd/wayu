@@ -371,7 +371,7 @@ end
 
 ```bash
 ./bin/wayu -c=header --snapshot width=40 height=3 title=PATH count=10  # regenerate one golden
-ruby tests/integration/test_golden.rb                                  # compare every golden
+./build_it integration integration.golden                                  # compare every golden
 ```
 
 Component rendering tested via `wayu -c=<component>` CLI flag.
