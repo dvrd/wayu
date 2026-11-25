@@ -460,14 +460,25 @@ top-level <code class="nw">shell = &quot;...&quot;</code> string is not read (<c
 <code class="nw">core.zsh</code> sources after the plugins; they apply only when the
 <code class="nw">autosuggest-accept</code> widget exists. No other <code class="nw">[settings]</code> key is read.</p>
 <h4 id="autosuggestions">Autosuggestions<a class="anchor" href="#autosuggestions" aria-label="Link to this section">#</a></h4>
-<p><code class="nw">autosuggest = true</code> puts suggestions in <code class="nw">core.zsh</code> itself (interactive zsh;
-nothing forks, no extra files). As you type, the newest history entry
+<p><code class="nw">autosuggest = true</code> puts suggestions in <code class="nw">core.zsh</code> itself (interactive zsh). As you type, the newest history entry
 that starts with the line (typed glob characters are literal) is shown after
 the cursor in <code class="nw">autosuggest_style</code>. It is computed in a <code class="nw">zle-line-pre-redraw</code>
 hook (<code class="nw">add-zle-hook-widget</code>, which zsh-syntax-highlighting 0.8+ also uses)
 instead of wrapping every widget at the first prompt and before every prompt
 as the zsh-autosuggestions plugin does.</p>
+<p>When the Atuin zsh integration is loaded, wayu also searches the full local
+Atuin database synchronously for the prefix. Native zsh matches take priority,
+followed by distinct Atuin matches and then the existing command-name fallback
+if neither history has a match. Cycling reuses Atuin results for the same prefix.</p>
 <ul>
+<li>In emacs and vi insert mode, Ctrl-N cycles to the next older distinct history
+match and Ctrl-P cycles back. Both wrap around and leave the typed prefix
+in place. On an empty line either key previews the newest history entry,
+then cycles through distinct entries. If the first word has no longer history
+match, the keys cycle matching command names from PATH. With no candidates
+the keys leave the line and prompt alone. Other custom
+bindings and configured accept keys take precedence.
+</li>
 <li>Accept all: <code class="nw">forward-char</code>, <code class="nw">end-of-line</code>, <code class="nw">vi-forward-char</code>,
 <code class="nw">vi-end-of-line</code>, <code class="nw">vi-add-eol</code> (→, <code class="nw">^F</code>, <code class="nw">^E</code>/End where bound, vi <code class="nw">l</code>
 <code class="nw">$</code> <code class="nw">A</code>) with the cursor at the end of the line, and the

@@ -239,14 +239,25 @@ The plugin bindings are written to `<data>/plugins/config.zsh`, which
 
 #### Autosuggestions
 
-`autosuggest = true` puts suggestions in `core.zsh` itself (interactive zsh;
-nothing forks, no extra files). As you type, the newest history entry
+`autosuggest = true` puts suggestions in `core.zsh` itself (interactive zsh). As you type, the newest history entry
 that starts with the line (typed glob characters are literal) is shown after
 the cursor in `autosuggest_style`. It is computed in a `zle-line-pre-redraw`
 hook (`add-zle-hook-widget`, which zsh-syntax-highlighting 0.8+ also uses)
 instead of wrapping every widget at the first prompt and before every prompt
 as the zsh-autosuggestions plugin does.
 
+When the Atuin zsh integration is loaded, wayu also searches the full local
+Atuin database synchronously for the prefix. Native zsh matches take priority,
+followed by distinct Atuin matches and then the existing command-name fallback
+if neither history has a match. Cycling reuses Atuin results for the same prefix.
+
+- In emacs and vi insert mode, Ctrl-N cycles to the next older distinct history
+  match and Ctrl-P cycles back. Both wrap around and leave the typed prefix
+  in place. On an empty line either key previews the newest history entry,
+  then cycles through distinct entries. If the first word has no longer history
+  match, the keys cycle matching command names from PATH. With no candidates
+  the keys leave the line and prompt alone. Other custom
+  bindings and configured accept keys take precedence.
 - Accept all: `forward-char`, `end-of-line`, `vi-forward-char`,
   `vi-end-of-line`, `vi-add-eol` (→, `^F`, `^E`/End where bound, vi `l`
   `$` `A`) with the cursor at the end of the line, and the

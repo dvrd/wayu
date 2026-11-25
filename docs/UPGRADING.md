@@ -6,6 +6,15 @@ section after its version and publishes it as the GitHub release's
 `BREAKING CHANGE:` footers. 4.4.3 and 4.4.4 shipped behavior changes as patch
 releases, so they are listed here too.
 
+## Unreleased
+
+- With built-in zsh autosuggestions enabled, Ctrl-N and Ctrl-P cycle through
+  matching history suggestions in emacs and vi insert mode. At an empty
+  prompt either key starts with the newest history entry. For a first word
+  with no longer history match, the keys cycle matching command names.
+- When Atuin is loaded in zsh, built-in suggestions and cycling include its
+  full history via synchronous prefix search.
+
 ## 8.0.0
 
 **Failure campaign and candidate acceptance**

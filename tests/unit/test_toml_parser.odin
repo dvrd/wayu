@@ -313,7 +313,7 @@ test_zsh_suggest_module :: proc(t: ^testing.T) {
 		strings.contains(code, "add-zle-hook-widget zle-line-finish _wayu_suggest_finish"),
 		"finish hook",
 	)
-	testing.expect_value(t, strings.count(code, "zle -N $w "), 1) // one loop over the 13 wrapped widgets
+	testing.expect_value(t, strings.count(code, "zle -N $w _wayu_suggest_$w"), 1) // one loop over the 13 wrapped widgets
 	testing.expect(
 		t,
 		strings.has_prefix(code, "if [[ -o interactive && -o zle ]]; then\n") &&

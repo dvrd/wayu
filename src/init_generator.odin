@@ -1629,11 +1629,31 @@ emit_zsh_suggest :: proc(b: ^strings.Builder, style: string) {
 }
 
 ZSH_SUGGEST :: `if [[ -o interactive && -o zle ]]; then
+  function _wayu_suggest_load_atuin {
+    emulate -L zsh
+    [[ ${_wayu_atuin_prefix+x} && $BUFFER == "$_wayu_atuin_prefix" ]] && return 0
+    typeset -g _wayu_atuin_prefix=$BUFFER
+    _wayu_atuin_matches=()
+    (( ${+widgets[atuin-search]} && ${+commands[atuin]} )) || return 0
+
+    # Atuin 18 search has no --print0. Frame commands before splitting so
+    # embedded and trailing newlines survive the command substitution.
+    local marker=$'\x1e'wayu-$$-$RANDOM-$RANDOM-$RANDOM sep output
+    sep=$marker$'\n'
+    output=$(command atuin search --filter-mode global --search-mode prefix \
+      --format "{command}$marker" -- "$BUFFER" 2>/dev/null) || return 0
+    [[ -n $output ]] || return 0
+    output+=$'\n'
+    local -a entries
+    entries=( "${(@ps.$sep.)output}" )
+    # Atuin accepts wildcard queries; ZLE buffers are literal prefixes.
+    _wayu_atuin_matches=( "${(@M)entries:#"$BUFFER"?*}" )
+  }
   function _wayu_suggest_redraw {
     emulate -L zsh
     local -i end=$#BUFFER
     [[ $KEYMAP == vicmd ]] && (( end-- ))
-    if (( ! $#BUFFER || CURSOR != end || PENDING )) || [[ $LASTWIDGET == (*history*|*search*) ]]; then
+    if (( CURSOR != end || PENDING )) || [[ -z $BUFFER && -n $_wayu_suggest_buf ]] || [[ $LASTWIDGET == (*history*|*search*) ]]; then
       POSTDISPLAY=
       _wayu_suggest_buf=
     elif [[ $BUFFER != "$_wayu_suggest_buf" ]]; then
@@ -1641,6 +1661,10 @@ ZSH_SUGGEST :: `if [[ -o interactive && -o zle ]]; then
       if [[ -z $_wayu_suggest_buf || $BUFFER != "$_wayu_suggest_buf"* ||
             ( -n $_wayu_suggest_full && $_wayu_suggest_full != "$BUFFER"* ) ]]; then
         _wayu_suggest_full=${history[(r)${(b)BUFFER}*]}
+        _wayu_suggest_load_atuin
+        if [[ -z $_wayu_suggest_full || $_wayu_suggest_full == "$BUFFER" ]] && (( $#_wayu_atuin_matches )); then
+          _wayu_suggest_full=$_wayu_atuin_matches[1]
+        fi
         # No history match on the first word: complete a command name from
         # PATH (shortest, then alphabetical).
         if [[ -z $_wayu_suggest_full && $BUFFER != *[^[:alnum:]_.+-]* ]]; then
@@ -1668,6 +1692,8 @@ ZSH_SUGGEST :: `if [[ -o interactive && -o zle ]]; then
   }
   function _wayu_suggest_finish {
     emulate -L zsh
+    unset _wayu_atuin_prefix
+    _wayu_atuin_matches=()
     POSTDISPLAY=
     _wayu_suggest_buf=
     _wayu_suggest_paint
@@ -1719,11 +1745,42 @@ ZSH_SUGGEST :: `if [[ -o interactive && -o zle ]]; then
     _wayu_suggest_buf=$BUFFER
     return ret
   }
+  function _wayu_suggest_cycle {
+    emulate -L zsh
+    local direction=${WIDGET##*-} event
+    local -a matches
+    (( CURSOR == $#BUFFER )) || return 0
+    # Sort matching event numbers newest first and omit exact matches.
+    for event in ${(Onk)history[(R)${(b)BUFFER}?*]}; do
+      matches+=( "${history[$event]}" )
+    done
+    _wayu_suggest_load_atuin
+    matches+=( "${_wayu_atuin_matches[@]}" )
+    if (( ! $#matches )) && [[ -n $BUFFER && $BUFFER != *[^[:alnum:]_.+-]* ]]; then
+      matches=( "${(@ok)commands[(I)${(b)BUFFER}?*]}" )
+    fi
+    (( $#matches )) || return 0
+    matches=( "${(@u)matches}" )
+    local -i i=0
+    [[ -z $POSTDISPLAY ]] || i=${matches[(Ie)$_wayu_suggest_full]}
+    if (( ! i )); then
+      i=1
+    elif [[ $direction == next ]]; then
+      (( i = i % $#matches + 1 ))
+    else
+      (( i = i <= 1 ? $#matches : i - 1 ))
+    fi
+    _wayu_suggest_full=$matches[i]
+    _wayu_suggest_buf=$BUFFER
+    POSTDISPLAY=${_wayu_suggest_full[$#BUFFER+1,-1]}
+    _wayu_suggest_paint
+  }
   function _wayu_suggest_key { _wayu_suggest_accept "" "$@"; }
   () {
     emulate -L zsh
     [[ $ZSH_VERSION == (5.<3->|<6->.)* ]] || return 0
     zmodload zsh/parameter zsh/zleparameter 2>/dev/null || return 0
+    typeset -ga _wayu_atuin_matches
     typeset -g _wayu_suggest_style=@STYLE@ _wayu_suggest_hl= _wayu_suggest_buf= _wayu_suggest_full=
     [[ $ZSH_VERSION == (5.<9->|<6->.)* ]] && _wayu_suggest_style+=", memo=wayu-suggest"
     (( ${+widgets[_wayu_suggest_redraw]} )) && return 0
@@ -1736,6 +1793,20 @@ ZSH_SUGGEST :: `if [[ -o interactive && -o zle ]]; then
       zle -A $w _wayu_suggest_orig_$w
       functions[_wayu_suggest_$w]="_wayu_suggest_$fn $w \"\$@\""
       zle -N $w _wayu_suggest_$w
+    done
+    local map key direction binding
+    for direction key in next '^N' previous '^P'; do
+      for map in emacs viins; do
+        binding=$(bindkey -M $map "$key")
+        # Leave macros and custom key bindings in place.
+        case ${binding##* } in
+          up-line-or-history|down-line-or-history|vi-up-line-or-history|vi-down-line-or-history|self-insert|undefined-key|_wayu_toggle_prompt) ;;
+          *) continue ;;
+        esac
+        w=wayu-suggest-$map-$direction
+        zle -N $w _wayu_suggest_cycle
+        bindkey -M $map "$key" $w
+      done
     done
     zle -N wayu-suggest-accept _wayu_suggest_key
     zle -N _wayu_suggest_redraw

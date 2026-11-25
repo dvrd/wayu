@@ -38,6 +38,8 @@ class SuggestTest
       test_settings_validate
       if zsh_supported?
         test_suggest_in_line_editor
+        test_suggest_cycle
+        test_suggest_atuin
         test_suggest_with_defer_and_lazy
         test_suggest_vi_mode
         test_suggest_wide_and_multiline
@@ -189,10 +191,13 @@ class SuggestTest
       CLEAR, 'sufbc', PROBE,    # 3 history beats PATH
       CLEAR, 'sufbo ', PROBE,   # 4 past the first word: no fallback
       CLEAR, 'sufbz', PROBE,    # 5 no command
+      "\x0e", "\x10", PROBE,     # 6 no command: buffer stays intact
+      CLEAR, 'sufbq', "\x0e", PROBE, "\x10", PROBE, # 7, 8 cycle PATH matches
     ]
     _, log = pty_session(home, env, steps)
     p = log.select { |l| l.start_with?('P|') }
-    want = [%w[sufbo ther], %w[sufbq q], ['sufbqqq', ''], ['sufbc', 'md --from-history'], ['sufbo ', ''], ['sufbz', '']]
+    want = [%w[sufbo ther], %w[sufbq q], ['sufbqqq', ''], ['sufbc', 'md --from-history'], ['sufbo ', ''], ['sufbz', ''],
+            ['sufbz', ''], ['sufbq', 'qa'], ['sufbq', 'q']]
     errs = want.each_with_index.reject { |(b, sug), i| p[i] && field(p[i], 'B') == b && field(p[i], 'S') == sug }
                .map { |_, i| "#{i}: #{p[i].inspect}" }
     check('fallback', errs.empty?, errs.join(' | '))
@@ -290,6 +295,59 @@ class SuggestTest
 
   def field(line, key)
     line.to_s[/\|#{key}=\[(.*?)\](\||$)/, 1] || line.to_s[/\|#{key}=([^|]*)/, 1]
+  end
+
+  def test_suggest_cycle
+    %w[emacs viins].each do |map|
+      print "Test: cycle distinct history suffixes in #{map} and accept the selection... "
+      prompt = "vi_mode = #{map == 'viins'}\n[prompt.interactive]\ntoggle_enabled = true\n"
+      home, _, env = setup_home("cycle_#{map}", prompt: prompt)
+      history = %w[old middle old newest].map { |suffix| "echo [#{suffix}" }
+      File.write("#{home}/.zsh_history", history.join("\n") + "\n")
+      prefix = 'echo ['
+      steps = [
+        "\x10", PROBE, "\x0e", PROBE, "\x10", PROBE,
+        prefix, PROBE, "\x0e", PROBE, "\x0e", PROBE, "\x0e", PROBE,
+        "\x10", PROBE, "\x19", PROBE,
+      ]
+      _, log = pty_session(home, env, steps)
+      rows = log.select { |line| line.start_with?('P|') }
+      actual = rows.map { |row| [field(row, 'B'), field(row, 'S')] }
+      expected = %w[newest old newest].map { |suffix| ['', prefix + suffix] }
+      expected += %w[newest old middle newest middle].map { |suffix| [prefix, suffix] }
+      expected << [prefix + 'middle', '']
+      check("cycle_#{map}", actual == expected, actual.inspect)
+    end
+  end
+
+  def test_suggest_atuin
+    print "Test: synchronous Atuin preview and cycling share uncapped literal-prefix results... "
+    rc = <<~'ZSH'
+      path=($HOME/mockbin $path)
+      _test_atuin_widget() { :; }
+      zle -N atuin-search _test_atuin_widget
+    ZSH
+    home, _, env = setup_home('atuin', rc_extra: rc)
+    FileUtils.mkdir_p("#{home}/mockbin")
+    tool = "#{home}/mockbin/atuin"
+    File.write(tool, <<~'ZSH')
+      #!/bin/zsh -f
+      [[ $1 == search && $2 == --filter-mode && $3 == global &&
+         $4 == --search-mode && $5 == prefix && $6 == --format && $8 == -- ]] || exit 2
+      marker=${7[10,-1]}
+      print -r -- "$9" >> "$HOME/queries"
+      for row in 'tool other' $'tool [first\nnext\n' 'tool [second' 'tool [second'; do
+        print -r -- "$row$marker"
+      done
+    ZSH
+    File.chmod(0o755, tool)
+    prefix = 'tool ['
+    _, log = pty_session(home, env, [prefix, PROBE, "\x0e", PROBE, "\x0e", PROBE, "\x19", PROBE])
+    rows = log.grep(/^P\|/).map { |line| [field(line, 'B'), field(line, 'S')] }
+    first = "first\x1fnext\x1f"
+    expected = [[prefix, first], [prefix, 'second'], [prefix, first], [prefix + first, '']]
+    count = File.readlines("#{home}/queries", chomp: true).count(prefix)
+    check('atuin', rows == expected && count == 1, "rows=#{rows.inspect} prefix queries=#{count}")
   end
 
   # One line-editor session covering suggest / accept / partial accept /
