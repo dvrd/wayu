@@ -354,17 +354,18 @@ test_create_backup_existing_file :: proc(t: ^testing.T) {
 - Test data in per-process `/tmp/wayu-test-*-<pid>` paths (tests run concurrently across worktrees)
 - Cleanup with `defer os.remove()` or `defer delete()`
 
-### Integration tests (Ruby)
+### Integration tests (Odin)
 
-Invoke compiled binary and check stdout/stderr/exit codes:
+Use the shared CLI fixture for a fresh HOME and the binary under test. Pass arguments separately so spaces and shell metacharacters reach the CLI intact.
 
-```ruby
-# tests/integration/test_path.rb
-def test_add_path
-  output = `#{WAYU_BIN} path add /tmp/test-path 2>&1`
-  assert_match(/added successfully/, output)
-  assert_equal(0, $?.exitstatus)
-end
+```odin
+@(test)
+path_help :: proc(t: ^testing.T) {
+    cli := new_cli(t)
+    defer os.remove_all(cli.home)
+    output := checked_cli(t, cli, "path", "help")
+    testing.expect(t, strings.contains(output, "EXAMPLES"))
+}
 ```
 
 ### Golden file testing

@@ -35,7 +35,7 @@ User docs: [README.md](README.md) (install, shell setup, upgrade), [docs/cli.md]
 **Integration tests** (Odin and remaining Ruby suites; each suite builds `bin/wayu` first unless `WAYU_BIN` is set, and runs in a temp HOME):
 ```bash
 ./build_it integration          # every Odin and Ruby integration suite
-ruby tests/integration/test_path.rb        # one suite
+./build_it integration integration.path_entries   # one Odin test
 WAYU_BIN=$PWD/bin/wayu ./build_it integration integration.exit_codes   # skip the rebuild
 ```
 
