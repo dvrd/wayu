@@ -74,6 +74,19 @@ they live, and which files are generated.
 - The `[tools]` evalcache lives outside both:
   `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache` (`wayu build clean` deletes it).
 
+### Native shell startup and history
+
+Interactive `wayu shell` sessions read `config.wayu` in `WAYU_CONFIG_DIR`
+after loading Wayu-managed entries. For example, `export EDITOR=vi` in that
+file sets the editor for commands launched from the native prompt. Managed
+functions run in child processes using the interpreter named by their file
+extension. Existing shell-specific startup files apply when using those shells.
+
+The native shell appends interactive commands to `history.jsonl` in
+`WAYU_DATA_DIR`. Each record is a JSON string, so multiline commands survive
+across sessions. Start a command with a space to omit it. The native shell
+uses its own history even when Atuin is installed.
+
 ## wayu.toml
 
 `$WAYU_CONFIG_DIR/wayu.toml` is the file you edit for `[shell]`,

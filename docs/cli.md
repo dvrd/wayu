@@ -698,6 +698,37 @@ one is newer, runs `wayu optimize --notify` once, which prints
 (once per change). With `[settings] auto_optimize = true` in wayu.toml it moves
 them instead (with backups) and prints what it moved.
 
+### `wayu shell`
+
+Start an interactive native shell, or pipe command lines to its standard input.
+The `run` action evaluates a single command string and returns its exit status.
+Commands support pipes, file redirection (including `2>` and `2>&1`), sequencing, and
+conditional execution (`&&`, `||`). Use `cd`, `export`, and `unset` to change
+session state. Use `jobs`, `fg`, and `bg` to manage jobs started with `&` or
+suspended in the foreground.
+
+The native shell reads wayu's PATH entries, plain constants, and aliases at
+startup. Interactive sessions then read `config.wayu` from the Wayu config
+directory. Use `source <file>` to run native commands in the current session.
+Managed functions in Bash, zsh, or Fish run in the corresponding interpreter
+as child processes. Directory and environment changes inside a managed
+function are local to that process. Shell-specific editor plugins and rc files
+belong to their respective interpreters. The beta supports simple commands,
+pipelines, and command lists. Use a script with a shebang for shell-specific
+syntax such as Bash loops or command substitution.
+
+At the prompt, Ctrl+N/P cycles history suggestions and Right accepts
+the displayed suffix. Tab cycles matching command or path names. Up/Down recall
+previous lines, and Ctrl+_ undoes an edit. Ctrl+R searches history by
+substring. Enter accepts the result for further editing. Set `[prompt]`
+`vi_mode = true` to enable vi insert and normal modes. Interactive history is stored under
+the wayu data directory in `history.jsonl`; a leading space omits a command
+from history. Piped input and `shell run` do not record commands.
+
+```sh
+wayu shell run 'printf "%s\n" one two | wc -l'
+```
+
 ### `wayu reload` (`watch`, `hot-reload`)
 
 `wayu reload [start|stop|status|regenerate]`. `start` (the default) watches

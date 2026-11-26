@@ -8,6 +8,9 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+- `wayu shell` opens an opt-in native shell. `wayu shell run` evaluates a
+  command string in the same executor.
+
 - With built-in zsh autosuggestions enabled, Ctrl-N and Ctrl-P cycle through
   matching history suggestions in emacs and vi insert mode. At an empty
   prompt either key starts with the newest history entry. For a first word

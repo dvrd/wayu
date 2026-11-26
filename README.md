@@ -132,6 +132,18 @@ new shells, or `source` the init file again.
 Every key of `wayu.toml`, the entry store and the other config files is
 described in [docs/config-reference.md](docs/config-reference.md).
 
+### Try the native shell beta
+
+Run `wayu shell` from a terminal to open the Odin shell. Type part of a
+previous command, cycle matching suggestions with Ctrl+N or Ctrl+P, and
+press Right to accept. Ctrl+R searches the native history by substring.
+History works without Atuin. Type `exit` to return to the launching shell.
+
+The beta reads your Wayu PATH entries, aliases, and plain constants. Put
+native startup commands in `~/.config/wayu/config.wayu`. Scripts with a
+shebang still run with their declared interpreter. For the supported command
+language and editing keys, see [the CLI reference](docs/cli.md#wayu-shell).
+
 ## Upgrading
 
 ```bash

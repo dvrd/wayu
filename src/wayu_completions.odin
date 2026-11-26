@@ -411,6 +411,13 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec {
 		flags = {{"--check", "Exit 1 when startup-file lines can be optimized"}, {"--notify", ""}},
 	},
 	{
+		command = .NATIVE_SHELL,
+		names = {"shell"},
+		desc = "Start the native wayu shell",
+		default_action = .LIST,
+		actions = {{"run", .RUN, "Evaluate a command string"}},
+	},
+	{
 		command = .RELOAD,
 		names = {"reload", "watch", "hot-reload"},
 		desc = "Watch config files and regenerate init files",

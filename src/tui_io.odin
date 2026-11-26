@@ -291,7 +291,6 @@ tui_atexit_handler :: proc "c" () {
 	tui_emergency_restore()
 }
 
-@(private = "file")
 write_all_fd :: proc "contextless" (fd: posix.FD, data: string) {
 	rest := data
 	for len(rest) > 0 {

@@ -405,7 +405,6 @@ path_values_equal :: proc(a, b: string) -> bool {
 
 // is_env_var_char returns true for characters valid in a shell identifier:
 // A-Z, a-z, 0-9, underscore.
-@(private = "file")
 is_env_var_char :: proc(c: byte) -> bool {
 	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'
 }

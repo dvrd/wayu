@@ -102,7 +102,11 @@ wb_destroy :: proc(w: ^WordBuf) {
 // Tokenize `content` into statements. Caller frees with
 // shell_statements_destroy. Blank and comment-only lines produce no
 // statement.
-shell_parse_statements :: proc(content: string, dialect: ShellDialect) -> [dynamic]ShellStatement {
+shell_parse_statements :: proc(
+	content: string,
+	dialect: ShellDialect,
+	native_parameters := false,
+) -> [dynamic]ShellStatement {
 	out := make([dynamic]ShellStatement)
 	s := content
 	i := 0
@@ -157,6 +161,24 @@ shell_parse_statements :: proc(content: string, dialect: ShellDialect) -> [dynam
 		case c == '\\' && i + 1 < len(s) && s[i + 1] == '\n':
 			line += 1
 			i += 2
+		case native_parameters && (c == '<' || c == '>' || (c >= '0' && c <= '9')):
+			start := i
+			for i < len(s) && s[i] >= '0' && s[i] <= '9' {i += 1}
+			if i < len(s) && (s[i] == '<' || s[i] == '>') {
+				symbol := s[i]
+				i += 1
+				if i < len(s) && (s[i] == symbol || s[i] == '&') {
+					i += 1
+				}
+				append(&cur.tokens, ShellToken{kind = .Op, op = s[start:i]})
+			} else {
+				i = start
+				w, err := shell_read_word(s, &i, &line, dialect, native_parameters)
+				if err != "" {
+					fail(&out, &cur, s[i:], line, err); return out
+				}
+				append(&cur.tokens, ShellToken{kind = .Word, word = w})
+			}
 		case shell_is_op_byte(c):
 			start := i
 			if c == '(' || c == ')' {
@@ -176,7 +198,7 @@ shell_parse_statements :: proc(content: string, dialect: ShellDialect) -> [dynam
 				return out
 			}
 		case:
-			w, err := shell_read_word(s, &i, &line, dialect)
+			w, err := shell_read_word(s, &i, &line, dialect, native_parameters)
 			if len(err) > 0 {
 				fail(&out, &cur, s[i:], line, err)
 				return out
@@ -400,6 +422,7 @@ shell_read_word :: proc(
 	i: ^int,
 	line: ^int,
 	dialect: ShellDialect,
+	native_parameters: bool,
 ) -> (
 	word: ShellWord,
 	err: string,
@@ -444,7 +467,7 @@ shell_read_word :: proc(
 
 		case '"':
 			i^ += 1
-			if e := shell_read_dq(s, i, line, &w, dialect); len(e) > 0 {
+			if e := shell_read_dq(s, i, line, &w, dialect, native_parameters); len(e) > 0 {
 				err = e; ok = false; break loop
 			}
 
@@ -479,7 +502,7 @@ shell_read_word :: proc(
 				if dialect == .POSIX && n == '"' {
 					// $"..." (locale translation) is a double-quoted string.
 					i^ += 2
-					if e := shell_read_dq(s, i, line, &w, dialect); len(e) > 0 {
+					if e := shell_read_dq(s, i, line, &w, dialect, native_parameters); len(e) > 0 {
 						err = e; ok = false; break loop
 					}
 					continue
@@ -493,8 +516,11 @@ shell_read_word :: proc(
 					continue
 				}
 			}
-			wb_put(&w, '$', true)
-			i^ += 1
+			if native_parameters {
+				shell_native_parameter(s, i, &w)
+			} else {
+				wb_put(&w, '$', true); i^ += 1
+			}
 
 		case '`':
 			if dialect == .FISH {
@@ -548,6 +574,7 @@ shell_read_dq :: proc(
 	line: ^int,
 	w: ^WordBuf,
 	dialect: ShellDialect,
+	native_parameters: bool,
 ) -> string {
 	for i^ < len(s) {
 		d := s[i^]
@@ -579,8 +606,11 @@ shell_read_dq :: proc(
 				}
 				continue
 			}
-			wb_put(w, d, true)
-			i^ += 1
+			if native_parameters {
+				shell_native_parameter(s, i, w)
+			} else {
+				wb_put(w, d, true); i^ += 1
+			}
 		case '`':
 			wb_put(w, d, dialect == .POSIX)
 			i^ += 1
@@ -649,4 +679,29 @@ shell_read_ansi_c :: proc(s: string, i: ^int, line: ^int, w: ^WordBuf) -> string
 		i^ += 1
 	}
 	return "unterminated $'...' string"
+}
+
+// Delimit unbraced names before quote removal joins adjacent fragments:
+// "$HOME"'suffix' expands HOME alone.
+@(private = "file")
+shell_native_parameter :: proc(source: string, i: ^int, w: ^WordBuf) {
+	i^ += 1
+	start := i^
+	if start < len(source) && source[start] == '?' {
+		wb_put(w, '$', true)
+		wb_put(w, '?', true)
+		i^ += 1
+		return
+	}
+	if start == len(source) || !is_shell_var_name(source[start:start + 1]) {
+		wb_put(w, '$', false)
+		return
+	}
+	wb_put(w, '$', true)
+	wb_put(w, '{', true)
+	for i^ < len(source) && is_env_var_char(source[i^]) {
+		wb_put(w, source[i^], true)
+		i^ += 1
+	}
+	wb_put(w, '}', true)
 }

@@ -58,6 +58,7 @@ Command :: enum {
 	SEARCH, // Global fuzzy search across all configs
 	SECRETS, // Encrypted secret constants (secrets_store.odin)
 	OPTIMIZE, // Move startup-file lines into wayu (optimize.odin)
+	NATIVE_SHELL,
 	UNKNOWN,
 }
 
@@ -364,6 +365,8 @@ main :: proc() {
 		handle_function_command(parsed.action, parsed.args)
 	case .SCRIPT:
 		handle_script_command(parsed.action, parsed.args)
+	case .NATIVE_SHELL:
+		handle_native_shell(parsed.action, parsed.args)
 	case .RELOAD:
 		// Parse reload action from args
 		action := "start"
