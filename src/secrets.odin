@@ -2,12 +2,10 @@
 //   * file modes for files that may contain constant values (entries.json,
 //     backups, generated core/path_sync scripts);
 //   * the "looks secret" heuristic and value masking used by every preview
-//     and list output (dry-run, search, export --dry-run, `const list`,
-//     the TUI constants view).
+//     and list output (dry-run, search, export --dry-run, `const list`).
 //
 // `wayu const get NAME` (exact) deliberately prints the real value — that is
-// its purpose. List views mask unless the user asks with `--reveal` (CLI) or
-// the reveal key (TUI).
+// its purpose. List views mask unless the user asks with `--reveal`.
 
 package wayu
 
@@ -119,8 +117,7 @@ mask_secret_value :: proc(name, value: string) -> string {
 	return value
 }
 
-// Value to show in a list view: the real value when `reveal` (`--reveal`,
-// TUI reveal key), else masked like a preview. Never allocates.
+// Value to show in a list view: the real value with `--reveal`, else masked like a preview. Never allocates.
 list_display_value :: proc(name, value: string, reveal: bool) -> string {
 	if reveal {
 		return value

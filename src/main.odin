@@ -28,7 +28,6 @@ AppContext :: struct {
 	secret_flag:    bool, // --secret: `const add` stores the value encrypted (secrets_store.odin)
 	run_only_flag:  bool, // --run-only: that secret is only injected by `wayu secrets run`
 	source_filter:  string,
-	tui_mode:       bool,
 	temp_arena:     ^virtual.Arena,
 }
 
@@ -58,7 +57,7 @@ Command :: enum {
 	SEARCH, // Global fuzzy search across all configs
 	SECRETS, // Encrypted secret constants (secrets_store.odin)
 	OPTIMIZE, // Move startup-file lines into wayu (optimize.odin)
-	NATIVE_SHELL,
+	WARP,
 	UNKNOWN,
 }
 
@@ -173,14 +172,6 @@ make_directory_all :: proc(path: string) -> (err: os.Error) {
 	return make_wayu_dir(path)
 }
 
-// Shared TUI launch helper — used by both no-args and --tui paths
-tui_launch :: proc() {
-	wayu.tui_mode = true
-	defer wayu.tui_mode = false
-
-	tui_run()
-}
-
 // Process-wide temp arena (context.temp_allocator). A package global, not a
 // local of main, so wayu.temp_arena never points into a stack frame.
 @(private = "file")
@@ -190,8 +181,8 @@ main :: proc() {
 	// Temp arena for transient allocations (string building, quoting, etc.).
 	// Growing (virtual memory, new blocks on demand): the old fixed 256 KB
 	// buffer ran out on large configs and tprintf/join then returned empty
-	// strings, silently skipping writes such as path_sync. The TUI frame loop
-	// and the watcher free_all it per iteration; the CLI frees it at exit.
+	// strings, silently skipping writes such as path_sync. Long-running loops
+	// release temporary allocations between iterations; the CLI frees it at exit.
 	// context.allocator stays the heap (existing delete() calls).
 	if err := virtual.arena_init_growing(&main_temp_arena); err != nil {
 		fmt.eprintln("wayu: cannot reserve memory for the temp arena")
@@ -240,9 +231,25 @@ main :: proc() {
 		wayu_exit(EXIT_CONFIG)
 	}
 
-	// No arguments → launch TUI (the primary interface)
-	if len(os.args) < 2 {
-		tui_launch()
+	// Internal callback from the generated interactive shell hooks.
+	if len(os.args) == 3 && os.args[1] == "__warp_visit" {
+		if !native_jump_record(os.args[2]) {
+			wayu_exit(EXIT_IOERR)
+		}
+		return
+	}
+
+	if len(os.args) == 1 {
+		run_native_shell()
+		return
+	}
+
+	if os.args[1] == "-c" {
+		if len(os.args) != 3 {
+			fmt.eprintln("Usage: wayu -c <command>")
+			wayu_exit(EXIT_USAGE)
+		}
+		run_native_shell(os.args[2])
 		return
 	}
 
@@ -280,12 +287,6 @@ main :: proc() {
 			long,
 			RESET,
 		)
-	}
-
-	// Launch TUI if flag present
-	if parsed.tui {
-		tui_launch()
-		return
 	}
 
 	// Component test mode (PRP-13)
@@ -365,8 +366,8 @@ main :: proc() {
 		handle_function_command(parsed.action, parsed.args)
 	case .SCRIPT:
 		handle_script_command(parsed.action, parsed.args)
-	case .NATIVE_SHELL:
-		handle_native_shell(parsed.action, parsed.args)
+	case .WARP:
+		wayu_exit(handle_warp(parsed.action, parsed.args))
 	case .RELOAD:
 		// Parse reload action from args
 		action := "start"
@@ -712,13 +713,17 @@ print_init_help :: proc() {
 }
 
 print_help :: proc() {
-	header_text := fmt.aprintf("wayu v%s - Shell configuration management tool\n", VERSION)
+	header_text := fmt.aprintf(
+		"wayu v%s - Native shell and shell configuration manager\n",
+		VERSION,
+	)
 	defer delete(header_text)
 	print_header(header_text, EMOJI_MOUNTAIN)
 
 	print_section("USAGE:", EMOJI_USER)
-	fmt.printf("  wayu                    Launch interactive TUI (default)\n")
-	fmt.printf("  wayu <command> <action> [arguments]\n")
+	fmt.printf("  wayu                    Start the native shell\n")
+	fmt.printf("  wayu -c <command>       Evaluate a shell command\n")
+	fmt.printf("  wayu <command> [<action>] [arguments]\n")
 	fmt.println()
 
 	print_section("COMMANDS:", EMOJI_COMMAND)
@@ -785,10 +790,9 @@ print_help :: proc() {
 		EMOJI_INFO,
 	)
 	print_item("", "--", "End of flags: everything after is a literal argument", EMOJI_INFO)
-	print_item("", "--tui", "Launch interactive Terminal UI mode (same as no args)", EMOJI_INFO)
 	print_item("", "--version, -v", "Print the version", EMOJI_INFO)
 	print_item("", "--help, -h", "Show help (global or per command)", EMOJI_INFO)
-	print_item("", "-c=<component>", "Test TUI component rendering (dev mode)", EMOJI_INFO)
+	print_item("", "-c=<component>", "Test terminal component rendering (dev mode)", EMOJI_INFO)
 	print_item("", "--snapshot", "Save component output as golden file", EMOJI_INFO)
 	print_item("", "--test", "Test component against golden file", EMOJI_INFO)
 	fmt.println()
@@ -876,7 +880,7 @@ print_help :: proc() {
 	fmt.printf("  65  Data format error (invalid input)\n")
 	fmt.printf("  66  Input file not found\n")
 	fmt.printf("  69  Required tool not installed (script interpreter/compiler)\n")
-	fmt.printf("  71  TUI could not set up the terminal\n")
+	fmt.printf("  71  Could not set up the terminal\n")
 	fmt.printf("  73  Cannot create output file\n")
 	fmt.printf("  74  I/O error (read/write failure)\n")
 	fmt.printf("  77  Permission denied\n")
@@ -884,13 +888,6 @@ print_help :: proc() {
 	fmt.printf("  126 secrets run: command not executable\n")
 	fmt.printf("  127 secrets run: command not found\n")
 	fmt.println()
-	fmt.printf(
-		"  %sNote:%s Running %swayu%s with no arguments opens the interactive TUI\n",
-		BRIGHT_CYAN,
-		RESET,
-		BOLD,
-		RESET,
-	)
 	fmt.printf(
 		"  %sNote:%s CLI mode is fully non-interactive for scripting/automation\n",
 		BRIGHT_CYAN,

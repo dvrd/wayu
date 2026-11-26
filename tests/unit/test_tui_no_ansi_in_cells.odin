@@ -1,15 +1,6 @@
 package test_wayu
 
-// Regression test for the TUI scroll bug fixed in commit 49bf668.
-// See thoughts/scroll_bug_spec.md for the full diagnosis.
-//
-// Root cause: ANSI escape bytes embedded in list-item strings were written
-// into Screen.Cell.char, drifting the diff renderer's logical cursor from
-// the PTY cursor. Invariant: no cell in Screen.buffer may hold 0x1b as .char;
-// color must live exclusively in .fg / .bg.
-
 import wayu "../../src"
-import "core:strings"
 import "core:testing"
 
 @(test)
@@ -26,11 +17,7 @@ test_render_text_styled_stores_no_ansi_bytes :: proc(t: ^testing.T) {
 	for y in 0 ..< screen.height {
 		for x in 0 ..< screen.width {
 			ch := screen.buffer[y][x].char
-			testing.expect(
-				t,
-				ch != 0x1b,
-				"ANSI escape byte found in screen cell — see thoughts/scroll_bug_spec.md",
-			)
+			testing.expect(t, ch != 0x1b, "ANSI escape byte found in screen cell")
 		}
 	}
 }
@@ -100,47 +87,6 @@ test_render_text_styled_strips_ansi_escape_bytes :: proc(t: ^testing.T) {
 	testing.expect(t, found_glyph, "Printable glyph must survive ANSI stripping")
 }
 
-// Option B — caller-level test. render_list_item is the function that the
-// original bug lived in: it used to receive "\x1b[32m●\x1b[0m /path" and
-// write ESC bytes into cells. Post-fix, it receives the plain row text plus
-// the row's RowSource and maps the source glyph to Cell.fg. This test pins
-// that contract so a future refactor can't re-introduce inline ANSI.
-@(test)
-test_render_list_item_maps_glyph_to_fg_not_char :: proc(t: ^testing.T) {
-	screen := wayu.screen_create(60, 1)
-	defer wayu.screen_destroy(&screen)
-
-	// Realistic TUI input: plain text + source metadata, no ANSI.
-	wayu.render_list_item(&screen, 2, 0, "/some/path", 50, false, .WAYU_ACTIVE)
-
-	// No ESC byte may appear anywhere after rendering.
-	for x in 0 ..< screen.width {
-		testing.expect(
-			t,
-			screen.buffer[0][x].char != 0x1b,
-			"render_list_item must not emit ESC bytes into the cell buffer",
-		)
-	}
-
-	// The glyph must be rendered with the WAYU_ACTIVE source color via Cell.fg —
-	// not via inline ANSI in Cell.char. Scan the row for the `●` cell.
-	glyph_x := -1
-	for x in 0 ..< screen.width {
-		if screen.buffer[0][x].char == '●' {
-			glyph_x = x
-			break
-		}
-	}
-	testing.expect(t, glyph_x >= 0, "Glyph `●` must be present as a Cell.char")
-	if glyph_x >= 0 {
-		testing.expect(
-			t,
-			screen.buffer[0][glyph_x].fg == wayu.TUI_SOURCE_WAYU_ACTIVE,
-			"Glyph cell must carry source color in Cell.fg, not inline ANSI",
-		)
-	}
-}
-
 // Security audit: no control rune (C0, DEL, C1) may reach the screen buffer,
 // as a cell's char or as an attached combining mark, whatever the writer.
 @(private = "file")
@@ -185,15 +131,4 @@ test_tui_cells_never_hold_control_runes :: proc(t: ^testing.T) {
 	wayu.screen_set_cell(&screen, 2, 0, wayu.Cell{char = 0x1b, comb = 0x07})
 	expect_no_control_cells(t, &screen, "cell writers")
 	testing.expect_value(t, screen.buffer[0][1].char, wayu.TUI_CONTROL_PLACEHOLDER)
-}
-
-@(test)
-test_render_list_item_shows_controls_escaped :: proc(t: ^testing.T) {
-	screen := wayu.screen_create(60, 1)
-	defer wayu.screen_destroy(&screen)
-	wayu.render_list_item(&screen, 2, 0, "x = echo \x1b]0;pwned\x07", 50, false, .WAYU_ACTIVE)
-	expect_no_control_cells(t, &screen, "render_list_item")
-	row := wayu.screen_to_string(&screen)
-	defer delete(row)
-	testing.expectf(t, strings.contains(row, "\\x1B]0;pwned\\x07"), "row not escaped: %q", row)
 }

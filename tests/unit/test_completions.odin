@@ -410,10 +410,15 @@ test_wayu_command_table_drives_actions :: proc(t: ^testing.T) {
 		}
 		if len(spec.actions) > 0 {
 			unk := wayu.parse_args([]string{spec.names[0], "no-such-action"})
-			delete(unk.args)
+			defer delete(unk.args)
+			expected: wayu.Action = .UNKNOWN
+			if spec.command == .WARP {
+				expected = .RUN
+				testing.expect(t, len(unk.args) == 1 && unk.args[0] == "no-such-action")
+			}
 			testing.expectf(
 				t,
-				unk.action == .UNKNOWN,
+				unk.action == expected,
 				"%s no-such-action parses to %v",
 				spec.names[0],
 				unk.action,

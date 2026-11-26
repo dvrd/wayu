@@ -138,7 +138,7 @@ toml_constant_add :: proc(entry: ConfigEntry) -> (bool, string) {
 	return entries_entry_upsert(.ENV, entry.name, entry.value, "Constant")
 }
 
-// Never exits (the TUI removes through it): errors come back heap-owned.
+// Errors come back heap-owned.
 toml_constant_remove :: proc(name: string) -> (bool, string) {
 	is_secret, serr := secrets_store_has_name(name)
 	if len(serr) > 0 {

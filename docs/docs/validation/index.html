@@ -125,7 +125,7 @@ The release workflow calls that same CI and the startup-budget workflow before
 bumping a version or creating a tag. The gates include:</p>
 <ul>
 <li>Odin unit tests with leak and invalid-free tracking, strict compiler checks,
-CLI/integration and golden tests, and TUI behavior tests.
+CLI integration, terminal interaction, and golden tests.
 </li>
 <li>Linux AddressSanitizer integration tests and native smoke tests of all four
 prebuilt targets.
@@ -167,7 +167,7 @@ WAYU_TRIAL_REPORT=evidence/candidate-trial.json ruby tests/release/candidate_tri
 <p>The portable campaign also runs in the normal and sanitizer integration suites.
 Real ENOSPC requires the isolated mount prepared by
 <code class="nw">failure-campaign.yml</code>; never point its <code class="nw">WAYU_FULL_DISK_ROOT</code> at a normal disk.</p>
-<p>Actions retain unit/integration/TUI logs, source metadata and
+<p>Actions retain unit and integration logs, source metadata and
 <code class="nw">candidate-campaign-&lt;runner&gt;</code> artifacts. The candidate trial JSON records the
 binary SHA-256, version, shell executables and round count; it verifies that
 the original candidate and its trial copy remain unchanged. Artifacts are

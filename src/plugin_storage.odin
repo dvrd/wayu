@@ -96,7 +96,7 @@ handle_plugin_check :: proc(args: []string) {
 	if check_count == 0 {
 		print_info("No enabled plugins to check")
 		fmt.println()
-		print_info("Enable plugins with: wayu --tui")
+		print_info("Enable a plugin with: wayu plugin enable <name>")
 		return
 	}
 
@@ -167,7 +167,7 @@ PluginUpdateStatus :: enum {
 }
 
 // Update one plugin checkout and refresh its metadata, without printing or
-// exiting (shared by `plugin update` and the TUI). old_commit (the commit
+// exiting. old_commit (the commit
 // before) and err (git's stderr on failure) are owned by the caller.
 // reset: upstream rewrote history and the checkout was reset to the remote.
 // Not called in dry-run.
@@ -195,7 +195,6 @@ plugin_update_core :: proc(
 // Back up plugins.json (pruned to BACKUP_KEEP_COUNT like every other
 // file, OKAMI-330), then write `config`. No backup, no write. Never prints
 // its own error or exits: returns "" on success, else the reason (static).
-// Shared by the CLI handlers and the TUI.
 plugin_config_save :: proc(config: ^PluginConfigJSON) -> string {
 	config_file := get_plugins_json_config_file()
 	defer delete(config_file)
@@ -478,14 +477,6 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 		fmt.println()
 		fmt.println("Example:")
 		fmt.printfln("  wayu plugin %s zsh-autosuggestions", action_word)
-		fmt.println()
-		fmt.printfln(
-			"%sHint:%s For interactive selection, use: %swayu --tui%s",
-			get_muted(),
-			RESET,
-			get_primary(),
-			RESET,
-		)
 		wayu_exit(EXIT_USAGE)
 	}
 
@@ -1175,14 +1166,6 @@ handle_plugin_remove :: proc(args: []string) {
 		fmt.println()
 		fmt.println("Example:")
 		fmt.println("  wayu plugin rm syntax-highlighting")
-		fmt.println()
-		fmt.printfln(
-			"%sHint:%s For interactive selection, use: %swayu --tui%s",
-			get_muted(),
-			RESET,
-			get_primary(),
-			RESET,
-		)
 		wayu_exit(EXIT_USAGE)
 	}
 
@@ -1305,8 +1288,7 @@ PluginRemoveResult :: struct {
 	err:         string,
 }
 
-// Remove plugin `name` (exact) without printing or exiting (shared by
-// `plugin rm` and the TUI): back up plugins.json first (no backup, nothing
+// Remove plugin `name` (exact) without printing or exiting: back up plugins.json first (no backup, nothing
 // removed), delete its checkout when it lies inside the plugins dir (a
 // symlink is only unlinked), drop the entry from `config`, write it and
 // regenerate the loader. The caller holds the config lock and handles

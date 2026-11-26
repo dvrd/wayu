@@ -1,7 +1,8 @@
 # wayu CLI reference
 
 ```
-wayu                                   # interactive TUI
+wayu                                   # interactive native shell
+wayu -c <command>                      # evaluate a command and return its status
 wayu <command> [<action>] [arguments] [flags]
 ```
 
@@ -34,7 +35,6 @@ behavior changes between releases in [UPGRADING.md](UPGRADING.md).
 | `--shell <zsh\|bash\|fish>` | Act on this shell's files instead of the one detected from `$SHELL` |
 | `--full`, `-f` | `path`/`alias`/`const list`: include external entries (same as `--source all`); elsewhere exit `64` |
 | `--source <filter>`, `--source=<filter>` | `path`/`alias`/`const list`: `wayu` (default), `inactive`, `external` or `all`; elsewhere exit `64` |
-| `--tui` | Open the TUI (same as running `wayu` with no arguments) |
 | `--help`, `-h`, `help` | Global help, or a command's help after the command (`wayu path --help`) |
 | `--version`, `-v`, `version` | Print `wayu vX.Y.Z` |
 | `--` | End of flags: every later word is a literal argument |
@@ -698,10 +698,10 @@ one is newer, runs `wayu optimize --notify` once, which prints
 (once per change). With `[settings] auto_optimize = true` in wayu.toml it moves
 them instead (with backups) and prints what it moved.
 
-### `wayu shell`
+### Native shell
 
-Start an interactive native shell, or pipe command lines to its standard input.
-The `run` action evaluates a single command string and returns its exit status.
+Run `wayu` to start the native shell, or pipe commands to its standard input.
+`wayu -c 'command'` evaluates one command string and returns its exit status.
 Commands support pipes, file redirection (including `2>` and `2>&1`), sequencing, and
 conditional execution (`&&`, `||`). Use `cd`, `export`, and `unset` to change
 session state. Use `jobs`, `fg`, and `bg` to manage jobs started with `&` or
@@ -712,10 +712,16 @@ and directory aliases from `alias-sources.conf` at startup. Interactive sessions
 directory. Use `source <file>` to run native commands in the current session.
 The built-in `z <keywords>` jumps to a directory visited with `cd` or `z`.
 Wayu stores visits in `<data>/directories.json` across sessions. Keywords
-match the path in order, ignoring case. More visits rank first, with the
-latest visit breaking ties. `z` goes home and `z -` returns to the previous
-directory. If a zoxide init tool is configured and installed, Wayu can also
-query its existing database when local history has no match.
+match in order, ignoring case. The final keyword must end in the last path
+component, so `z wayu` can select `~/dev/wayu` without landing in its
+`tests` subdirectory. Visits gain rank. The last visit multiplies that rank
+by 4 within one hour, 2 within one day, 0.5 within one week, or 0.25 after
+that. When total rank exceeds 10,000, Wayu scales it back to 9,000 and drops
+entries below 1. `z` goes home and `z -` returns to the previous directory.
+All keyword lookups use Wayu’s history.
+
+Use `wayu warp edit` to browse or edit this history.
+
 Managed functions in Bash, zsh, or Fish run in the corresponding interpreter
 as child processes. Directory and environment changes inside a managed
 function are local to that process. Shell-specific editor plugins and rc files
@@ -739,10 +745,37 @@ previous lines, and Ctrl+_ undoes an edit. Ctrl+R searches history by
 substring. Enter accepts the result for further editing. Set `[prompt]`
 `vi_mode = true` to enable vi insert and normal modes. Interactive history is stored under
 the wayu data directory in `history.jsonl`; a leading space omits a command
-from history. Piped input and `shell run` do not record commands.
+from history. History is recorded only in interactive sessions.
 
 ```sh
-wayu shell run 'printf "%s\n" one two | wc -l'
+wayu -c 'printf "%s\n" one two | wc -l'
+```
+
+### `wayu warp`
+
+In the native shell or an initialized interactive Zsh, Bash, or Fish shell,
+`wayu warp <words...>` changes to the highest-scoring matching directory.
+Wayu automatically learns visits in initialized interactive shells. Zsh and Fish
+record directory changes as they happen. Bash records ordinary changes at the next
+prompt and Warp jumps immediately. Repeated prompts in the same directory add
+no visits. The score combines visit rank and recency. Words match in order and the last
+word matches the destination directory name. The current directory and missing
+directories are skipped. Invoking the executable directly prints the path.
+
+The `edit` action opens the directory history editor. Type to filter by path,
+then use ↑/↓ or Ctrl+N/P to move. The preview shows the selected directory’s
+contents. Ctrl+W raises its rank, Ctrl+S lowers it, Ctrl+D asks to forget it
+from history, and Ctrl+R reloads the database. Esc closes the editor. With
+redirected input or output, `wayu warp edit` prints a score-and-path listing.
+
+The `search` action opens a picker. Optional words narrow the initial list.
+Enter writes the selected directory path and a newline to standard output.
+The interface uses the controlling terminal, so piping captures only the path.
+Cancelling or finding no matches exits 1 with empty stdout. If there are matches
+but no controlling terminal, selection exits 69.
+
+```sh
+wayu warp search projects | tee selected-directory.txt
 ```
 
 ### `wayu reload` (`watch`, `hot-reload`)
@@ -803,12 +836,12 @@ BSD `sysexits.h` values (`EXIT_*` in `src/interfaces.odin`):
 | Code | Name | Meaning |
 |---|---|---|
 | 0 | `EXIT_SUCCESS` | Success (also: nothing to do) |
-| 1 | `EXIT_FAILURE` | General error (e.g. the editor exited non-zero; the TUI started without a terminal); `optimize --check`: lines can be optimized |
+| 1 | `EXIT_FAILURE` | General error (e.g. the editor exited non-zero); `optimize --check`: lines can be optimized |
 | 64 | `EXIT_USAGE` | Bad usage: unknown command, action or option; missing argument; `--json` where unsupported; missing `--yes` |
 | 65 | `EXIT_DATAERR` | Bad input: invalid name or value, no such entry, unknown template, `toml validate` failed |
 | 66 | `EXIT_NOINPUT` | Input file or directory not found or unreadable (`path add` of a missing dir) |
 | 69 | `EXIT_UNAVAILABLE` | A required tool is not installed (`script new`: the language's interpreter or compiler) |
-| 71 | `EXIT_OSERR` | TUI: the terminal could not be put in raw mode |
+| 71 | `EXIT_OSERR` | Could not set up the terminal |
 | 73 | `EXIT_CANTCREAT` | Cannot create an output file or directory |
 | 74 | `EXIT_IOERR` | Read/write failure, failed git operation |
 | 77 | `EXIT_NOPERM` | Permission denied |
@@ -908,5 +941,4 @@ parse.
 | `COLUMNS` | Table width when not writing to a terminal |
 | `XDG_CACHE_HOME` | Base of the `[tools]` evalcache |
 | `WAYU_GIT_TIMEOUT` | Seconds before a plugin clone/fetch/check is killed |
-| `WAYU_THEME` | TUI: `light` or `dark` (skips background detection) |
-| `ESCDELAY` | TUI: milliseconds that separate `Esc` from an Alt+key chord (default 100) |
+| `ESCDELAY` | Warp editor: milliseconds that separate `Esc` from an Alt+key chord (default 100) |

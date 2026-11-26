@@ -122,19 +122,28 @@ section after its version and publishes it as the GitHub release&#39;s
 releases, so they are listed here too.</p>
 <h2 id="unreleased">Unreleased<a class="anchor" href="#unreleased" aria-label="Link to this section">#</a></h2>
 <ul>
-<li><p><code class="nw">wayu shell</code> now includes a built-in <code class="nw">z</code> directory jump. Wayu remembers visited
-directories across sessions. An existing zoxide database is an optional fallback.</p>
+<li><p><code class="nw">wayu warp &lt;words...&gt;</code> jumps to the highest-scoring matching directory.
+Initialized interactive Zsh, Bash, and Fish sessions now record directory visits in the same history as the native shell.
+Use <code class="nw">wayu warp edit</code> to preview directories, adjust rank, or forget entries. <code class="nw">wayu warp search</code>
+prints the selected path for use in pipelines.</p>
 </li>
-<li><p>In <code class="nw">wayu shell</code>, Tab now uses installed Fish completion definitions for
+<li><p>The native shell now includes a built-in <code class="nw">z</code> directory jump. Wayu remembers visited
+directories across sessions. Keyword jumps now use Wayu’s own recency-weighted ranks and
+require the final keyword to match the destination directory. Previous Wayu
+visit counts are read automatically. Destinations known only to zoxide can
+be learned by visiting them once with <code class="nw">cd</code>.</p>
+</li>
+<li><p>In the native shell, Tab now uses installed Fish completion definitions for
 external command arguments and flags, including Wayu-managed <code class="nw">.fish</code> files.</p>
 </li>
-<li><p><code class="nw">wayu shell</code> and <code class="nw">wayu shell run</code> now load aliases from <code class="nw">alias-sources.conf</code>.
+<li><p>Interactive sessions and <code class="nw">wayu -c</code> now load aliases from <code class="nw">alias-sources.conf</code>.
 Managed aliases take precedence when names overlap.</p>
 </li>
 <li><p>The optional minimal-prompt toggle defaults to Ctrl+G, freeing Ctrl+P for
 cycling autosuggestions. An explicit <code>[prompt.interactive] toggle_key</code> still takes precedence.</p>
 </li>
-<li><p><code class="nw">wayu shell</code> opens an opt-in native shell. <code class="nw">wayu shell run</code> evaluates a
+<li><p>Launch the native shell with bare <code class="nw">wayu</code>. Update terminal profiles that pass
+the old <code class="nw">shell</code> subcommand to launch the executable directly. <code class="nw">wayu -c</code> evaluates a
 command string in the same executor. Interactive sessions leave a blank line
 between commands and the next prompt. They use your enabled
 <code class="nw">[prompt]</code> configuration, including the Git right prompt. The native editor also honors
@@ -735,8 +744,7 @@ searched (a token inside one was findable, like constant values before
 <code class="nw">wayu completions generate</code>.
 </li>
 <li>Flags and words that meant nothing exit 64 instead of being ignored:
-<code class="nw">--full</code> / <code class="nw">-f</code> / <code class="nw">--source</code> outside <code class="nw">path|alias|const list</code> (and
-<code class="nw">--tui</code>), <code class="nw">--test</code> / <code class="nw">--snapshot</code> without <code class="nw">-c=</code>, <code class="nw">doctor --profile</code> with
+<code class="nw">--full</code> / <code class="nw">-f</code> / <code class="nw">--source</code> outside <code class="nw">path|alias|const list</code> (and the former management interface), <code class="nw">--test</code> / <code class="nw">--snapshot</code> without <code class="nw">-c=</code>, <code class="nw">doctor --profile</code> with
 <code class="nw">--json</code> or <code class="nw">--fix</code>, two <code class="nw">export</code> modes (<code class="nw">export --eval --check</code>), and an
 extra word after an action that takes none (<code class="nw">path list x</code>,
 <code class="nw">secrets lock x</code>, <code class="nw">toml validate x</code>, <code class="nw">plugin list x</code>, ...).

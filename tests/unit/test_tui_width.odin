@@ -1,7 +1,7 @@
 package test_wayu
 
 // Wide-character / display-width regression tests: the cell renderer,
-// truncate_text, style.odin width helpers and table truncation must all agree
+// style.odin width helpers and table truncation must all agree
 // that CJK and emoji occupy two terminal columns.
 
 import wayu "../../src"
@@ -30,17 +30,6 @@ test_width_functions_agree_on_cjk :: proc(t: ^testing.T) {
 			want[i],
 		)
 	}
-}
-
-@(test)
-test_truncate_text_counts_columns :: proc(t: ^testing.T) {
-	// 5 CJK chars = 10 columns; into 7 columns → 3 chars (6) + "…" (1).
-	got := wayu.truncate_text("日本語日本", 7)
-	testing.expect_value(t, got, "日本語…")
-	testing.expect(t, wayu.visual_width(got) <= 7, "result must fit the budget")
-	// Fits → returned unchanged.
-	testing.expect_value(t, wayu.truncate_text("日本", 4), "日本")
-	testing.expect_value(t, wayu.truncate_text("abc", 0), "")
 }
 
 @(test)

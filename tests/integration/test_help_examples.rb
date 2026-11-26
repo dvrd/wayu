@@ -118,7 +118,10 @@ class HelpExamplesIntegrationTest
     out = ''
     status = nil
     Open3.popen2e(env_for(home), '/bin/sh', '-c', script,
-                  chdir: home, unsetenv_others: true, pgroup: true, in: File::NULL) do |_in, io, thr|
+                  chdir: home, unsetenv_others: true, pgroup: true) do |stdin, io, thr|
+      # Interactive secret examples read their value from stdin in this harness.
+      stdin.puts('test-fixture-value') if cmdline.match?(/\Awayu const add \S+ --(?:secret|run-only)\z/)
+      stdin.close
       reader = Thread.new { io.read }
       if thr.join(TIMEOUT)
         status = thr.value
@@ -320,7 +323,7 @@ class HelpExamplesIntegrationTest
   # An action word a command doesn't have is a usage error, never a silent
   # default (`toml bogus` / `hooks bogus` used to exit 0).
   def test_unknown_actions_exit_usage
-    (@commands - %w[help version search find f]).each do |c|
+    (@commands - %w[help version search find f warp]).each do |c|
       out, st = wayu_pristine("#{c} bogus-action")
       check("wayu #{c} bogus-action exits 64", st&.exitstatus == EXIT_USAGE,
             "exit #{st&.exitstatus}: #{out[0, 200]}")

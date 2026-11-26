@@ -87,7 +87,7 @@ wayu plugin add autosuggestions
 wayu doctor
 ```
 
-Running `wayu` with no arguments opens the full-screen TUI. Every write is
+Running `wayu` with no arguments starts the native shell. Every write is
 backed up first: `wayu backup list` shows the backups, and
 `wayu backup restore entries --yes` undoes the last change to your entries.
 

@@ -76,7 +76,7 @@ they live, and which files are generated.
 
 ### Native shell startup and history
 
-Interactive `wayu shell` sessions read `config.wayu` in `WAYU_CONFIG_DIR`
+Interactive Wayu sessions read `config.wayu` in `WAYU_CONFIG_DIR`
 after loading Wayu-managed entries. For example, `export EDITOR=vi` in that
 file sets the editor for commands launched from the native prompt. Managed
 functions run in child processes using the interpreter named by their file
@@ -193,7 +193,7 @@ Keys:
 | Reader | On a syntax error |
 |---|---|
 | `wayu toml validate`, `wayu doctor`, `wayu backup restore` (strict) | Fail and name the line: `Failed to parse <file>: line 5: invalid value "ls" (strings must be quoted)` |
-| Everything else: the generator (`wayu build`, every write), the TUI (lenient) | Use what was recovered; a line that is not valid TOML is skipped |
+| Everything else: the generator (`wayu build`, every write) (lenient) | Use what was recovered; a line that is not valid TOML is skipped |
 
 Strict-only failures: a key defined twice in one table, a table defined twice,
 an integer with leading zeros (`007`), an unquoted string, a raw control
@@ -236,8 +236,8 @@ top-level `shell = "..."` string is not read (`toml validate` rejects it).
 
 | `compinit_guard` | boolean | `true` | zsh only. After wayu's `compinit`, `compinit` is a function that only registers the completions (`#compdef` / `#autoload` files) of `fpath` dirs added since; its flags (`-C`, `-i`, `-u`, `-d <dump>`, ...) are accepted and ignored. An installer's `autoload -Uz compinit && compinit` in `.zshrc` then costs a glob of the new dirs instead of a second full completion setup (audit, dump check/rewrite), and its dirs' completions work even with `-C`. The same registration runs once at the first prompt, for dirs added to `fpath` without a `compinit` call. `false`: later `compinit` calls are zsh's own. |
 | `defer_plugins` | boolean | `false` | zsh only. Load the plugins (`plugins.zsh`, `plugins/config.zsh`) after the first prompt is drawn (through zsh-defer) instead of during startup. They then load after `tools.zsh` / `extra.zsh`: code there that needs a plugin widget should run through `zsh-defer`. |
-| `highlight` | boolean | `false` | Interactive zsh and `wayu shell`. Built-in syntax highlighting of the command line, in place of the zsh-syntax-highlighting / fast-syntax-highlighting plugins: see [Syntax highlighting](#syntax-highlighting). A non-boolean value is an error. |
-| `highlight_styles` | table of strings | see [styles](#syntax-highlighting) | Per-style `region_highlight` specs for zsh and `wayu shell`, as an inline table (`highlight_styles = { command = "fg=blue", comment = "fg=244" }`) or a `[settings.highlight_styles]` table. `"none"`: not highlighted. A value that isn't a one-line string of at most 64 bytes is an error; an unknown style name is a warning (ignored). |
+| `highlight` | boolean | `false` | Interactive zsh and the native shell. Built-in syntax highlighting of the command line, in place of the zsh-syntax-highlighting / fast-syntax-highlighting plugins: see [Syntax highlighting](#syntax-highlighting). A non-boolean value is an error. |
+| `highlight_styles` | table of strings | see [styles](#syntax-highlighting) | Per-style `region_highlight` specs for zsh and the native shell, as an inline table (`highlight_styles = { command = "fg=blue", comment = "fg=244" }`) or a `[settings.highlight_styles]` table. `"none"`: not highlighted. A value that isn't a one-line string of at most 64 bytes is an error; an unknown style name is a warning (ignored). |
 | `lazy_compinit` | boolean | `false` | zsh only. No `compinit` at startup: the completion widgets (Tab, `^D` list, ...) set up completion on first use and then complete. `compdef` calls made before that are queued and replayed. `$_comps` and completion functions don't exist until then. |
 
 The plugin bindings are written to `<data>/plugins/config.zsh`, which
@@ -316,7 +316,7 @@ if neither history has a match. Cycling reuses Atuin results for the same prefix
 
 #### Syntax highlighting
 
-In `wayu shell`, `[settings] highlight = true` colors the editable command
+In the native shell, `[settings] highlight = true` colors the editable command
 line using the same `highlight_styles` table as zsh. The native editor
 recognizes commands on PATH, builtins, managed aliases and functions,
 options, existing paths, quotes, variable expansions, globs, redirects,
@@ -478,7 +478,7 @@ the plugins; `login_only` tools after `tools.<ext>` and `extra.<ext>`.
 
 ### `[prompt]`
 
-A native prompt for `wayu shell`, zsh, and fish, off by default. It is generated only when
+A native prompt for the native shell, zsh, and fish, off by default. It is generated only when
 `[prompt] enabled = true`, and set up only in interactive shells. bash
 ignores the whole table. fish differences: see [fish](#prompt-in-fish).
 
@@ -598,7 +598,7 @@ name. A built-in match without a user `format` shows the shell name.
 
 #### Prompt in the native shell
 
-`wayu shell` reads the same prompt layout, module formats, colors, and vi
+The native shell reads the same prompt layout, module formats, colors, and vi
 symbols at startup. Project versions and the Git right prompt update in the
 background while you edit. In the same directory, branch, and project context,
 the next prompt displays the last known values immediately. Outside a configured project, the context token
@@ -829,7 +829,7 @@ listed one by one.
 ## Managed data
 
 PATH entries, aliases and constants are data wayu manages: `wayu path|alias|
-const add|rm`, the TUI and templates edit them, and `wayu build` compiles them
+const add|rm` and templates edit them, and `wayu build` compiles them
 into `core.<ext>`. They are not read from `wayu.toml`; a `[paths]`,
 `[aliases]` or `[env]` table there is an error for `wayu toml validate` and
 `wayu doctor`, naming the command to use instead.
@@ -938,7 +938,7 @@ entry is a `key` (a label) and a `dir`.
 `wayu alias add ll 'ls -lah'`: each entry is a `name` and a command
 (`value`).
 
-One rule for `alias add`, the TUI, templates and `entries.json`:
+One rule for `alias add`, templates and `entries.json`:
 
 | Rule | |
 |---|---|
@@ -998,7 +998,6 @@ its value starts with a known token prefix (`sk-`, `sk_`, `pk_live_`,
 | Where | Shows |
 |---|---|
 | `wayu const list` (text and `--json`, with or without `--full`) | `********` for secret-looking constants and environment variables; `--reveal` shows them |
-| TUI constants view | Masked; `v` toggles reveal |
 | Dry-run previews | Masked |
 | `wayu const get NAME` | The real value |
 
@@ -1048,8 +1047,7 @@ Placeholder quoting:
 | Inside `"..."`, also within `'...'`: `sh -c "echo {value}"`, `sh -c 'sh -c "echo {value}"'` | Refused. Any wayu operation that would run hooks exits `78` before writing anything and names the line; `wayu hooks` marks it `INVALID`. Use `"$WAYU_HOOK_VALUE"` when you need double quotes. |
 
 Hooks run with `sh -c`, stdin on `/dev/null`; their exit status is ignored.
-In the CLI a hook's stdout and stderr are shown (in the TUI they are
-captured). Pre-hooks run only when the operation will change something,
+A hook's stdout and stderr are shown. Pre-hooks run only when the operation will change something,
 post-hooks only after a successful write, and none under `--dry-run`. Hooks
 run outside wayu's config lock (pre-hooks before it is taken, post-hooks
 after it is released), so a hook may run `wayu` itself. A hook still running
@@ -1194,7 +1192,7 @@ are ignored.
 ## Generated files
 
 Do not edit these; wayu overwrites them. They are regenerated by `wayu build`,
-`wayu init` and every `path` / `alias` / `const` change (CLI or TUI), for
+`wayu init` and every `path` / `alias` / `const` change, for
 every shell initialized in the data dir.
 
 | File (data dir) | Content |

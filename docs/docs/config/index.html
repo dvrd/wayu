@@ -245,7 +245,7 @@ use the same dirs.</p>
 </li>
 </ul>
 <h3 id="native-shell-startup-and-history">Native shell startup and history<a class="anchor" href="#native-shell-startup-and-history" aria-label="Link to this section">#</a></h3>
-<p>Interactive <code class="nw">wayu shell</code> sessions read <code class="nw">config.wayu</code> in <code class="nw">WAYU_CONFIG_DIR</code>
+<p>Interactive Wayu sessions read <code class="nw">config.wayu</code> in <code class="nw">WAYU_CONFIG_DIR</code>
 after loading Wayu-managed entries. For example, <code class="nw">export EDITOR=vi</code> in that
 file sets the editor for commands launched from the native prompt. Managed
 functions run in child processes using the interpreter named by their file
@@ -356,7 +356,7 @@ that needs a missing one); after that the file is yours.
 <td>Fail and name the line: <code>Failed to parse &lt;file&gt;: line 5: invalid value &quot;ls&quot; (strings must be quoted)</code></td>
 </tr>
 <tr>
-<td>Everything else: the generator (<code class="nw">wayu build</code>, every write), the TUI (lenient)</td>
+<td>Everything else: the generator (<code class="nw">wayu build</code>, every write) (lenient)</td>
 <td>Use what was recovered; a line that is not valid TOML is skipped</td>
 </tr>
 </tbody>
@@ -442,8 +442,8 @@ top-level <code class="nw">shell = &quot;...&quot;</code> string is not read (<c
 </table></div>
 <p>| <code class="nw">compinit_guard</code> | boolean | <code class="nw">true</code> | zsh only. After wayu&#39;s <code class="nw">compinit</code>, <code class="nw">compinit</code> is a function that only registers the completions (<code class="nw">#compdef</code> / <code class="nw">#autoload</code> files) of <code class="nw">fpath</code> dirs added since; its flags (<code class="nw">-C</code>, <code class="nw">-i</code>, <code class="nw">-u</code>, <code class="nw">-d &lt;dump&gt;</code>, ...) are accepted and ignored. An installer&#39;s <code>autoload -Uz compinit &amp;&amp; compinit</code> in <code class="nw">.zshrc</code> then costs a glob of the new dirs instead of a second full completion setup (audit, dump check/rewrite), and its dirs&#39; completions work even with <code class="nw">-C</code>. The same registration runs once at the first prompt, for dirs added to <code class="nw">fpath</code> without a <code class="nw">compinit</code> call. <code class="nw">false</code>: later <code class="nw">compinit</code> calls are zsh&#39;s own. |
 | <code class="nw">defer_plugins</code> | boolean | <code class="nw">false</code> | zsh only. Load the plugins (<code class="nw">plugins.zsh</code>, <code class="nw">plugins/config.zsh</code>) after the first prompt is drawn (through zsh-defer) instead of during startup. They then load after <code class="nw">tools.zsh</code> / <code class="nw">extra.zsh</code>: code there that needs a plugin widget should run through <code class="nw">zsh-defer</code>. |
-| <code class="nw">highlight</code> | boolean | <code class="nw">false</code> | Interactive zsh and <code class="nw">wayu shell</code>. Built-in syntax highlighting of the command line, in place of the zsh-syntax-highlighting / fast-syntax-highlighting plugins: see <a href="#syntax-highlighting">Syntax highlighting</a>. A non-boolean value is an error. |
-| <code class="nw">highlight_styles</code> | table of strings | see <a href="#syntax-highlighting">styles</a> | Per-style <code class="nw">region_highlight</code> specs for zsh and <code class="nw">wayu shell</code>, as an inline table (<code>highlight_styles = { command = &quot;fg=blue&quot;, comment = &quot;fg=244&quot; }</code>) or a <code class="nw">[settings.highlight_styles]</code> table. <code class="nw">&quot;none&quot;</code>: not highlighted. A value that isn&#39;t a one-line string of at most 64 bytes is an error; an unknown style name is a warning (ignored). |
+| <code class="nw">highlight</code> | boolean | <code class="nw">false</code> | Interactive zsh and the native shell. Built-in syntax highlighting of the command line, in place of the zsh-syntax-highlighting / fast-syntax-highlighting plugins: see <a href="#syntax-highlighting">Syntax highlighting</a>. A non-boolean value is an error. |
+| <code class="nw">highlight_styles</code> | table of strings | see <a href="#syntax-highlighting">styles</a> | Per-style <code class="nw">region_highlight</code> specs for zsh and the native shell, as an inline table (<code>highlight_styles = { command = &quot;fg=blue&quot;, comment = &quot;fg=244&quot; }</code>) or a <code class="nw">[settings.highlight_styles]</code> table. <code class="nw">&quot;none&quot;</code>: not highlighted. A value that isn&#39;t a one-line string of at most 64 bytes is an error; an unknown style name is a warning (ignored). |
 | <code class="nw">lazy_compinit</code> | boolean | <code class="nw">false</code> | zsh only. No <code class="nw">compinit</code> at startup: the completion widgets (Tab, <code class="nw">^D</code> list, ...) set up completion on first use and then complete. <code class="nw">compdef</code> calls made before that are queued and replayed. <code class="nw">$_comps</code> and completion functions don&#39;t exist until then. |</p>
 <p>The plugin bindings are written to <code class="nw">&lt;data&gt;/plugins/config.zsh</code>, which
 <code class="nw">core.zsh</code> sources after the plugins; they apply only when the
@@ -518,7 +518,7 @@ shorter. No completion strategy beyond that.
 </li>
 </ul>
 <h4 id="syntax-highlighting">Syntax highlighting<a class="anchor" href="#syntax-highlighting" aria-label="Link to this section">#</a></h4>
-<p>In <code class="nw">wayu shell</code>, <code class="nw">[settings] highlight = true</code> colors the editable command
+<p>In the native shell, <code class="nw">[settings] highlight = true</code> colors the editable command
 line using the same <code class="nw">highlight_styles</code> table as zsh. The native editor
 recognizes commands on PATH, builtins, managed aliases and functions,
 options, existing paths, quotes, variable expansions, globs, redirects,
@@ -889,7 +889,7 @@ before the prompt and plugins; all other non-login tools (&quot;deferred&quot;) 
 the plugins; <code class="nw">login_only</code> tools after <code class="nw">tools.&lt;ext&gt;</code> and <code class="nw">extra.&lt;ext&gt;</code>.
 &quot;Deferred&quot; is a position in the file, not a key, and not zsh-defer.</p>
 <h3 id="prompt"><code class="nw">[prompt]</code><a class="anchor" href="#prompt" aria-label="Link to this section">#</a></h3>
-<p>A native prompt for <code class="nw">wayu shell</code>, zsh, and fish, off by default. It is generated only when
+<p>A native prompt for the native shell, zsh, and fish, off by default. It is generated only when
 <code class="nw">[prompt] enabled = true</code>, and set up only in interactive shells. bash
 ignores the whole table. fish differences: see <a href="#prompt-in-fish">fish</a>.</p>
 <p>The <code class="nw">[prompt]</code> tables are read with the same TOML parser as the rest of
@@ -1206,7 +1206,7 @@ name. A built-in match without a user <code class="nw">format</code> shows the s
 </tbody>
 </table></div>
 <h4 id="prompt-in-the-native-shell">Prompt in the native shell<a class="anchor" href="#prompt-in-the-native-shell" aria-label="Link to this section">#</a></h4>
-<p><code class="nw">wayu shell</code> reads the same prompt layout, module formats, colors, and vi
+<p>The native shell reads the same prompt layout, module formats, colors, and vi
 symbols at startup. Project versions and the Git right prompt update in the
 background while you edit. In the same directory, branch, and project context,
 the next prompt displays the last known values immediately. Outside a configured project, the context token
@@ -1450,7 +1450,7 @@ live in <code class="nw">plugins.json</code> —, <code class="nw">[profile.*]</
 <code class="nw">wayu doctor</code> reports them as a warning. Keys inside an unknown table are not
 listed one by one.</p>
 <h2 id="managed-data">Managed data<a class="anchor" href="#managed-data" aria-label="Link to this section">#</a></h2>
-<p>PATH entries, aliases and constants are data wayu manages: <code>wayu path|alias| const add|rm</code>, the TUI and templates edit them, and <code class="nw">wayu build</code> compiles them
+<p>PATH entries, aliases and constants are data wayu manages: <code>wayu path|alias| const add|rm</code> and templates edit them, and <code class="nw">wayu build</code> compiles them
 into <code class="nw">core.&lt;ext&gt;</code>. They are not read from <code class="nw">wayu.toml</code>; a <code class="nw">[paths]</code>,
 <code class="nw">[aliases]</code> or <code class="nw">[env]</code> table there is an error for <code class="nw">wayu toml validate</code> and
 <code class="nw">wayu doctor</code>, naming the command to use instead.</p>
@@ -1583,7 +1583,7 @@ after the next save of either file.</p>
 <h3 id="aliases">Aliases<a class="anchor" href="#aliases" aria-label="Link to this section">#</a></h3>
 <p><code class="nw">wayu alias add ll &#39;ls -lah&#39;</code>: each entry is a <code class="nw">name</code> and a command
 (<code class="nw">value</code>).</p>
-<p>One rule for <code class="nw">alias add</code>, the TUI, templates and <code class="nw">entries.json</code>:</p>
+<p>One rule for <code class="nw">alias add</code>, templates and <code class="nw">entries.json</code>:</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -1704,10 +1704,6 @@ its value starts with a known token prefix (<code class="nw">sk-</code>, <code c
 <td><code class="nw">********</code> for secret-looking constants and environment variables; <code class="nw">--reveal</code> shows them</td>
 </tr>
 <tr>
-<td>TUI constants view</td>
-<td>Masked; <code class="nw">v</code> toggles reveal</td>
-</tr>
-<tr>
 <td>Dry-run previews</td>
 <td>Masked</td>
 </tr>
@@ -1809,8 +1805,7 @@ and <code class="nw">WAYU_HOOK_VALUE</code> (empty when not meaningful).</p>
 </tbody>
 </table></div>
 <p>Hooks run with <code class="nw">sh -c</code>, stdin on <code class="nw">/dev/null</code>; their exit status is ignored.
-In the CLI a hook&#39;s stdout and stderr are shown (in the TUI they are
-captured). Pre-hooks run only when the operation will change something,
+A hook&#39;s stdout and stderr are shown. Pre-hooks run only when the operation will change something,
 post-hooks only after a successful write, and none under <code class="nw">--dry-run</code>. Hooks
 run outside wayu&#39;s config lock (pre-hooks before it is taken, post-hooks
 after it is released), so a hook may run <code class="nw">wayu</code> itself. A hook still running
@@ -2033,7 +2028,7 @@ priority, followed by sources in file order. Unsafe alias names are skipped. Lin
 are ignored.</p>
 <h2 id="generated-files">Generated files<a class="anchor" href="#generated-files" aria-label="Link to this section">#</a></h2>
 <p>Do not edit these; wayu overwrites them. They are regenerated by <code class="nw">wayu build</code>,
-<code class="nw">wayu init</code> and every <code class="nw">path</code> / <code class="nw">alias</code> / <code class="nw">const</code> change (CLI or TUI), for
+<code class="nw">wayu init</code> and every <code class="nw">path</code> / <code class="nw">alias</code> / <code class="nw">const</code> change, for
 every shell initialized in the data dir.</p>
 <div class="table-wrap"><table>
 <thead>

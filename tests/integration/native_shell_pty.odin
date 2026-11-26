@@ -104,6 +104,15 @@ native_shell_terminal :: proc(t: ^testing.T) {
 	send(t, master, "cat ~/file\t\r")
 	expect_text(t, master, "\x1b[?2004lcompleted file\r\n")
 	expect_text(t, master, "wayu> ")
+	// Short-lived pipeline members exercise the process-group handoff under rapid forks.
+	write_fixture(
+		t,
+		fmt.tprintf("%s/foreground.wayu", cli.home),
+		strings.repeat("printf . | cat\n", 64, context.temp_allocator),
+	)
+	send(t, master, "source ~/foreground.wayu\r")
+	expect_text(t, master, strings.repeat(".", 64, context.temp_allocator))
+	expect_text(t, master, "wayu> ")
 	send(t, master, "sleep 30\r")
 	expect_text(t, master, "\x1b[?2004l")
 	time.sleep(100 * time.Millisecond)
@@ -165,13 +174,7 @@ run_native_launcher :: proc(t: ^testing.T, cli: CLI, shell, path: string) {
 	} else if shell == "fish" {
 		flags = "--no-config"
 	}
-	args := [?]cstring {
-		exe,
-		flags,
-		"-ic",
-		`"$WAYU_TEST_BINARY" shell; printf 'launcher returned\n'`,
-		nil,
-	}
+	args := [?]cstring{exe, flags, "-ic", `"$WAYU_TEST_BINARY"; printf 'launcher returned\n'`, nil}
 	fd: posix.FD
 	size := wayu.winsize {
 		ws_row = 24,
@@ -205,21 +208,25 @@ run_native_launcher :: proc(t: ^testing.T, cli: CLI, shell, path: string) {
 	send(t, fd, "echo launch\x10\x1b[C\r")
 	expect_text(t, fd, "\x1b[?2004llauncher-test\r\n")
 	expect_text(t, fd, "wayu> ")
-	send(t, fd, "\"$WAYU_TEST_BINARY\" --tui\r")
-	expect_text(t, fd, "\x1b[?1049h")
-	expect_text(t, fd, "Shell Configuration Manager")
-	send(t, fd, "q")
-	expect_text(t, fd, "\x1b[?1049l")
-	expect_text(t, fd, "wayu> ")
 	send(t, fd, "exit\r")
 	expect_text(t, fd, "launcher returned\r\n")
 }
 
-start_native_pty :: proc(t: ^testing.T, cli: CLI) -> (posix.FD, posix.pid_t) {
+start_native_pty :: proc(
+	t: ^testing.T,
+	cli: CLI,
+	argv: []string = nil,
+) -> (
+	posix.FD,
+	posix.pid_t,
+) {
 	env := make([]cstring, len(cli.env) + 1, context.temp_allocator)
 	for v, i in cli.env {env[i] = strings.clone_to_cstring(v, context.temp_allocator)}
 	exe := strings.clone_to_cstring(cli.binary, context.temp_allocator)
-	args := [3]cstring{exe, "shell", nil}
+	args := make([]cstring, len(argv) + 2, context.temp_allocator)
+	args[0] = exe
+	for arg, i in argv {args[i + 1] = strings.clone_to_cstring(arg, context.temp_allocator)}
+
 	master: posix.FD
 	pid := forkpty(&master, nil, nil, nil)
 	if pid < 0 {
@@ -464,4 +471,112 @@ native_argument_completion :: proc(t: ^testing.T) {
 	expect_text(t, fd, "pa preview end")
 	send(t, fd, "\t")
 	expect_text(t, fd, "pa previous end")
+}
+
+@(test)
+native_directory_browser :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+
+	data := fmt.tprintf("%s/.local/share/wayu", cli.home)
+	testing.expect_value(t, os.make_directory_all(data), nil)
+	file := fmt.tprintf("%s/directories.json", data)
+	dir := fmt.tprintf("%s/sample project", cli.home)
+	testing.expect_value(t, os.make_directory_all(dir), nil)
+	write_fixture(t, fmt.tprintf("%s/preview.txt", dir), "")
+	write_fixture(
+		t,
+		file,
+		fmt.tprintf(
+			`{{"%s":{{"count":8,"last_visit":0}},"/other":{{"count":4,"last_visit":0}}}}`,
+			dir,
+		),
+	)
+	set_cli_env(&cli, "LINES", "15")
+	set_cli_env(&cli, "COLUMNS", "90")
+	fd, pid := start_native_pty(t, cli, {"warp", "edit"})
+	defer {
+		posix.close(fd)
+		posix.kill(pid, .SIGKILL)
+		rc: c.int
+		for posix.waitpid(pid, &rc, {}) < 0 && posix.errno() == .EINTR {}
+	}
+	expect_text(t, fd, "preview.txt")
+	expect_text(t, fd, "Close")
+	send(t, fd, "\x0e")
+	moved := expect_text(t, fd, "Directory unavailable")
+	testing.expect(t, !strings.contains(moved, "\x1b[2J") && !strings.contains(moved, "\x1b[15;"))
+	send(t, fd, "project")
+	expect_text(t, fd, "preview.txt")
+	send(t, fd, "\x17")
+	expect_text(t, fd, "\x1b[3;10H\x1b[1m2")
+	send(t, fd, "\x13")
+	expect_text(t, fd, "\x1b[3;10H\x1b[1m0")
+	write_fixture(
+		t,
+		file,
+		fmt.tprintf(
+			`{{"%s":{{"count":16,"last_visit":0}},"/other":{{"count":4,"last_visit":0}}}}`,
+			dir,
+		),
+	)
+	send(t, fd, "\x12")
+	expect_text(t, fd, "\x1b[3;8H\x1b[1m4")
+	send(t, fd, "\x04")
+	expect_text(t, fd, "Cancel")
+	send(t, fd, "\x1b")
+	expect_text(t, fd, "Close")
+	send(t, fd, "\x04")
+	expect_text(t, fd, "Cancel")
+	send(t, fd, "y")
+	expect_text(t, fd, "No matching directories")
+	list := checked_cli(t, cli, "warp", "edit")
+	testing.expect(t, strings.contains(list, "/other") && !strings.contains(list, dir))
+	send(t, fd, "\x1b")
+}
+
+@(test)
+warp_search_pipe :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+
+	data := fmt.tprintf("%s/.local/share/wayu", cli.home)
+	testing.expect_value(t, os.make_directory_all(data), nil)
+	write_fixture(
+		t,
+		fmt.tprintf("%s/directories.json", data),
+		`{"/a/space here":{"count":4,"last_visit":0},"/other":{"count":8,"last_visit":0}}`,
+	)
+	sh := cli
+	sh.binary = "/bin/sh"
+	for cancel in ([]bool{false, true}) {
+		fd, pid := start_native_pty(
+			t,
+			sh,
+			{
+				"-c",
+				`"$0" warp search space </dev/null | cat > "$HOME/selected"; echo done`,
+				cli.binary,
+			},
+		)
+		defer {
+			posix.close(fd)
+			posix.kill(pid, .SIGKILL)
+			rc: c.int
+			for posix.waitpid(pid, &rc, {}) < 0 && posix.errno() == .EINTR {}
+		}
+
+		expect_text(t, fd, "/a/space here")
+		send(t, fd, "\x1b" if cancel else "\r")
+		expect_text(t, fd, "done")
+		testing.expect_value(
+			t,
+			read_fixture(t, fmt.tprintf("%s/selected", cli.home)),
+			"" if cancel else "/a/space here\n",
+		)
+	}
+
+	out, _, status := cli_streams(t, cli, "warp", "search", "no-such-directory")
+	testing.expect_value(t, out, "")
+	testing.expect_value(t, status, 1)
 }

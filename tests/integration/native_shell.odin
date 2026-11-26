@@ -1,9 +1,11 @@
 package integration
 
+import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:testing"
+import "core:time"
 
 @(test)
 native_shell :: proc(t: ^testing.T) {
@@ -15,46 +17,68 @@ native_shell :: proc(t: ^testing.T) {
 	checked_cli(t, cli, "const", "add", "EXAMPLE", "seed")
 	checked_cli(t, cli, "path", "add", cli.home)
 	code := `cd "$HOME"; export V=sample; printf '%s\n' "$V"'suffix' '$V' "$EXAMPLE" | shout > output; printf end >> output; cat < output`
-	out := checked_cli(t, cli, "shell", "run", code)
+	out := checked_cli(t, cli, "-c", code)
 	testing.expect_value(t, out, "SAMPLESUFFIX\n$V\nSEED\nend")
 	testing.expect_value(t, read_fixture(t, file), out)
 	out = checked_cli(
 		t,
 		cli,
-		"shell",
-		"run",
+		"-c",
 		`cd "$HOME"; sh -c 'echo out; echo err >&2' > both 2>&1; cat both`,
 	)
 	testing.expect_value(t, out, "out\nerr\n")
 	stdout, stderr, rc := cli_streams(
 		t,
 		cli,
-		"shell",
-		"run",
+		"-c",
 		`cd "$HOME"; cd missing 2> error; printf restored >&2; cat error`,
 	)
 	testing.expect_value(t, rc, 0)
 	testing.expect(t, strings.contains(stdout, "cd: cannot enter missing"))
 	testing.expect_value(t, stderr, "restored")
-	env := checked_cli(t, cli, "shell", "run", "printenv PATH")
+	env := checked_cli(t, cli, "-c", "printenv PATH")
 	testing.expect(t, strings.has_prefix(env, fmt.tprintf("%s:", cli.home)))
 	out = checked_cli(
 		t,
 		cli,
-		"shell",
-		"run",
+		"-c",
 		`false && printf wrong; false || printf '%s\n' "$?"; true || printf wrong`,
 	)
 	testing.expect_value(t, out, "1\n")
-	expect_exit(t, cli, 23, "shell", "run", "exit 23; false")
-	expect_exit(t, cli, 127, "shell", "run", "wayu_missing_test_executable")
-	expect_exit(t, cli, 2, "shell", "run", "printf side-effect > \"$HOME/bad\"; printf |")
-	expect_exit(t, cli, 2, "shell", "run", `if false; then printf wrong > "$HOME/bad"; fi`)
+	expect_exit(t, cli, 23, "-c", "exit 23; false")
+	expect_exit(t, cli, 127, "-c", "wayu_missing_test_executable")
+	expect_exit(t, cli, 2, "-c", "printf side-effect > \"$HOME/bad\"; printf |")
+	expect_exit(t, cli, 2, "-c", `if false; then printf wrong > "$HOME/bad"; fi`)
 	testing.expect(t, !os.exists(fmt.tprintf("%s/bad", cli.home)))
-	out = checked_cli(t, cli, "shell", "run", "yes ok | head -n 100000 | wc -l")
+	out = checked_cli(t, cli, "-c", "yes ok | head -n 100000 | wc -l")
 	testing.expect_value(t, strings.trim_space(out), "100000")
-	out = checked_cli(t, cli, "shell", "run", "sleep 0.1 & jobs; fg")
+	out = checked_cli(t, cli, "-c", "sleep 0.1 & jobs; fg")
 	testing.expect(t, strings.contains(out, "Running sleep"))
+}
+
+@(test)
+native_shell_entry_points :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+
+	sh := cli
+	sh.binary = "/bin/sh"
+	out, err, status := cli_streams(
+		t,
+		sh,
+		"-c",
+		`printf '%s\n' 'export FIRST=hello' 'echo "$FIRST world"' 'exit 17' | "$1"`,
+		"pipe-to-wayu",
+		cli.binary,
+	)
+	testing.expect_value(t, status, 17)
+	testing.expect_value(t, out, "hello world\n")
+	testing.expect_value(t, err, "")
+
+	expect_exit(t, cli, 64, "shell")
+	expect_exit(t, cli, 64, "shell", "run", "exit 0")
+	expect_exit(t, cli, 64, "-c")
+	testing.expect_value(t, checked_cli(t, cli, "-c", ""), "")
 }
 
 @(test)
@@ -77,9 +101,9 @@ native_alias_sources :: proc(t: ^testing.T) {
 		fmt.tprintf("%s/.config/wayu/alias-sources.conf", cli.home),
 		"dir ~/missing echo missing\ndir ~/patterns echo dir-{name}\ndir ~/flat echo file-{name}\n",
 	)
-	out := checked_cli(t, cli, "shell", "run", "from_dir 'one two'; from_file; shared")
+	out := checked_cli(t, cli, "-c", "from_dir 'one two'; from_file; shared")
 	testing.expect_value(t, out, "dir-from_dir one two\nfile-from_file\nmanaged\n")
-	expect_exit(t, cli, 127, "shell", "run", "ignored_file")
+	expect_exit(t, cli, 127, "-c", "ignored_file")
 }
 
 @(test)
@@ -110,8 +134,7 @@ native_managed_functions :: proc(t: ^testing.T) {
 		out := checked_cli(
 			t,
 			cli,
-			"shell",
-			"run",
+			"-c",
 			fmt.tprintf(`export NATIVE_VALUE=shared; %s "one two" "it's three" ""`, name),
 		)
 		testing.expect_value(t, out, "<one two>\n<it's three>\n<>\n<shared>\n")
@@ -119,7 +142,7 @@ native_managed_functions :: proc(t: ^testing.T) {
 }
 
 @(test)
-native_zoxide :: proc(t: ^testing.T) {
+native_jump_tool_config :: proc(t: ^testing.T) {
 	cli := new_cli(t)
 	defer os.remove_all(cli.home)
 	config := fmt.tprintf("%s/.config/wayu", cli.home)
@@ -127,17 +150,7 @@ native_zoxide :: proc(t: ^testing.T) {
 	testing.expect_value(t, os.make_directory_all(config), nil)
 	testing.expect_value(t, os.make_directory_all(dest), nil)
 	bin := fmt.tprintf("%s/zoxide", cli.home)
-	write_fixture(
-		t,
-		bin,
-		`#!/bin/sh
-case "$1" in
-add) printf '%s\n' "$3" >> "$HOME/visits" ;;
-query) [ "$2" = --exclude ] && [ "$4" = -- ] && [ "$5" = project ] && [ "$6" = words ] || exit 4
-       printf '%s/project with spaces\n' "$HOME" ;;
-esac
-`,
-	)
+	write_fixture(t, bin, "#!/bin/sh\ntouch \"$HOME/invoked-zoxide\"\nexit 42\n")
 	testing.expect_value(t, os.chmod(bin, {.Read_User, .Write_User, .Execute_User}), nil)
 	set_cli_env(&cli, "PATH", fmt.tprintf("%s:/usr/bin:/bin", cli.home))
 	file := fmt.tprintf("%s/wayu.toml", config)
@@ -146,14 +159,19 @@ esac
 	sh.binary = "/bin/sh"
 	home := strings.trim_space(checked_cli(t, sh, "-c", `cd "$HOME" && pwd -P`))
 	physical_dest := fmt.tprintf("%s/project with spaces", home)
-	out := checked_cli(t, cli, "shell", "run", "z; z project words; pwd; z -; pwd")
+	out := checked_cli(
+		t,
+		cli,
+		"-c",
+		`z; cd "$HOME/project with spaces"; z -; z project spaces; pwd; z -; pwd`,
+	)
 	testing.expect_value(t, out, fmt.tprintf("%s\n%s\n", physical_dest, home))
-	testing.expect(t, !os.exists(fmt.tprintf("%s/visits", cli.home)))
-	expect_exit(t, cli, 4, "shell", "run", "z missing")
+	expect_exit(t, cli, 1, "-c", "z missing")
+	testing.expect(t, !os.exists(fmt.tprintf("%s/invoked-zoxide", cli.home)))
 	write_fixture(t, file, "[tools]\nzoxide = { args = \"init zsh --cmd jump --hook none\" }\n")
-	out = checked_cli(t, cli, "shell", "run", "jump project words; pwd")
+	out = checked_cli(t, cli, "-c", "jump project spaces; pwd")
 	testing.expect_value(t, out, fmt.tprintf("%s\n", physical_dest))
-	expect_exit(t, cli, 127, "shell", "run", "z")
+	expect_exit(t, cli, 127, "-c", "z")
 }
 
 @(test)
@@ -167,14 +185,101 @@ native_jump_without_zoxide :: proc(t: ^testing.T) {
 	checked_cli(
 		t,
 		cli,
-		"shell",
-		"run",
+		"-c",
 		`cd "$HOME/alpha/project"; cd "$HOME/beta/project"; cd "$HOME/alpha/project"; cd "$HOME"`,
 	)
-	out := checked_cli(t, cli, "shell", "run", `z PROJECT && pwd; z beta proj && pwd`)
+	out := checked_cli(t, cli, "-c", `z PROJECT && pwd; z beta proj && pwd`)
 	lines := strings.split(strings.trim_space(out), "\n", context.temp_allocator)
 	testing.expect_value(t, len(lines), 2)
 	testing.expect(t, strings.has_suffix(lines[0], "/alpha/project"))
 	testing.expect(t, strings.has_suffix(lines[1], "/beta/project"))
-	expect_exit(t, cli, 1, "shell", "run", "z absent-directory")
+	expect_exit(t, cli, 1, "-c", "z absent-directory")
+
+	// Earlier releases persisted integer counts and nanosecond timestamps.
+	path := fmt.tprintf("%s/.local/share/wayu/directories.json", cli.home)
+	now := time.to_unix_nanoseconds(time.now())
+	write_fixture(
+		t,
+		path,
+		fmt.tprintf(
+			`{{"%s/alpha/project":{{"count":40,"last_visit":1}},"%s/beta/project":{{"count":3,"last_visit":%d}}}}`,
+			cli.home,
+			cli.home,
+			now,
+		),
+	)
+	testing.expect(
+		t,
+		strings.has_suffix(
+			strings.trim_space(checked_cli(t, cli, "warp", "project")),
+			"/beta/project",
+		),
+	)
+	out = checked_cli(t, cli, "-c", "wayu warp project && pwd")
+	testing.expect(t, strings.has_suffix(strings.trim_space(out), "/beta/project"))
+	expect_exit(t, cli, 1, "-c", "wayu warp absent-directory")
+	out = checked_cli(t, cli, "-c", "z project && pwd")
+	testing.expectf(
+		t,
+		strings.has_suffix(strings.trim_space(out), "/beta/project"),
+		"jump output %q; stored visits %s",
+		out,
+		read_fixture(t, path),
+	)
+}
+
+@(test)
+warp_shell_init_visits :: proc(t: ^testing.T) {
+	for shell in ([]string{"zsh", "bash", "fish"}) {
+		cli := new_cli(t)
+		defer os.remove_all(cli.home)
+		sh := cli
+		sh.binary = "/bin/sh"
+		exe, found := run_cli(t, sh, "-c", `command -v "$1"`, "which", shell)
+		if found != 0 {
+			continue
+		}
+		sh.binary = strings.trim_space(exe)
+		checked_cli(t, cli, "init", "--shell", shell)
+		dir := fmt.tprintf("%s/sample project", cli.home)
+		testing.expect_value(t, os.make_directory_all(dir), nil)
+		source_core := fmt.tprintf(`source "$HOME/.local/share/wayu/core.%s"; `, shell)
+		prompt := "_wayu_paths_sync; " if shell == "bash" else ""
+		code := strings.concatenate(
+			{
+				source_core,
+				`cd "$HOME/sample project"; `,
+				prompt,
+				source_core,
+				`cd "$HOME"; `,
+				prompt,
+				"wayu warp project && pwd; ",
+				prompt,
+				prompt,
+			},
+			context.temp_allocator,
+		)
+		option := "-f" if shell == "zsh" else "--norc" if shell == "bash" else "--no-config"
+		out, err, status := cli_streams(t, sh, option, "-ic", code)
+		testing.expectf(
+			t,
+			status == 0 && strings.trim_space(out) == dir,
+			"%s: %s %s",
+			shell,
+			out,
+			err,
+		)
+		data := read_fixture(t, fmt.tprintf("%s/.local/share/wayu/directories.json", cli.home))
+		visits: map[string]struct {
+			count:      f64,
+			last_visit: i64,
+		}
+		testing.expect_value(
+			t,
+			json.unmarshal(transmute([]u8)data, &visits, allocator = context.temp_allocator),
+			nil,
+		)
+		testing.expect_value(t, visits[dir].count, 2)
+		testing.expect_value(t, visits[cli.home].count, 1)
+	}
 }

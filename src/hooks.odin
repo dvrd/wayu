@@ -9,9 +9,9 @@
 // Every hook_* proc at the bottom of this file is live, not a stub:
 //   - alias/constant: assigned to ALIAS_SPEC / CONSTANTS_SPEC
 //     (config_specs.odin) and called by the generic entry handlers in
-//     config_entry.odin (CLI and TUI add/remove);
+//     config_entry.odin;
 //   - path: called by path.odin and config_entry.odin;
-//   - plugin install: plugin_storage.odin (`plugin add`) and the TUI install;
+//   - plugin install: plugin_storage.odin (`plugin add`);
 //   - export: main.odin around `wayu export`/`build turbo` generation.
 // Pre-hooks run only when the operation will actually change something;
 // post-hooks only after a successful write; none run under --dry-run.
@@ -104,14 +104,11 @@ HookContext :: struct {
 //
 // An invalid hooks.conf (placeholder inside "...") fails the operation with
 // EXIT_CONFIG before any hook runs. Every write path calls its pre-hook first,
-// so a bad post-hook is also caught before anything is written. In the TUI the
-// callers check hook_config_error() themselves (no exit from raw mode); here
-// invalid hooks are simply not run.
+// so a bad post-hook is also caught before anything is written.
 //
 // Hooks never run under --dry-run (nothing is actually being changed).
 execute_hook_ctx :: proc(hook_type: HookType, ctx: HookContext) {
 	if msg, bad := hook_config_error(); bad {
-		if wayu.tui_mode do return
 		print_error("%s", msg)
 		wayu_exit(EXIT_CONFIG)
 	}
@@ -142,14 +139,7 @@ execute_hook_ctx :: proc(hook_type: HookType, ctx: HookContext) {
 	// Hooks are best-effort: the exit status is ignored, and every hook runs
 	// with a deadline (hook_timeout_ms()) after which its process group is
 	// killed. Callers run hooks outside the config lock, so a hook may run
-	// wayu itself (OKAMI-299). In the CLI the hook shares wayu's stdout and
-	// stderr (stdin is /dev/null); in the TUI its output is captured (it
-	// would draw over the screen) and it can be cancelled (Esc / Ctrl+C).
-	if wayu.tui_mode {
-		r := run_command_timeout(hook_args, hook_timeout_ms())
-		command_result_destroy(&r)
-		return
-	}
+	// wayu itself (OKAMI-299). The hook shares stdout and stderr and reads stdin from /dev/null.
 	timeout_ms := hook_timeout_ms()
 	if _, timed_out := run_command_passthrough_timeout(hook_args, timeout_ms); timed_out {
 		print_warning(
@@ -160,7 +150,7 @@ execute_hook_ctx :: proc(hook_type: HookType, ctx: HookContext) {
 	}
 }
 
-// Default deadline of one hook run (CLI and TUI); the hook's process group
+// Default deadline of one hook run; the hook's process group
 // is killed when it passes. hooks.conf `timeout = <seconds>` overrides it.
 HOOK_TIMEOUT_DEFAULT_S :: 30
 

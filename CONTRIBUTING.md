@@ -34,8 +34,6 @@ them with `<redacted>` before pasting.
 - Ruby 3.x for the integration tests.
 - zsh, bash and fish on `PATH` (the integration tests source the generated
   shell code with each).
-- Python 3 with [`pyte`](https://pypi.org/project/pyte/) for the TUI tests
-  (`pip install pyte`, a virtualenv is fine).
 
 ## Build
 
@@ -61,7 +59,6 @@ Run these before opening a pull request; CI runs the same set.
 ./build_it test                                   # unit tests (tests/unit/); leaks and bad frees fail
 ./build_it test test_wayu.test_x,test_wayu.test_y # only these unit tests
 ./build_it integration                 # every integration suite (incl. golden files)
-python3 tests/tui/test_responsive.py              # TUI layout + behavior (uses bin/wayu, or $WAYU_BIN)
 odin build src -out:bin/lint -vet -warnings-as-errors   # the CI lint
 tests/benchmark/budget.sh                         # startup-time budget (uses bin/wayu)
 ```
@@ -79,7 +76,7 @@ your real `~/.config/wayu` and shell startup are untouched:
 HOME=$(mktemp -d) ./bin/wayu init
 ```
 
-Golden files for TUI components live in `tests/golden/`; each needs a line in
+Golden files for terminal components live in `tests/golden/`; each needs a line in
 `tests/golden/cases.txt`. `./build_it integration integration.golden` compares them
 all (`./build_it integration` includes it). Regenerate one with
 `./bin/wayu -c=<component> --snapshot <args>` and review the diff.

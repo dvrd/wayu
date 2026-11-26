@@ -12,7 +12,7 @@ The release workflow calls that same CI and the startup-budget workflow before
 bumping a version or creating a tag. The gates include:
 
 - Odin unit tests with leak and invalid-free tracking, strict compiler checks,
-  CLI/integration and golden tests, and TUI behavior tests.
+  CLI integration, terminal interaction, and golden tests.
 - Linux AddressSanitizer integration tests and native smoke tests of all four
   prebuilt targets.
 - A verified previous published binary upgraded to the candidate in Zsh,
@@ -55,7 +55,7 @@ The portable campaign also runs in the normal and sanitizer integration suites.
 Real ENOSPC requires the isolated mount prepared by
 `failure-campaign.yml`; never point its `WAYU_FULL_DISK_ROOT` at a normal disk.
 
-Actions retain unit/integration/TUI logs, source metadata and
+Actions retain unit and integration logs, source metadata and
 `candidate-campaign-<runner>` artifacts. The candidate trial JSON records the
 binary SHA-256, version, shell executables and round count; it verifies that
 the original candidate and its trial copy remain unchanged. Artifacts are

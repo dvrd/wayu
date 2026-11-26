@@ -94,8 +94,8 @@ snapshot_aliases :: proc() -> map[string]string {
 	shell_bin := shell if len(shell) > 0 else "zsh"
 
 	args := []string{shell_bin, "-i", "-c", "alias"}
-	// An rc file that sleeps, prompts or attaches tmux must not freeze wayu
-	// (TUI or CLI): give up after a deadline, listing no external aliases.
+	// Bound the wait for rc files that sleep, prompt, or attach tmux.
+	// When the deadline expires, list managed aliases only.
 	output: string
 	r := run_command_timeout(args, ALIAS_SNAPSHOT_TIMEOUT_MS)
 	if r.ok {

@@ -62,7 +62,7 @@ source hashes and runs existing unit and secrets integration tests in temporary
 homes. It uses fixture secrets and file/test backends, not production keys.
 The unit suite includes external X25519 vectors, parser, pinning, recovery and
 rotation checks. CI separately runs AddressSanitizer integration tests on Linux.
-CI retains a source-only manifest alongside the unit, integration and TUI
+CI retains a source-only manifest alongside the unit and integration
 outputs in `test-evidence-<runner>` artifacts. The manifest labels itself as
 source metadata; the surrounding job's success determines the test result.
 

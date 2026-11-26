@@ -9,26 +9,26 @@ import "core:strings"
 import "core:sys/posix"
 
 Native_Session :: struct {
-	zoxide_fallback: bool,
-	jump_cmd:        string,
-	jump_hook:       string,
-	functions:       map[string]Native_Function,
-	vi_register:     string,
-	source_depth:    int,
-	aliases:         map[string][dynamic]ShellStatement,
-	vi_mode:         bool,
-	prompt:          PromptConfigFull,
-	prompt_options:  InteractiveConfig,
-	prompt_cache:    Native_Prompt_Cache,
-	highlight:       ^Native_Highlight_Styles,
-	suggest:         Native_Suggest_Config,
-	minimal_prompt:  bool,
-	status:          int,
-	exiting:         bool,
-	terminal:        bool,
-	modes:           posix.termios,
-	jobs:            [dynamic]Native_Job,
-	next_job:        int,
+	jump_echo:      bool,
+	jump_cmd:       string,
+	jump_hook:      string,
+	functions:      map[string]Native_Function,
+	vi_register:    string,
+	source_depth:   int,
+	aliases:        map[string][dynamic]ShellStatement,
+	vi_mode:        bool,
+	prompt:         PromptConfigFull,
+	prompt_options: InteractiveConfig,
+	prompt_cache:   Native_Prompt_Cache,
+	highlight:      ^Native_Highlight_Styles,
+	suggest:        Native_Suggest_Config,
+	minimal_prompt: bool,
+	status:         int,
+	exiting:        bool,
+	terminal:       bool,
+	modes:          posix.termios,
+	jobs:           [dynamic]Native_Job,
+	next_job:       int,
 }
 Native_Redirect :: struct {
 	target: posix.FD,
@@ -254,7 +254,27 @@ native_is_builtin :: proc(s: ^Native_Session, name: string) -> bool {
 	return false
 }
 
+native_warp_query :: proc(args: []string) -> bool {
+	if len(args) < 3 ||
+	   args[0] != "wayu" ||
+	   args[1] != "warp" ||
+	   args[2] == "edit" ||
+	   args[2] == "search" ||
+	   args[2] == "help" {
+		return false
+	}
+	for word in args[2:] {
+		if strings.has_prefix(word, "-") {
+			return false
+		}
+	}
+	return true
+}
+
 native_builtin :: proc(s: ^Native_Session, args: []string) -> int {
+	if native_warp_query(args) {
+		return warp_jump(args[2:], s)
+	}
 	if s.jump_cmd != "" && args[0] == s.jump_cmd {
 		return native_jump(s, args)
 	}
@@ -364,7 +384,7 @@ native_redirect :: proc(cmd: Native_Command, status: int) -> bool {
 		target := r.target
 		if r.op == "<&" || r.op == ">&" {
 			if len(path) != 1 || path[0] < '0' || path[0] > '2' {
-				fmt.eprintln("wayu shell: expected descriptor 0, 1, or 2")
+				fmt.eprintln("wayu: expected descriptor 0, 1, or 2")
 				return false
 			}
 			if posix.dup2(posix.FD(path[0] - '0'), target) < 0 {
@@ -384,7 +404,7 @@ native_redirect :: proc(cmd: Native_Command, status: int) -> bool {
 			fd = posix.open(file, flags, transmute(posix.mode_t)posix._mode_t(0o666))
 		}
 		if fd < 0 {
-			fmt.eprintfln("wayu shell: %s: %v", path, posix.errno())
+			fmt.eprintfln("wayu: %s: %v", path, posix.errno())
 			return false
 		}
 		if fd != target {
@@ -413,7 +433,7 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 		argv := make([dynamic]cstring, context.temp_allocator)
 		for w in cmd.words {
 			if !native_arguments(w, s.status, &args) {
-				fmt.eprintln("wayu shell: invalid word expansion")
+				fmt.eprintln("wayu: invalid word expansion")
 				failed = true
 				break
 			}
@@ -423,7 +443,7 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 			break
 		}
 		name := args[0]
-		builtin := native_is_builtin(s, name)
+		builtin := native_is_builtin(s, name) || native_warp_query(args[:])
 		if builtin && len(p.commands) == 1 && !p.background {
 			if grouped {
 				posix.close(gate[0])
@@ -471,9 +491,6 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 			posix.signal(.SIGPIPE, auto_cast posix.SIG_DFL)
 			if grouped {
 				posix.close(gate[1])
-				if posix.setpgid(0, job.group) != .OK {
-					posix._exit(1)
-				}
 				for sig in ([3]posix.Signal {
 						.SIGTSTP,
 						.SIGTTIN,
@@ -509,7 +526,7 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 			}
 			posix.execvp(argv[0], raw_data(argv[:]))
 			err := posix.errno()
-			fmt.eprintfln("wayu shell: %s: %v", name, err)
+			fmt.eprintfln("wayu: %s: %v", name, err)
 			posix._exit(EXIT_EXEC_NOT_FOUND if err == .ENOENT else EXIT_EXEC_NOT_RUNNABLE)
 		}
 		if more {
@@ -526,6 +543,8 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 			if job.group == 0 {
 				job.group = pid
 			}
+			// Children wait on gate until the parent assigns the whole pipeline
+			// to its group and hands over the terminal.
 			if posix.setpgid(pid, job.group) != .OK {
 				failed = true
 			}
@@ -628,7 +647,7 @@ native_eval :: proc(s: ^Native_Session, source: string) {
 	}
 	pipelines, err := native_parse(expanded[:])
 	if err != "" {
-		fmt.eprintfln("wayu shell: %s", err)
+		fmt.eprintfln("wayu: %s", err)
 		s.status = 2
 		return
 	}
@@ -643,25 +662,15 @@ native_eval :: proc(s: ^Native_Session, source: string) {
 	}
 }
 
-handle_native_shell :: proc(action: Action, args: []string) {
-	if action == .HELP {
-		fmt.println(
-			"wayu shell [run <command>]\nStart the native shell, or evaluate a command string.",
-		)
-		return
-	}
+run_native_shell :: proc(command: Maybe(string) = nil) {
 	s: Native_Session
 	s.aliases = make(map[string][dynamic]ShellStatement)
 	native_configure(&s)
 	native_jump_configure(&s)
 	native_functions_load(&s)
-	if action == .RUN && len(args) == 1 {
-		native_eval(&s, args[0])
+	if line, supplied := command.(string); supplied {
+		native_eval(&s, line)
 		wayu_exit(s.status)
-	}
-	if action != .LIST || len(args) > 0 {
-		fmt.eprintln("Usage: wayu shell [run <command>]")
-		wayu_exit(EXIT_USAGE)
 	}
 	prompt_arena: virtual.Arena
 	interactive := bool(posix.isatty(posix.STDIN_FILENO))

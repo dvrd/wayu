@@ -411,11 +411,14 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec {
 		flags = {{"--check", "Exit 1 when startup-file lines can be optimized"}, {"--notify", ""}},
 	},
 	{
-		command = .NATIVE_SHELL,
-		names = {"shell"},
-		desc = "Start the native wayu shell",
-		default_action = .LIST,
-		actions = {{"run", .RUN, "Evaluate a command string"}},
+		command = .WARP,
+		names = {"warp"},
+		desc = "Jump to the highest-scoring matching directory",
+		default_action = .HELP,
+		actions = {
+			{"edit", .UPDATE, "Edit directory history"},
+			{"search", .SEARCH, "Select a directory and print its path"},
+		},
 	},
 	{
 		command = .RELOAD,
@@ -614,10 +617,10 @@ WayuGlobalFlag :: struct {
 WAYU_GLOBAL_FLAGS := [?]WayuGlobalFlag {
 	{{"--help", "-h"}, "Show help", .NONE, false},
 	{{"--version", "-v"}, "Show version", .NONE, true},
+	{{"-c"}, "Evaluate a native shell command", .ANY, true},
 	{{"--dry-run", "-n"}, "Preview changes without writing", .NONE, false},
 	{{"--yes", "-y"}, "Skip confirmation prompts", .NONE, false},
 	{{"--no-color"}, "Disable colored output", .NONE, false},
-	{{"--tui"}, "Launch interactive TUI mode", .NONE, true},
 	{{"--shell"}, "Shell to act for", .SHELLS, false},
 	{{"--source"}, "List views: which entries to show", .SOURCES, false},
 	{{"--full", "-f"}, "List views: include external entries", .NONE, false},
@@ -1766,14 +1769,6 @@ handle_completions_command :: proc(action: Action, args: []string) {
 			fmt.println()
 			fmt.println("Example:")
 			fmt.println("  wayu completions rm jj")
-			fmt.println()
-			fmt.printfln(
-				"%sHint:%s For interactive selection, use: %swayu --tui%s",
-				get_muted(),
-				RESET,
-				get_primary(),
-				RESET,
-			)
 			wayu_exit(EXIT_USAGE)
 		}
 		remove_completion(args[0])

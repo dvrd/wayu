@@ -432,7 +432,6 @@ Env_Default :: struct {
 Command_Result :: struct {
 	ok:        bool, // all stdin delivered, exited 0 before the deadline
 	timed_out: bool, // killed at the deadline (ok is false)
-	cancelled: bool, // killed because subprocess_cancel_check said so (ok is false)
 	exit_code: int, // the child's exit status when it exited normally, else -1
 	stdout:    string,
 	stderr:    string,
@@ -444,13 +443,6 @@ command_result_destroy :: proc(r: ^Command_Result) {
 	r.stdout = ""
 	r.stderr = ""
 }
-
-// While set (the TUI, during a long operation), run_command_timeout calls it
-// at least every SUBPROCESS_CANCEL_POLL_MS; true kills the child like a
-// timeout does and the result has cancelled = true. It may also repaint a
-// progress indicator. nil in the CLI.
-subprocess_cancel_check: proc() -> bool
-SUBPROCESS_CANCEL_POLL_MS :: 100
 
 // run_command_timeout runs a subprocess (no shell) with stdin on /dev/null,
 // capturing stdout and stderr (each capped at 64 KiB; the rest is drained
@@ -646,8 +638,7 @@ run_command_timeout :: proc(
 
 	for open_count > 0 || !reaped {
 		// EOF on both pipes says nothing about process lifetime: a child
-		// can redirect its output and keep running. Keep the same deadline
-		// and cancellation checks active until it actually exits.
+		// can redirect its output and keep running. Keep the deadline active until it actually exits.
 		// A foreground clipboard helper may exit while its background
 		// owner is still reading stdin. Finish that transfer before reaping
 		// the foreground process, keeping its pid reserved for guard signals.
@@ -667,13 +658,6 @@ run_command_timeout :: proc(
 				break
 			}
 			wait_ms = c.int(timeout_ms - elapsed)
-		}
-		if subprocess_cancel_check != nil {
-			if subprocess_cancel_check() {
-				result.cancelled = true
-				break
-			}
-			if wait_ms < 0 || wait_ms > SUBPROCESS_CANCEL_POLL_MS do wait_ms = SUBPROCESS_CANCEL_POLL_MS
 		}
 		if open_count == 0 && (wait_ms < 0 || wait_ms > 10) do wait_ms = 10
 
@@ -723,7 +707,7 @@ run_command_timeout :: proc(
 		}
 	}
 
-	if result.timed_out || result.cancelled {
+	if result.timed_out {
 		// The child is a session (and process group) leader: take down the
 		// whole group, then the child itself in case setsid failed.
 		posix.killpg(pid, .SIGKILL)
@@ -751,7 +735,6 @@ run_command_timeout :: proc(
 		len(input) == 0 &&
 		reaped &&
 		!result.timed_out &&
-		!result.cancelled &&
 		posix.WIFEXITED(status) &&
 		posix.WEXITSTATUS(status) == 0
 	result.stdout = strings.clone(strings.trim_space(strings.to_string(out_sb)))

@@ -168,7 +168,7 @@ validate_identifier :: proc(
 }
 
 // Why `name` cannot be an alias name, "" when it can. The one alias name
-// rule (OKAMI-366), used by `alias add`, the TUI, templates and the
+// rule (OKAMI-366), used by `alias add`, templates and the
 // entries.json reader; the generator's is_safe_alias_name accepts every name
 // this accepts. Allowed: printable ASCII except whitespace, quotes, shell
 // metacharacters, glob characters, `=`, `/` (bash refuses it) and `^`
@@ -373,7 +373,7 @@ is_safe_shell_arg :: proc(arg: string) -> bool {
 }
 
 // A PATH entry must not contain the PATH separator or line breaks. Shared by
-// validate_path (CLI/TUI input) and the [paths] readers (hand-edited TOML).
+// validate_path (CLI input) and the [paths] readers (hand-edited TOML).
 is_path_entry_safe :: proc(path: string) -> bool {
 	return strings.index_any(path, ":\n\r") < 0
 }
@@ -620,12 +620,6 @@ get_directory :: proc(file_path: string) -> string {
 
 // Print formatted error (simple version for backwards compatibility)
 print_error_simple :: proc(format: string, args: ..any) {
-	// The TUI (print_quiet) captures it for its notification instead of
-	// writing over the alternate screen.
-	if print_quiet {
-		print_error(format, ..args)
-		return
-	}
 	eprintf_color("%s%sERROR:%s ", BOLD, ERROR, RESET)
 	fmt.eprintfln(format, ..args)
 }

@@ -98,7 +98,7 @@ native_job_resume :: proc(job: ^Native_Job) -> bool {
 native_job_wait :: proc(s: ^Native_Session, job: ^Native_Job, resume: bool) -> int {
 	if s.terminal {
 		if resume && posix.tcsetpgrp(0, job.group) != .OK {
-			fmt.eprintln("wayu shell: cannot give job the terminal")
+			fmt.eprintln("wayu: cannot give job the terminal")
 			return 1
 		}
 		if resume && job.has_modes {

@@ -98,9 +98,6 @@ run_git_network :: proc(
 			"git timed out after %ds and was stopped (set WAYU_GIT_TIMEOUT=<seconds> to allow longer)",
 			timeout_ms / 1000,
 		)
-	} else if result.cancelled {
-		delete(result.stderr)
-		result.stderr = strings.clone("cancelled")
 	}
 	return result
 }

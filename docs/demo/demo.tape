@@ -1,4 +1,4 @@
-# wayu demo: entries, an encrypted run-only secret, a script, doctor, the TUI.
+# wayu demo: entries, an encrypted run-only secret, a script, and doctor.
 #
 # Record (from the repo root, after ./build_it):
 #
@@ -94,32 +94,3 @@ Type "wayu doctor"
 Sleep 300ms
 Enter
 Sleep 3.5s
-Ctrl+L
-
-# --- TUI -------------------------------------------------------------------
-Type "wayu"
-Sleep 300ms
-Enter
-Sleep 1.8s
-Enter
-Sleep 1.8s
-Escape
-Sleep 500ms
-Down
-Sleep 500ms
-Enter
-Sleep 1.4s
-Type "a"
-Sleep 700ms
-Type "lg"
-Sleep 300ms
-Tab
-Sleep 300ms
-Type "lazygit"
-Sleep 600ms
-Enter
-Sleep 2s
-Escape
-Sleep 500ms
-Type "q"
-Sleep 1.5s

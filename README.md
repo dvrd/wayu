@@ -1,15 +1,15 @@
 # wayu
 
-**v8.0.0** · A shell configuration management CLI written in [Odin](https://odin-lang.org/). Manages PATH entries, aliases, environment variables, completions, and backups across Bash, Zsh, and Fish.
+**v8.0.0** · A native shell and shell configuration manager written in [Odin](https://odin-lang.org/). Manages PATH entries, aliases, environment variables, completions, and backups across Bash, Zsh, and Fish.
 
-![wayu demo: path, alias and run-only secret added, constants listed with the secret masked, a Python script created and run with the secret, doctor, then an alias added in the TUI](docs/demo/demo.gif)
+![wayu demo: path, alias and run-only secret added, constants listed with the secret masked, a Python script created and run with the secret, and doctor](docs/demo/demo.gif)
 
 <sub>Recorded with [VHS](https://github.com/charmbracelet/vhs) in a throwaway home: `vhs docs/demo/demo.tape` (see [docs/demo/](docs/demo/)). Website: [wayu.dvrd.io](https://wayu.dvrd.io).</sub>
 
 ## Features
 
 - **Multi-shell** -- Automatic Bash/Zsh/Fish detection with shell-specific config files
-- **Dual mode** -- Non-interactive CLI for scripting + interactive TUI (default when run with no args)
+- **Native shell** -- Run `wayu` for interactive editing, history, and directory jumps
 - **PATH management** -- Keyed entries in entries.json with deduplication and validation
 - **Alias & constants** -- Add, remove, list with input validation and reserved word checking
 - **Fuzzy matching** -- Smart search with acronym support (e.g., `faak` → `FIREWORKS_AI_API_KEY`)
@@ -114,7 +114,7 @@ prompt, or right before the command in `zsh -l -c …` (dirs you prepend in
 `.zshrc` stay ahead of them).
 
 `init.<ext>` sources one precomputed file, `core.<ext>`, which wayu rewrites
-after every change (`wayu path|alias|const …`, the TUI, `wayu build`). That
+after every change (`wayu path|alias|const …`, `wayu build`). That
 is the recommended setup. The alternatives:
 
 | rc line | When |
@@ -134,7 +134,7 @@ described in [docs/config-reference.md](docs/config-reference.md).
 
 ### Try the native shell beta
 
-Run `wayu shell` from a terminal to open the Odin shell. Type part of a
+Run `wayu` from a terminal to open the Odin shell. Type part of a
 previous command, cycle matching suggestions with Ctrl+N or Ctrl+P, and
 press Right to accept. Ctrl+R searches the native history by substring.
 History works without Atuin. Type `exit` to return to the launching shell.
@@ -142,7 +142,7 @@ History works without Atuin. Type `exit` to return to the launching shell.
 The beta reads your Wayu PATH entries, aliases, and plain constants. Put
 native startup commands in `~/.config/wayu/config.wayu`. Scripts with a
 shebang still run with their declared interpreter. For the supported command
-language and editing keys, see [the CLI reference](docs/cli.md#wayu-shell).
+language and editing keys, see [the CLI reference](docs/cli.md#native-shell).
 
 ## Upgrading
 
@@ -164,8 +164,6 @@ What changed in each release, and what you may need to adapt, is in
 [docs/UPGRADING.md](docs/UPGRADING.md).
 
 ## Quick Start
-
-> **Tip:** Running `wayu` with no arguments opens the interactive TUI.
 
 ```bash
 # PATH
@@ -254,9 +252,8 @@ wayu template list               # available: developer, minimal, data-science, 
 wayu template apply developer    # apply preset to existing config
 wayu template apply minimal      # minimal preset
 
-# Interactive mode
-wayu                             # TUI opens by default with no args
-wayu --tui                       # explicit flag
+# Native shell
+wayu
 ```
 
 ## CLI Reference
@@ -350,10 +347,10 @@ Constants whose name looks like a credential (contains `KEY`, `TOKEN`,
 `SECRET`, `PASS`, `API`, `AUTH`, `CREDENTIAL`, `PRIVATE`, ...) or whose value
 looks like one (`sk-...`, `ghp_...`, `scheme://user:pass@host`, ...) are shown
 as `********` in `const list` (text and `--json`, with or without `--full`;
-external environment variables included), `toml show`, the TUI constants
-view, `search` results and `--dry-run` previews. `search` matches constant
+external environment variables included), `toml show`,
+`search` results and `--dry-run` previews. `search` matches constant
 names only, never their values. Pass `--reveal` to `const list` / `toml show`
-(or press `v` in the TUI constants view) to see real values; `const get NAME`
+to see real values; `const get NAME`
 always prints the real value.
 
 ### Encrypted secrets
@@ -400,42 +397,6 @@ bad input, `66` missing input file, `78` configuration error, … — the full
 table, with examples checked by the test suite, is in
 [docs/cli.md](docs/cli.md#exit-codes).
 
-## TUI Mode
-
-Launch with `wayu` (no args) or `wayu --tui` for an interactive terminal interface.
-
-- Vim-style navigation (`j`/`k`, `h`/`l`, arrow keys)
-- Inline fuzzy filtering with `/`
-- Source filter cycling with `s` (all → wayu → inactive → external)
-- Add and delete entries with confirmation modals
-- Tab-navigable forms with focus indicators
-- Automatic backups before modifications
-- Dashboard-style main menu with 8 views
-
-**Keybindings:**
-
-| Key | Context | Action |
-|-----|---------|--------|
-| `j` / `k` / ↑ / ↓ | All views | Move selection |
-| `l` / Enter | All views | Select / enter |
-| `h` / Esc | All views | Go back |
-| `q` | Main menu | Quit |
-| `/` | Data / plugin views | Start inline filter |
-| `s` | PATH / Alias / Constants | Cycle source filter |
-| `a` | PATH / Alias / Constants | Add entry (modal form) |
-| `d` / `x` | PATH / Alias / Constants | Delete entry (with confirmation) |
-| `v` | Constants | Reveal / hide secret-looking values (masked by default) |
-| Tab / `t` | Plugins view | Switch Installed ↔ Registry tab |
-| Space | Plugins (Installed) | Enable / disable selected plugin |
-| `e` / `x` | Plugins (Installed) | Enable / disable selected plugin |
-| `u` | Plugins (Installed) | Update selected plugin (Esc cancels) |
-| `d` | Plugins (Installed) | Remove selected plugin (with confirmation) |
-| `i` | Plugins (Registry) | Install selected plugin (with confirmation) |
-| `c` | Backups view | Cleanup old backups |
-| Ctrl+C | Anywhere | Quit |
-
-Built from scratch with raw termios control, alternate screen buffer, differential rendering, and signal handling. No external TUI libraries.
-
 ## Configuration
 
 wayu keeps the files you edit in `~/.config/wayu/` and the data it manages in
@@ -451,7 +412,7 @@ wayu keeps the files you edit in `~/.config/wayu/` and the data it manages in
   hooks.conf                # pre/post operation hooks
 
 ~/.local/share/wayu/        # ${XDG_DATA_HOME:-~/.local/share}/wayu
-  # --- wayu manages these (`wayu path|alias|const|plugin`, the TUI) ---
+  # --- wayu manages these (`wayu path|alias|const|plugin`) ---
   entries.json              # PATH entries, aliases, constants
   plugins.json              # installed plugin metadata (JSON5)
 
@@ -662,7 +623,7 @@ Releases are **automatic**. Every push to `main` runs
 [`.github/workflows/bump.yml`](.github/workflows/bump.yml), which:
 
 1. Runs full CI and startup budgets: unit/memory tracking, integration,
-   AddressSanitizer, golden/TUI, strict compiler, compatibility, previous-binary
+   AddressSanitizer, golden, strict compiler, compatibility, previous-binary
    upgrades, failure campaign, fresh installs and candidate session trials.
    Nothing is released unless the automated gates pass.
 2. Derives the next version from [Conventional Commits](https://www.conventionalcommits.org/)

@@ -55,10 +55,10 @@ terminal_resized: bool
 //   2. $COLUMNS / $LINES environment variables (set by most shells)
 //   3. ANSI cursor-position probe (works in any VT100-compatible terminal)
 //   4. Fallback to 80x24
-get_terminal_size :: proc() -> (width, height: int, ok: bool) {
+get_terminal_size :: proc(probe := true, fd: c.int = 1) -> (width, height: int, ok: bool) {
 	// Method 1: ioctl (fast, no I/O).
 	ws: winsize
-	if ioctl(1, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 && ws.ws_row > 0 {
+	if ioctl(fd, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 && ws.ws_row > 0 {
 		return int(ws.ws_col), int(ws.ws_row), true
 	}
 
@@ -76,6 +76,10 @@ get_terminal_size :: proc() -> (width, height: int, ok: bool) {
 				return cols, rows, true
 			}
 		}
+	}
+
+	if !probe {
+		return 80, 24, false
 	}
 
 	// Method 3: ANSI cursor-position probe.
@@ -353,14 +357,9 @@ tui_stderr_capture_end :: proc "contextless" (replay: bool) {
 	posix.close(file)
 }
 
-// True while stderr is redirected to the capture file.
-tui_stderr_capturing :: proc "contextless" () -> bool {
-	return intrinsics.volatile_load(&tui_stderr_file) >= 0
-}
-
 // Hand the terminal back to the shell without forgetting the TUI's state:
 // cooked mode, main screen, cursor shown, stderr on the terminal. Used for
-// suspend (Ctrl+Z) and by anything that runs an interactive child (editor).
+// suspend during SIGTSTP.
 // Async-signal-safe. Undo with tui_resume_terminal.
 tui_suspend_terminal :: proc "contextless" () {
 	if intrinsics.volatile_load(&tui_termios_saved) {
@@ -408,12 +407,6 @@ tui_sigtstp_handler :: proc "c" (sig: posix.Signal) {
 	posix.set_errno(saved_errno)
 }
 
-// Suspend the TUI like any terminal program (Ctrl+Z arrives in-band because
-// ISIG is off). Returns once the process is continued.
-tui_suspend_self :: proc() {
-	posix.raise(.SIGTSTP)
-}
-
 // Termination + fatal signals that must restore the terminal before dying.
 // SIGILL/SIGTRAP cover Odin bounds-check traps; SIGABRT covers libc aborts.
 @(private = "file")
@@ -455,15 +448,6 @@ tui_uninstall_signal_handlers :: proc() {
 	posix.signal(.SIGTSTP, auto_cast posix.SIG_DFL)
 }
 
-// Assertion-failure proc installed into the TUI's context: restore the
-// terminal first so the panic message is readable in the user's shell.
-tui_assertion_failure_proc :: proc(
-	prefix, message: string,
-	loc: runtime.Source_Code_Location,
-) -> ! {
-	tui_emergency_restore()
-	runtime.default_assertion_failure_proc(prefix, message, loc)
-}
 // timeval struct for select timeout
 timeval :: struct {
 	tv_sec:  c.long,
@@ -1266,7 +1250,7 @@ parse_key_event :: proc(input_buf: []byte, length: int) -> (KeyEvent, bool) {
 // Color profile adaptation
 // ============================================================================
 
-// Color capability the TUI renders with. tui_run copies CURRENT_COLOR_PROFILE
+// Color capability the TUI renders with. Terminal callers can select CURRENT_COLOR_PROFILE
 // here (NO_COLOR/--no-color → .ASCII). Defaults to TRUECOLOR so headless
 // rendering/tests see the raw palette.
 tui_color_mode: ColorProfile = .TRUECOLOR
@@ -1398,7 +1382,7 @@ TuiTheme :: enum {
 	Light,
 }
 
-// Theme the TUI renders with (tui_run sets it from tui_detect_theme).
+// Theme the TUI renders with.
 tui_theme: TuiTheme = .Dark
 
 // Map a palette color to the escape drawn for the current theme ("" = the
@@ -1569,33 +1553,23 @@ TUI_SECONDARY :: "\x1b[38;2;14;116;144m" // #0E7490
 // Semantic Colors
 // ============================================================================
 
-// Success color - Teal (same as secondary)
-TUI_SUCCESS :: "\x1b[38;2;14;116;144m" // #0E7490
-
 // Error color - Dark red
 TUI_ERROR :: "\x1b[38;2;153;27;27m" // #991B1B
 
 // Warning color - Amber
 TUI_WARNING :: "\x1b[38;2;217;119;6m" // #D97706
 
-// Bright orange - Focused button highlight, active form field cursor
+// Bright orange accent
 TUI_ORANGE :: "\x1b[38;2;255;140;0m" // #FF8C00
 
-// Info color - Teal-cyan (same as secondary)
-TUI_INFO :: "\x1b[38;2;14;116;144m" // #0E7490
-
-// Source indicators - Green for wayu active, Yellow for inactive, Blue for external
+// Source colors in the adaptive palette
 TUI_SOURCE_WAYU_ACTIVE :: "\x1b[38;2;34;197;94m" // #22C55E (green)
-TUI_SOURCE_WAYU_INACTIVE :: "\x1b[38;2;217;119;6m" // #D97706 (amber/yellow)
 TUI_SOURCE_EXTERNAL :: "\x1b[38;2;59;130;246m" // #3B82F6 (blue)
 TUI_SOURCE_SHADOWED :: "\x1b[38;2;168;85;247m" // #A855F7 (purple)
 
 // ============================================================================
 // UI Element Colors
 // ============================================================================
-
-// Highlight color - Hot pink (same as primary)
-TUI_HIGHLIGHT :: "\x1b[38;2;228;0;80m" // #E40050
 
 // Muted text - Light gray for secondary text
 TUI_MUTED :: "\x1b[38;2;208;208;208m" // #D0D0D0
@@ -1606,358 +1580,6 @@ TUI_DIM :: "\x1b[38;2;100;100;100m" // #646464
 // Divider line - Very dim gray for horizontal separators between menu items
 TUI_DIVIDER :: "\x1b[38;2;51;51;51m" // #333333
 
-// ============================================================================
-// Background Colors
-// ============================================================================
-
-// Normal background - Dark purple-blue
-TUI_BG_NORMAL :: "\x1b[48;2;24;24;37m" // #181825
-
-// Selected item background - Almost black for maximum contrast
-TUI_BG_SELECTED :: "\x1b[48;2;9;9;11m" // #09090B
-
-// Header/footer background - Slightly lighter than normal
-TUI_BG_HEADER :: "\x1b[48;2;18;18;27m" // #12121B
-
-// ============================================================================
-// Border Colors
-// ============================================================================
-
-// Normal border color - Gray for inactive panels
-TUI_BORDER_NORMAL :: "\x1b[38;2;100;100;100m" // #646464
-
-// Focused border color - Hot pink for active panel
-TUI_BORDER_FOCUSED :: "\x1b[38;2;228;0;80m" // #E40050
-
-// ============================================================================
-// Box Drawing Characters (Unicode)
-// ============================================================================
-
-// Light single-line box drawing (standard style)
-BOX_HORIZONTAL :: '─' // U+2500
-BOX_VERTICAL :: '│' // U+2502
-BOX_TOP_LEFT :: '┌' // U+250C
-BOX_TOP_RIGHT :: '┐' // U+2510
-BOX_BOTTOM_LEFT :: '└' // U+2514
-BOX_BOTTOM_RIGHT :: '┘' // U+2518
-BOX_VERTICAL_RIGHT :: '├' // U+251C (left T-junction)
-BOX_VERTICAL_LEFT :: '┤' // U+2524 (right T-junction)
-BOX_HORIZONTAL_DOWN :: '┬' // U+252C (top T-junction)
-BOX_HORIZONTAL_UP :: '┴' // U+2534 (bottom T-junction)
-BOX_CROSS :: '┼' // U+253C (4-way intersection)
-
-// Rounded corners (softer appearance)
-BOX_ROUND_TOP_LEFT :: '╭' // U+256D
-BOX_ROUND_TOP_RIGHT :: '╮' // U+256E
-BOX_ROUND_BOTTOM_LEFT :: '╰' // U+256F
-BOX_ROUND_BOTTOM_RIGHT :: '╯' // U+2570
-
-// Heavy/thick box drawing (for emphasis)
-BOX_HEAVY_HORIZONTAL :: '━' // U+2501
-BOX_HEAVY_VERTICAL :: '┃' // U+2503
-BOX_HEAVY_TOP_LEFT :: '┏' // U+250F
-BOX_HEAVY_TOP_RIGHT :: '┓' // U+2513
-BOX_HEAVY_BOTTOM_LEFT :: '┗' // U+2517
-BOX_HEAVY_BOTTOM_RIGHT :: '┛' // U+251B
-
-// Double-line box drawing (for strong emphasis)
-BOX_DBL_HORIZONTAL :: '═' // U+2550
-BOX_DBL_VERTICAL :: '║' // U+2551
-BOX_DBL_TOP_LEFT :: '╔' // U+2554
-BOX_DBL_TOP_RIGHT :: '╗' // U+2557
-BOX_DBL_BOTTOM_LEFT :: '╚' // U+255A
-BOX_DBL_BOTTOM_RIGHT :: '╝' // U+255D
-
-// ============================================================================
-// Border Layout Constants
-// ============================================================================
-
-// Border dimensions (box-drawing characters take 1 cell)
-BORDER_TOP_HEIGHT :: 1 // Top border line
-BORDER_BOTTOM_HEIGHT :: 1 // Bottom border line
-BORDER_LEFT_WIDTH :: 1 // Left border column
-BORDER_RIGHT_WIDTH :: 1 // Right border column
-
-// Total border overhead
-BORDER_HORIZONTAL_TOTAL :: BORDER_LEFT_WIDTH + BORDER_RIGHT_WIDTH // 2 cells
-BORDER_VERTICAL_TOTAL :: BORDER_TOP_HEIGHT + BORDER_BOTTOM_HEIGHT // 2 cells
-
-// ============================================================================
-// Header Layout Constants
-// ============================================================================
-
-// Header line positions (inside border, 1-indexed from border top)
-HEADER_TITLE_LINE :: 1 // Line 1: Main title (e.g., "📂 PATH Configuration")
-HEADER_COUNT_LINE :: 2 // Line 2: Item count (e.g., "35 entries")
-HEADER_HEIGHT :: 2 // Total header height in lines
-
-// Blank line after header before content starts
-HEADER_CONTENT_GAP :: 1
-
-// ============================================================================
-// Footer Layout Constants
-// ============================================================================
-
-// Footer height and position
-FOOTER_HEIGHT :: 1 // Footer takes 1 line
-FOOTER_OFFSET_FROM_BOTTOM :: 2 // Footer is 2 lines from bottom (border + footer)
-
-// Notification bar height (rendered between footer and bottom border)
-NOTIFICATION_HEIGHT :: 1
-
-// ============================================================================
-// Content Area Layout Constants
-// ============================================================================
-
-// Content area offsets (relative to border)
-CONTENT_PADDING_LEFT :: 2 // Indent content 2 cells from left border
-CONTENT_PADDING_TOP :: 1 // 1 line padding from border top
-
-// List item positioning
-LIST_ITEM_START_LINE :: CONTENT_PADDING_TOP + HEADER_HEIGHT + HEADER_CONTENT_GAP // Line 4 (1 + 2 + 1)
-LIST_ITEM_INDENT :: CONTENT_PADDING_LEFT // Indent items 2 cells from border
-
-// Selection indicator
-SELECTION_PREFIX_WIDTH :: 2 // "> " takes 2 characters
-
-// Main menu item layout (dashboard-style with dividers)
-MENU_ITEM_SPACING :: 2 // Each menu item occupies 2 rows (text + divider)
-MENU_ACCENT_BAR_WIDTH :: 1 // ┃ accent bar is 1 cell
-MENU_ACCENT_GAP :: 2 // Gap after accent bar before text
-
-// ============================================================================
-// Visible Height Calculation Constants
-// ============================================================================
-
-// Calculate visible height for scrollable lists
-// Formula: terminal_height - (borders + header + gap + footer + margins)
-//
-// Breakdown:
-// - BORDER_TOP_HEIGHT (1): Top border
-// - CONTENT_PADDING_TOP (1): Padding after top border
-// - HEADER_HEIGHT (2): Title + count lines
-// - HEADER_CONTENT_GAP (1): Blank line after header
-// - FOOTER_HEIGHT (1): Footer line
-// - FOOTER_OFFSET_FROM_BOTTOM (2): Footer + bottom border
-//
-// Total overhead: 1 + 1 + 2 + 1 + 1 = 6 lines
-// (border_top + padding_top + header_height + header_gap + footer+border_bottom)
-// Notification is rendered outside the box — not counted in visible list height
-VISIBLE_HEIGHT_OVERHEAD :: 6
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-// Calculate visible height for list items
-calculate_visible_height :: proc(terminal_height: int) -> int {
-	return terminal_height - VISIBLE_HEIGHT_OVERHEAD
-}
-
-// Calculate footer Y position
-calculate_footer_y :: proc(terminal_height: int) -> int {
-	return terminal_height - FOOTER_OFFSET_FROM_BOTTOM - 1 // -1 for border
-}
-
-// Calculate border dimensions (responsive - fills terminal width)
-calculate_border_dimensions :: proc(
-	terminal_width, terminal_height: int,
-) -> (
-	width: int,
-	height: int,
-) {
-	width = terminal_width - BORDER_HORIZONTAL_TOTAL
-	height = terminal_height - BORDER_VERTICAL_TOTAL - NOTIFICATION_HEIGHT
-	return
-}
-
-// Calculate max content width inside the border box (for text truncation)
-tui_calculate_content_width :: proc(border_width: int) -> int {
-	// border_width includes left+right border chars
-	// Inside: CONTENT_PADDING_LEFT + SELECTION_PREFIX_WIDTH + text + right margin
-	return border_width - CONTENT_PADDING_LEFT - SELECTION_PREFIX_WIDTH - BORDER_RIGHT_WIDTH - 1
-}
-
-// Calculate notification bar Y position (below the border box)
-calculate_notification_y :: proc(terminal_height: int) -> int {
-	return terminal_height - NOTIFICATION_HEIGHT
-}
-
-// ============================================================================
-// Responsive Breakpoints
-// ============================================================================
-
-// Minimum terminal dimensions the TUI supports.
-// Below these the layout still renders but content may truncate.
-MIN_TERMINAL_WIDTH :: 40
-MIN_TERMINAL_HEIGHT :: 12
-
-// Width thresholds for layout adaptations.
-BREAKPOINT_COMPACT :: 60 // compact footers, reduced padding
-BREAKPOINT_NARROW :: 50 // minimal layout
-
-// is_compact returns true when the terminal is narrow enough to use
-// shortened footer strings and tighter padding.
-is_compact :: proc(terminal_width: int) -> bool {
-	return terminal_width < BREAKPOINT_COMPACT
-}
-
-// is_narrow returns true when the terminal is very narrow.
-is_narrow :: proc(terminal_width: int) -> bool {
-	return terminal_width < BREAKPOINT_NARROW
-}
-
-// Calculate the actual number of item rows the renderer draws in the current view.
-//
-// Each view subtracts rows from calculate_visible_height():
-//   - All list views: -1 for the divider row below the header
-//   - All list views: -1 for the scroll-indicator / bottom-margin row
-//     (the renderer always reserves this row at content_start + visible_height,
-//      so the last visible item is at content_start + visible_height - 1)
-//   - Filter active:  -1 for the filter bar row
-//   - Alias/Constants: -2 for column header + its divider (col_header_offset)
-//
-// This must stay in sync with the visible_height calculation inside each
-// render_*_view proc in the view_*.odin files so that tui_state_move_selection tracks
-// exactly the same drawable rows that the renderer uses.
-get_view_visible_height :: proc(state: ^TUIState) -> int {
-	base := calculate_visible_height(state.terminal_height)
-
-	#partial switch state.current_view {
-	case .MAIN_MENU:
-		// Menu items start at LIST_ITEM_START_LINE + 2 (divider + blank).
-		// Each item takes MENU_ITEM_SPACING rows. Footer must stay clear.
-		// footer_y = terminal_height - FOOTER_OFFSET_FROM_BOTTOM - 1
-		menu_start_y := LIST_ITEM_START_LINE + 2
-		footer_y := state.terminal_height - FOOTER_OFFSET_FROM_BOTTOM - 1
-		available := footer_y - 1 - menu_start_y + 1 // -1: leave one row above footer
-		visible_count := available / MENU_ITEM_SPACING
-		if visible_count < 1 {
-			visible_count = 1
-		}
-		return visible_count
-	}
-
-	// Filter bar row — render_filter_bar draws it whenever any filter
-	// (text, active input, or source) is on.
-	filter_offset := 1 if has_any_filter(state) else 0
-
-	#partial switch state.current_view {
-	case .ALIAS_VIEW, .CONSTANTS_VIEW:
-		// column header row + its divider (only when items are visible)
-		col_header_offset := 2 if view_shows_column_header(state) else 0
-		// -1 divider, -1 scroll-indicator row, -filter_offset, -col_header_offset
-		return base - 2 - filter_offset - col_header_offset
-
-	case .PLUGINS_VIEW:
-		// Registry tab always draws a column header + divider (2 rows).
-		col_header_offset := 2 if state.plugin_tab == PLUGIN_TAB_REGISTRY else 0
-		return base - 2 - filter_offset - col_header_offset
-
-	case:
-		// PATH_VIEW, COMPLETIONS_VIEW, BACKUPS_VIEW
-		// -1 divider, -1 scroll-indicator row, -filter_offset
-		return base - 2 - filter_offset
-	}
-}
-
-// ============================================================================
-// Responsive Footer Strings
-// ============================================================================
-
-// Compact footer variants for narrow terminals.
-// Each returns the appropriate string based on terminal width.
-
-get_footer_filter_active :: proc(width: int) -> string {
-	if width < BREAKPOINT_NARROW {
-		return "Type filter  Esc Cancel"
-	}
-	if width < BREAKPOINT_COMPACT {
-		return "Type to filter   Esc Cancel   Enter Accept"
-	}
-	return FOOTER_FILTER_ACTIVE
-}
-
-get_footer_data_view :: proc(width: int) -> string {
-	if width < BREAKPOINT_NARROW {
-		return "/ Filter   a Add   h Back"
-	}
-	if width < BREAKPOINT_COMPACT {
-		return "/ Filter   a Add   d Del   h Back   j/k Nav"
-	}
-	return FOOTER_DATA_VIEW
-}
-
-// Constants view: the data-view keys plus `v`, which toggles masking of
-// secret-looking values (label shows what pressing it will do).
-get_footer_constants_view :: proc(width: int, revealed: bool) -> string {
-	if width < BREAKPOINT_NARROW {
-		return "/ Filter   v Hide   h Back" if revealed else "/ Filter   v Reveal   h Back"
-	}
-	if width < BREAKPOINT_COMPACT {
-		return(
-			"/ Filter   v Hide   a Add   d Del   h Back" if \
-				revealed else \
-				"/ Filter   v Reveal   a Add   d Del   h Back" \
-		)
-	}
-	return FOOTER_CONSTANTS_VIEW_REVEAL if revealed else FOOTER_CONSTANTS_VIEW
-}
-
-get_footer_readonly_view :: proc(width: int) -> string {
-	if width < BREAKPOINT_NARROW {
-		return "/ Filter   h Back"
-	}
-	if width < BREAKPOINT_COMPACT {
-		return "/ Filter   h Back   j/k Navigate"
-	}
-	return FOOTER_READONLY_VIEW
-}
-
-get_footer_backup_view :: proc(width: int) -> string {
-	if width < BREAKPOINT_NARROW {
-		return "/ Filter   c Clean   h Back"
-	}
-	if width < BREAKPOINT_COMPACT {
-		return "/ Filter   c Cleanup   h Back   j/k Nav"
-	}
-	return FOOTER_BACKUP_VIEW
-}
-
-get_footer_static_view :: proc(width: int) -> string {
-	return FOOTER_STATIC_VIEW
-}
-
-get_footer_plugins_installed :: proc(width: int) -> string {
-	if width < BREAKPOINT_NARROW {
-		return "Tab Switch   / Filter   h Back"
-	}
-	if width < BREAKPOINT_COMPACT {
-		return "Tab Switch   / Filter   Space On/Off   h Back"
-	}
-	return FOOTER_PLUGINS_INSTALLED
-}
-
-get_footer_plugins_registry :: proc(width: int) -> string {
-	if width < BREAKPOINT_NARROW {
-		return "Tab Switch   / Filter   h Back"
-	}
-	if width < BREAKPOINT_COMPACT {
-		return "Tab Switch   / Filter   i Install   h Back"
-	}
-	return FOOTER_PLUGINS_REGISTRY
-}
-
-get_footer_main_menu :: proc(width: int) -> string {
-	if width < BREAKPOINT_NARROW {
-		return "j/k Nav   l Sel   q Quit"
-	}
-	if width < BREAKPOINT_COMPACT {
-		return "j/k Navigate   l Select   q Quit"
-	}
-	return "j/k Navigate   l Select   q Quit"
-}
-// Component types available for testing
 ComponentType :: enum {
 	BOX,
 	LIST_ITEM,

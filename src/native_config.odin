@@ -10,7 +10,7 @@ native_configure :: proc(s: ^Native_Session) {
 	for entry in store.env {
 		if !entry.secret && is_shell_var_name(entry.name) {
 			if err := os.set_env(entry.name, entry.value); err != nil {
-				fmt.eprintfln("wayu shell: export %s: %v", entry.name, err)
+				fmt.eprintfln("wayu: export %s: %v", entry.name, err)
 			}
 		}
 	}
@@ -60,7 +60,7 @@ native_configure :: proc(s: ^Native_Session) {
 native_load_alias :: proc(s: ^Native_Session, name, command: string) {
 	parts := shell_parse_statements(command, .POSIX, true)
 	if len(parts) != 1 || parts[0].error != "" {
-		fmt.eprintfln("wayu shell: unsupported alias definition for %s", name)
+		fmt.eprintfln("wayu: unsupported alias definition for %s", name)
 		shell_statements_destroy(&parts)
 		return
 	}

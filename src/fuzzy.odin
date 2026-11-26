@@ -42,6 +42,8 @@ STDERR_FILENO :: 2
 // Saved terminal state for restore.
 saved_termios: posix.termios
 raw_mode_active: bool
+raw_input_fd: posix.FD = STDIN_FILENO
+raw_output_fd: posix.FD = STDOUT_FILENO
 
 // Signals that restore the terminal before the default action. SIGINT /
 // SIGQUIT only come from outside (`kill -INT`) while ISIG is off.
@@ -65,7 +67,7 @@ prev_tstp_handler: proc "c" (_: posix.Signal)
 // Async-signal-safe: only tcsetattr, write, signal, raise.
 terminal_restore_signal_handler :: proc "c" (sig: libc.int) {
 	if raw_mode_active {
-		posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &saved_termios)
+		posix.tcsetattr(raw_input_fd, .TCSANOW, &saved_termios)
 		raw_mode_active = false
 	}
 	if no_echo_active {
@@ -75,17 +77,14 @@ terminal_restore_signal_handler :: proc "c" (sig: libc.int) {
 		return
 	}
 	show := "\x1b[?25h"
-	posix.write(posix.FD(STDOUT_FILENO), raw_data(show), len(show))
-	if wayu.tui_mode {
-		leave_alt := "\x1b[?1049l"
-		posix.write(posix.FD(STDOUT_FILENO), raw_data(leave_alt), len(leave_alt))
-	}
+	posix.write(raw_output_fd, raw_data(show), len(show))
 	libc.signal(sig, cast(proc "c" (_: libc.int))libc.SIG_DFL)
 	libc.raise(sig)
 }
 
-enable_raw_mode :: proc() -> bool {
-	if posix.tcgetattr(posix.FD(STDIN_FILENO), &saved_termios) != .OK {
+enable_raw_mode :: proc(input_fd, output_fd: posix.FD) -> bool {
+	raw_input_fd, raw_output_fd = input_fd, output_fd
+	if posix.tcgetattr(raw_input_fd, &saved_termios) != .OK {
 		debug("Failed to get terminal attributes")
 		return false
 	}
@@ -94,7 +93,7 @@ enable_raw_mode :: proc() -> bool {
 	raw.c_lflag -= {.ECHO, .ICANON, .ISIG, .IEXTEN}
 	raw.c_iflag -= {.IXON, .IXOFF}
 
-	if posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &raw) != .OK {
+	if posix.tcsetattr(raw_input_fd, .TCSANOW, &raw) != .OK {
 		debug("Failed to set terminal to raw mode")
 		return false
 	}
@@ -124,7 +123,7 @@ disable_raw_mode :: proc() {
 	if !raw_mode_active {
 		return
 	}
-	posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &saved_termios)
+	posix.tcsetattr(raw_input_fd, .TCSANOW, &saved_termios)
 	raw_mode_active = false
 
 	// Put back whatever handlers were installed before raw mode.
@@ -144,7 +143,7 @@ disable_raw_mode :: proc() {
 @(private = "file")
 no_echo_sigtstp_handler :: proc "c" (sig: posix.Signal) {
 	saved_errno := posix.get_errno()
-	posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &saved_termios)
+	posix.tcsetattr(raw_input_fd, .TCSANOW, &saved_termios)
 	posix.signal(.SIGTSTP, auto_cast posix.SIG_DFL)
 	set: posix.sigset_t
 	posix.sigemptyset(&set)
@@ -164,7 +163,8 @@ no_echo_sigtstp_handler :: proc "c" (sig: posix.Signal) {
 // default action, and Ctrl+Z restores it while stopped (OKAMI-324).
 // False when stdin is not a terminal.
 no_echo_mode_enable :: proc() -> bool {
-	if posix.tcgetattr(posix.FD(STDIN_FILENO), &saved_termios) != .OK {
+	raw_input_fd, raw_output_fd = STDIN_FILENO, STDOUT_FILENO
+	if posix.tcgetattr(raw_input_fd, &saved_termios) != .OK {
 		return false
 	}
 	no_echo_termios = saved_termios
@@ -247,7 +247,15 @@ truncate_display :: proc(s: string, max_runes: int) -> string {
 // interactive_select launches a raw-mode terminal picker for the given items.
 // Supports real-time fuzzy filtering, Ctrl+N/P navigation, Ctrl+Y / Enter to
 // select, and Ctrl+C to cancel. Returns the selected string.
-interactive_select :: proc(items: []string, prompt: string) -> (selected: string, ok: bool) {
+interactive_select :: proc(
+	items: []string,
+	prompt: string,
+	input_file := os.stdin,
+	output_file := os.stdout,
+) -> (
+	selected: string,
+	ok: bool,
+) {
 	if len(items) == 0 {
 		print_warning("No items to select from")
 		return strings.clone(""), false
@@ -297,47 +305,26 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 		debug("Filter '%s' matches %d items", filter_str, len(filtered))
 	}
 
-	render_ui :: proc(prompt: string, filter: []u8, filtered: []string, selected_idx: int) {
-		fmt.print(CLEAR_SCREEN)
-		print_prompt(prompt)
-		fmt.printf(" %s\r\n", string(filter))
-		fmt.print("\r\n")
-
-		visible_start := max(0, selected_idx - 10)
-		visible_end := min(len(filtered), visible_start + 20)
-
-		for i in visible_start ..< visible_end {
-			if i == selected_idx {
-				fmt.printf("  %s%s> %s%s\r\n", BRIGHT_YELLOW, BOLD, filtered[i], RESET)
-			} else {
-				fmt.printf("    %s\r\n", filtered[i])
-			}
-		}
-
-		if len(filtered) == 0 {
-			fmt.printf("  No matches found\r\n")
-		}
-
-		fmt.printf(
-			"\r\nType to filter, Ctrl+N/P to navigate, Ctrl+Y to select, Ctrl+C to quit\r\n",
-		)
-	}
-
 	update_filter(items, filter_text[:], &filtered_items)
 
-	if !enable_raw_mode() {
+	if !enable_raw_mode(posix.FD(os.fd(input_file)), posix.FD(os.fd(output_file))) {
 		fmt.eprintln("Error: Failed to enable raw mode")
 		return strings.clone(""), false
 	}
 
-	fmt.print(HIDE_CURSOR)
+	fmt.fprint(output_file, HIDE_CURSOR)
 	defer {
-		fmt.print(CLEAR_SCREEN)
-		fmt.print(SHOW_CURSOR)
+		fmt.fprint(output_file, CLEAR_SCREEN)
+		fmt.fprint(output_file, SHOW_CURSOR)
 		disable_raw_mode()
 	}
 
-	render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
+	width, height, _ := get_terminal_size(probe = false, fd = c.int(os.fd(output_file)))
+	screen := screen_create(width, height)
+	defer screen_destroy(&screen)
+
+	top := 0
+	full, dirty := true, true
 
 	// One read can hold several keys (a paste, fast typing, an escape
 	// sequence): every byte is decoded. A UTF-8 character split across reads
@@ -345,27 +332,52 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 	input_buf: [256]byte
 	carry := 0
 	for {
-		n, err := os.read(os.stdin, input_buf[carry:])
+		width, height, _ = get_terminal_size(probe = false, fd = c.int(os.fd(output_file)))
+		if width != screen.width || height != screen.height {
+			screen_resize(&screen, width, height)
+			full = true
+		}
+
+		if full || dirty {
+			picker_render(
+				&screen,
+				prompt,
+				string(filter_text[:]),
+				filtered_items[:],
+				selected_index,
+				&top,
+				full,
+				output_file,
+			)
+			full, dirty = false, false
+		}
+
+		input := posix.pollfd {
+			fd     = posix.FD(os.fd(input_file)),
+			events = {.IN},
+		}
+		ready := posix.poll(&input, 1, 200)
+		if ready == 0 || (ready < 0 && posix.errno() == .EINTR) {
+			continue
+		}
+		if ready < 0 {
+			break
+		}
+
+		n, err := os.read(input_file, input_buf[carry:])
 		if err != nil {
 			debug("Error reading input: %v", err)
 			break
 		}
-		if n == 0 do continue
+		if n == 0 do break
 		n += carry
 		carry = 0
 
 		ev := picker_decode_input(input_buf[:n], &filter_text)
-		switch ev.action {
-		case .CANCEL:
+		if ev.action == .CANCEL {
 			return strings.clone(""), false
-		case .SELECT:
-			if len(filtered_items) > 0 && selected_index < len(filtered_items) {
-				result := strings.clone(filtered_items[selected_index])
-				debug("Selected: %s", result)
-				return result, true
-			}
-		case .NONE:
 		}
+
 		if ev.filter_changed {
 			update_filter(items, filter_text[:], &filtered_items)
 			selected_index = 0
@@ -374,9 +386,11 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 			m := len(filtered_items)
 			selected_index = ((selected_index + ev.move) % m + m) % m
 		}
-		if ev.filter_changed || ev.move != 0 {
-			render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
+		if ev.action == .SELECT && len(filtered_items) > 0 {
+			return strings.clone(filtered_items[selected_index]), true
 		}
+
+		dirty = ev.filter_changed || ev.move != 0
 		// Keep an incomplete trailing UTF-8 sequence for the next read.
 		if ev.incomplete > 0 {
 			copy(input_buf[:], input_buf[n - ev.incomplete:n])
@@ -385,6 +399,56 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 	}
 
 	return strings.clone(""), false
+}
+
+picker_render :: proc(
+	screen: ^Screen,
+	prompt, filter: string,
+	items: []string,
+	selected: int,
+	top: ^int,
+	full: bool,
+	output_file: ^os.File,
+) {
+	screen_clear(screen)
+	footer := screen.height - 1
+	first := min(2, max(0, footer - 1))
+	if first > 0 {
+		render_text(screen, 0, 0, prompt)
+	}
+	if first > 1 {
+		render_text(screen, 0, 1, "Filter: ")
+		render_text(screen, 8, 1, filter)
+	}
+
+	rows := footer - first
+	if rows > 0 {
+		top^ = clamp(top^, max(0, selected - rows + 1), selected)
+		top^ = min(top^, max(0, len(items) - rows))
+		for i in top^ ..< min(len(items), top^ + rows) {
+			y := first + i - top^
+			if i == selected {
+				render_text(screen, 0, y, ">")
+				screen_mark_focus(screen, 0, y)
+			}
+
+			render_text(screen, 2, y, items[i])
+		}
+
+		if len(items) == 0 {
+			render_text(screen, 0, first, "No matches found")
+		}
+	}
+
+	legend := "Type to filter   Ctrl+N/P Move   Enter Select   Esc Close"
+	if screen.width < len(legend) {
+		legend = "↑↓ Move   Enter Select   Esc Close"
+	}
+	if screen.width < 34 {
+		legend = "↑↓  Enter  Esc"
+	}
+	render_text(screen, 0, footer, legend)
+	screen_flush(screen, full, output_file)
 }
 
 PickerAction :: enum {

@@ -1669,8 +1669,7 @@ const_get_secret :: proc(name: string) -> bool {
 
 // Remove secret constant NAME as a pair: its ciphertext (secrets.json) and
 // its entries.json marker; when the marker can't be dropped, secrets.json is
-// put back. removed = false when NAME is not a secret. Never exits (the TUI
-// deletes through it too); err is temp-allocated. Caller holds the config
+// put back. removed = false when NAME is not a secret. The error is temp-allocated. Caller holds the config
 // lock and handled --dry-run.
 const_remove_secret :: proc(name: string) -> (removed: bool, ok: bool, err: string) {
 	snap := secrets_store_snapshot()
@@ -1815,7 +1814,7 @@ secrets_store_has_name_or_exit :: proc(name: string) -> bool {
 
 // Is NAME a secret? Never exits: a malformed or unreadable secrets.json is
 // printed and returned as a heap-owned entry error (ENTRY_ERROR_CONFIG_PREFIX
-// + why), so the CLI exits EXIT_CONFIG and the TUI shows the reason.
+// + why), so the CLI exits EXIT_CONFIG.
 secrets_store_has_name :: proc(name: string) -> (is_secret: bool, err: string) {
 	s, _, lerr := secrets_store_load()
 	if len(lerr) > 0 {

@@ -356,7 +356,6 @@ sync_init_orchestrator :: proc() {
 // discarded) is repeated where a human can see it.
 @(private = "file")
 warn_customized_init :: proc(path, current: string) {
-	if wayu.tui_mode do return
 	marker := fmt.tprintf("%s/.%s.customized", wayu.data, filepath.base(path))
 	sig := fmt.tprintf("%x\n", hash.fnv64a(transmute([]byte)current))
 	if old, err := os.read_entire_file(marker, context.temp_allocator);
@@ -564,7 +563,7 @@ emit_bash_glob_source :: proc(b: ^strings.Builder, dir_q: string, patterns: []st
 // core sources $data/path_sync.<ext>, whose FIRST LINE is a signature of the
 // [paths] list. A prompt hook reads just that line with the `read` builtin (no
 // fork) and re-sources the file only when it changed, so `wayu path add/rm`
-// and TUI edits reach already-open shells at the next prompt.
+// reach already-open shells at the next prompt.
 //
 // Hand edits of wayu.toml (or a restored entries.json): the hook also
 // compares mtimes (`-nt`, a builtin test, no fork). When wayu.toml or
@@ -697,6 +696,7 @@ _wayu_paths_sync() {
 }
 autoload -Uz add-zsh-hook
 add-zsh-hook precmd _wayu_paths_sync
+if [[ -o interactive ]]; then add-zsh-hook chpwd _wayu_warp_visit; fi
 `
 
 // zsh login shell running a -c command (see WAYU_PATH_SYNC_ZSH): restore
@@ -773,6 +773,7 @@ WAYU_PATH_SYNC_BASH :: `_wayu_paths_apply() {
 _wayu_paths_sync() {
   local s=$? l
   local m="$_WAYU_PATHS_FILE.regen-failed"
+  if [[ $- == *i* && ${_wayu_warp_pwd-} != "$PWD" ]]; then _wayu_warp_visit; fi
   if [ "${_WAYU_PATHS_REGEN-1}" = 1 ] && { [ "${_WAYU_TOML_FILE-}" -nt "$_WAYU_PATHS_FILE" ] || [ "${_WAYU_ENTRIES_FILE-}" -nt "$_WAYU_PATHS_FILE" ]; } &&
      { [ ! -e "$m" ] || ! [ "${_WAYU_TOML_FILE-}" -ot "$m" ] || ! [ "${_WAYU_ENTRIES_FILE-}" -ot "$m" ]; }; then
     WAYU_PROMPT_HOOK=1 command "${_WAYU_BIN:-wayu}" build </dev/null >/dev/null
@@ -1240,6 +1241,36 @@ build_core_content :: proc(mask := false) -> string {
 	fmt.sbprintln(&b, "# === Environment ===")
 	emit_env_exports(&b, mask = mask)
 	fmt.sbprintln(&b)
+
+	fmt.sbprintln(
+		&b,
+		`if [[ $- == *i* ]]; then
+: "${_wayu_warp_pwd:=$PWD}"
+function _wayu_warp_visit {
+    if [[ $_wayu_warp_pwd != "$PWD" ]]; then
+        command "${_WAYU_BIN:-wayu}" __warp_visit "$PWD" && _wayu_warp_pwd=$PWD
+    fi
+    return 0
+}
+function wayu {
+    case "${1-}:${2-}" in
+        warp:|warp:edit|warp:search|warp:help|warp:-*) ;;
+        warp:*)
+            local destination word
+            for word in "$@"; do
+                case "$word" in -*) command "${_WAYU_BIN:-wayu}" "$@"; return ;; esac
+            done
+            destination=$(command "${_WAYU_BIN:-wayu}" "$@" && printf .) || return
+            builtin cd -- "${destination%??}" || return
+            _wayu_warp_visit
+            return
+            ;;
+    esac
+    command "${_WAYU_BIN:-wayu}" "$@"
+}
+fi`,
+	)
+
 
 	// PATH from [paths] (file order = priority). The startup apply is the same
 	// call path_sync.<ext> makes, inlined (no extra file read); the prompt
@@ -3197,6 +3228,48 @@ build_core_content_fish :: proc(mask := false) -> string {
 	fmt.sbprintln(b, "# === Environment ===")
 	emit_env_exports_fish(b, mask)
 	fmt.sbprintln(b)
+
+	fmt.sbprintln(
+		b,
+		`if status is-interactive
+set -q _wayu_warp_pwd; or set -g _wayu_warp_pwd "$PWD"
+function _wayu_warp_visit --on-variable PWD
+    if test "$_wayu_warp_pwd" != "$PWD"
+        set -l exe wayu
+        if set -q _WAYU_BIN; and test -n "$_WAYU_BIN"
+            set exe $_WAYU_BIN
+        end
+        command $exe __warp_visit "$PWD"; and set -g _wayu_warp_pwd "$PWD"
+    end
+end
+function wayu
+    set -l exe wayu
+    if set -q _WAYU_BIN; and test -n "$_WAYU_BIN"
+        set exe $_WAYU_BIN
+    end
+    if test "$argv[1]" = warp; and test (count $argv) -ge 2
+        switch "$argv[2]"
+            case edit search help '-*'
+            case '*'
+                for word in $argv
+                    if string match -q -- '-*' "$word"
+                        command $exe $argv
+                        return
+                    end
+                end
+                set -l destination (command $exe $argv | string collect --no-trim-newlines)
+                set -l result $pipestatus[1]
+                test $result -eq 0; or return $result
+                set destination (string split -r -m1 \n -- "$destination")
+                builtin cd -- "$destination[1]"
+                return
+        end
+    end
+    command $exe $argv
+end
+end`,
+	)
+
 
 	// PATH: the same call path_sync.fish makes, inlined; the fish_prompt
 	// hook re-sources path_sync.fish when its signature changes.

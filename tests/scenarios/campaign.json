@@ -261,9 +261,9 @@
       "impact": 3,
       "score": 9,
       "severity": "MEDIUM",
-      "code_ref": "src/tui_io.odin:944",
-      "command": "python3 tests/tui/test_responsive.py",
-      "evidence_scope": "TUI job; candidate trial additionally checks Unicode/quoted values"
+      "code_ref": "tests/integration/native_shell_pty.odin",
+      "command": "./build_it integration integration.native_shell_terminal",
+      "evidence_scope": "interactive shell test and candidate trial"
     },
     {
       "id": "CF1",
