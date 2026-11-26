@@ -8,8 +8,28 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+- `wayu shell` now includes a built-in `z` directory jump. Wayu remembers visited
+  directories across sessions. An existing zoxide database is an optional fallback.
+
+- In `wayu shell`, Tab now uses installed Fish completion definitions for
+  external command arguments and flags, including Wayu-managed `.fish` files.
+
+- `wayu shell` and `wayu shell run` now load aliases from `alias-sources.conf`.
+  Managed aliases take precedence when names overlap.
+
+- The optional minimal-prompt toggle defaults to Ctrl+G, freeing Ctrl+P for
+  cycling autosuggestions. An explicit `[prompt.interactive] toggle_key` still takes precedence.
+
 - `wayu shell` opens an opt-in native shell. `wayu shell run` evaluates a
-  command string in the same executor.
+  command string in the same executor. Interactive sessions leave a blank line
+  between commands and the next prompt. They use your enabled
+  `[prompt]` configuration, including the Git right prompt. The native editor also honors
+  `[settings] highlight` and `highlight_styles`. Autosuggestions include existing
+  shell history, configured Atuin history, and command names. The native editor
+  binds Ctrl+L to clear the screen while preserving the current edit and
+  reads the new `[autosuggest]` table. Set `enabled = true` and
+  `accept_keybind = "ctrl+y"` for the native editor and zsh. Existing
+  autosuggestion settings continue to work.
 
 - With built-in zsh autosuggestions enabled, Ctrl-N and Ctrl-P cycle through
   matching history suggestions in emacs and vi insert mode. At an empty

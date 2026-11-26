@@ -122,8 +122,28 @@ section after its version and publishes it as the GitHub release&#39;s
 releases, so they are listed here too.</p>
 <h2 id="unreleased">Unreleased<a class="anchor" href="#unreleased" aria-label="Link to this section">#</a></h2>
 <ul>
+<li><p><code class="nw">wayu shell</code> now includes a built-in <code class="nw">z</code> directory jump. Wayu remembers visited
+directories across sessions. An existing zoxide database is an optional fallback.</p>
+</li>
+<li><p>In <code class="nw">wayu shell</code>, Tab now uses installed Fish completion definitions for
+external command arguments and flags, including Wayu-managed <code class="nw">.fish</code> files.</p>
+</li>
+<li><p><code class="nw">wayu shell</code> and <code class="nw">wayu shell run</code> now load aliases from <code class="nw">alias-sources.conf</code>.
+Managed aliases take precedence when names overlap.</p>
+</li>
+<li><p>The optional minimal-prompt toggle defaults to Ctrl+G, freeing Ctrl+P for
+cycling autosuggestions. An explicit <code>[prompt.interactive] toggle_key</code> still takes precedence.</p>
+</li>
 <li><p><code class="nw">wayu shell</code> opens an opt-in native shell. <code class="nw">wayu shell run</code> evaluates a
-command string in the same executor.</p>
+command string in the same executor. Interactive sessions leave a blank line
+between commands and the next prompt. They use your enabled
+<code class="nw">[prompt]</code> configuration, including the Git right prompt. The native editor also honors
+<code class="nw">[settings] highlight</code> and <code class="nw">highlight_styles</code>. Autosuggestions include existing
+shell history, configured Atuin history, and command names. The native editor
+binds Ctrl+L to clear the screen while preserving the current edit and
+reads the new <code class="nw">[autosuggest]</code> table. Set <code class="nw">enabled = true</code> and
+<code class="nw">accept_keybind = &quot;ctrl+y&quot;</code> for the native editor and zsh. Existing
+autosuggestion settings continue to work.</p>
 </li>
 <li><p>With built-in zsh autosuggestions enabled, Ctrl-N and Ctrl-P cycle through
 matching history suggestions in emacs and vi insert mode. At an empty

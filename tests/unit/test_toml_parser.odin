@@ -268,10 +268,11 @@ test_toml_parser_autosuggest_settings :: proc(t: ^testing.T) {
 test_zsh_suggest_module :: proc(t: ^testing.T) {
 	defer wayu.clear_toml_content_cache()
 	use_cached_toml(
-		"[settings]\nautosuggest = true\nautosuggestions_accept_keys = [\"^Y\", \"^[[121;5u\", \"ctrl-e\"]\n",
+		"[settings]\nautosuggest = false\nautosuggestions_accept_keys = [\"^E\"]\n[autosuggest]\nenabled = true\naccept_keybind = \"ctrl+y\"\n",
 	)
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
+	testing.expect(t, wayu.read_startup_settings().autosuggest)
 	wayu.emit_zsh_suggest(&b, "fg=244,underline")
 	code := strings.to_string(b)
 	testing.expect(
@@ -295,8 +296,8 @@ test_zsh_suggest_module :: proc(t: ^testing.T) {
 	)
 	testing.expect(
 		t,
-		!strings.contains(code, "ctrl-e"),
-		"key names (not sequences) skipped, as in config.zsh",
+		!strings.contains(code, "bindkey -M emacs '^E' wayu-suggest-accept"),
+		"the new chord overrides the legacy array",
 	)
 	testing.expect(
 		t,

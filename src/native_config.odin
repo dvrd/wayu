@@ -5,16 +5,6 @@ import "core:os"
 import "core:strings"
 
 native_configure :: proc(s: ^Native_Session) {
-	if content, ok := get_cached_toml_content(); ok {
-		s.vi_mode = parse_interactive_config(content).vi_mode
-		if prompt_is_enabled(content) {
-			cfg := parse_full_prompt_config(content)
-			defer destroy_full_prompt_config(&cfg)
-			s.prompt_success = strings.clone(cfg.character_success)
-			s.prompt_error = strings.clone(cfg.character_error)
-			s.prompt_normal = strings.clone(cfg.vimcmd_symbol)
-		}
-	}
 	store := entries_load()
 	defer entries_store_destroy(&store)
 	for entry in store.env {
@@ -52,14 +42,38 @@ native_configure :: proc(s: ^Native_Session) {
 		_ = os.set_env("PATH", strings.join(path[:], ":", context.temp_allocator))
 	}
 	for a in store.aliases {
-		parts := shell_parse_statements(a.value, .POSIX, true)
-		if len(parts) != 1 || parts[0].error != "" {
-			fmt.eprintfln("wayu shell: unsupported alias definition for %s", a.name)
-			shell_statements_destroy(&parts)
-			continue
-		}
-		s.aliases[strings.clone(a.name)] = parts
+		native_load_alias(s, a.name, a.value)
 	}
+
+	sources := read_alias_sources()
+	defer cleanup_alias_sources(sources)
+
+	for source in sources {
+		for name in alias_source_names(source) {
+			if is_safe_alias_name(name) && name not_in s.aliases {
+				native_load_alias(s, name, alias_source_command(source, name))
+			}
+		}
+	}
+}
+
+native_load_alias :: proc(s: ^Native_Session, name, command: string) {
+	parts := shell_parse_statements(command, .POSIX, true)
+	if len(parts) != 1 || parts[0].error != "" {
+		fmt.eprintfln("wayu shell: unsupported alias definition for %s", name)
+		shell_statements_destroy(&parts)
+		return
+	}
+
+	// Operator tokens borrow the definition text. Alias sources and the
+	// entry store are released before the editor evaluates its first line.
+	for &token in parts[0].tokens {
+		if token.kind == .Op {
+			token.op = strings.clone(token.op)
+		}
+	}
+
+	s.aliases[strings.clone(name)] = parts
 }
 
 native_alias_tokens :: proc(

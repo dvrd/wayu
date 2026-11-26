@@ -2,24 +2,33 @@ package wayu
 
 import "core:c"
 import "core:fmt"
+import "core:mem/virtual"
 import "core:os"
 import "core:strconv"
 import "core:strings"
 import "core:sys/posix"
 
 Native_Session :: struct {
-	functions:                                   map[string]Native_Function,
-	vi_register:                                 string,
-	source_depth:                                int,
-	aliases:                                     map[string][dynamic]ShellStatement,
-	vi_mode:                                     bool,
-	prompt_success, prompt_error, prompt_normal: string,
-	status:                                      int,
-	exiting:                                     bool,
-	terminal:                                    bool,
-	modes:                                       posix.termios,
-	jobs:                                        [dynamic]Native_Job,
-	next_job:                                    int,
+	zoxide_fallback: bool,
+	jump_cmd:        string,
+	jump_hook:       string,
+	functions:       map[string]Native_Function,
+	vi_register:     string,
+	source_depth:    int,
+	aliases:         map[string][dynamic]ShellStatement,
+	vi_mode:         bool,
+	prompt:          PromptConfigFull,
+	prompt_options:  InteractiveConfig,
+	prompt_cache:    Native_Prompt_Cache,
+	highlight:       ^Native_Highlight_Styles,
+	suggest:         Native_Suggest_Config,
+	minimal_prompt:  bool,
+	status:          int,
+	exiting:         bool,
+	terminal:        bool,
+	modes:           posix.termios,
+	jobs:            [dynamic]Native_Job,
+	next_job:        int,
 }
 Native_Redirect :: struct {
 	target: posix.FD,
@@ -230,7 +239,26 @@ native_arguments :: proc(w: ShellWord, status: int, args: ^[dynamic]string) -> b
 	return true
 }
 
+NATIVE_BUILTINS :: [?]string{"cd", "export", "unset", "exit", "jobs", "fg", "bg", "source"}
+
+native_is_builtin :: proc(s: ^Native_Session, name: string) -> bool {
+	if name != "" && name == s.jump_cmd {
+		return true
+	}
+
+	for builtin in NATIVE_BUILTINS {
+		if name == builtin {
+			return true
+		}
+	}
+	return false
+}
+
 native_builtin :: proc(s: ^Native_Session, args: []string) -> int {
+	if s.jump_cmd != "" && args[0] == s.jump_cmd {
+		return native_jump(s, args)
+	}
+
 	switch args[0] {
 	case "source":
 		if len(args) != 2 {
@@ -261,21 +289,7 @@ native_builtin :: proc(s: ^Native_Session, args: []string) -> int {
 			return EXIT_USAGE
 		}
 		dest := os.get_env("HOME", context.temp_allocator) if len(args) == 1 else args[1]
-		old, _ := os.get_working_directory(context.temp_allocator)
-		if dest == "-" {
-			dest = os.get_env("OLDPWD", context.temp_allocator)
-		}
-		if dest == "" ||
-		   posix.chdir(strings.clone_to_cstring(dest, context.temp_allocator)) != .OK {
-			fmt.eprintfln("cd: cannot enter %s", dest)
-			return 1
-		}
-		new_dir, err := os.get_working_directory(context.temp_allocator)
-		if err != nil {
-			return 1
-		}
-		_ = os.set_env("OLDPWD", old)
-		_ = os.set_env("PWD", new_dir)
+		return native_cd(s, dest)
 	case "export", "unset":
 		for arg in args[1:] {
 			name, eq, value := strings.partition(arg, "=")
@@ -296,6 +310,29 @@ native_builtin :: proc(s: ^Native_Session, args: []string) -> int {
 	case:
 		return -1
 	}
+	return 0
+}
+
+native_cd :: proc(s: ^Native_Session, directory: string) -> int {
+	dest := directory
+	old, _ := os.get_working_directory(context.temp_allocator)
+	if dest == "-" {
+		dest = os.get_env("OLDPWD", context.temp_allocator)
+	}
+	if dest == "" || posix.chdir(strings.clone_to_cstring(dest, context.temp_allocator)) != .OK {
+		fmt.eprintfln("cd: cannot enter %s", dest)
+		return 1
+	}
+	new_dir, err := os.get_working_directory(context.temp_allocator)
+	if err != nil {
+		return 1
+	}
+	_ = os.set_env("OLDPWD", old)
+	_ = os.set_env("PWD", new_dir)
+	if s.jump_hook == "pwd" && new_dir != old {
+		native_jump_record(new_dir)
+	}
+
 	return 0
 }
 
@@ -386,15 +423,7 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 			break
 		}
 		name := args[0]
-		builtin :=
-			name == "cd" ||
-			name == "export" ||
-			name == "unset" ||
-			name == "exit" ||
-			name == "jobs" ||
-			name == "fg" ||
-			name == "bg" ||
-			name == "source"
+		builtin := native_is_builtin(s, name)
 		if builtin && len(p.commands) == 1 && !p.background {
 			if grouped {
 				posix.close(gate[0])
@@ -624,6 +653,7 @@ handle_native_shell :: proc(action: Action, args: []string) {
 	s: Native_Session
 	s.aliases = make(map[string][dynamic]ShellStatement)
 	native_configure(&s)
+	native_jump_configure(&s)
 	native_functions_load(&s)
 	if action == .RUN && len(args) == 1 {
 		native_eval(&s, args[0])
@@ -633,10 +663,27 @@ handle_native_shell :: proc(action: Action, args: []string) {
 		fmt.eprintln("Usage: wayu shell [run <command>]")
 		wayu_exit(EXIT_USAGE)
 	}
+	prompt_arena: virtual.Arena
 	interactive := bool(posix.isatty(posix.STDIN_FILENO))
 	if interactive {
 		s.terminal = posix.tcgetpgrp(0) == posix.getpgrp() && posix.tcgetattr(0, &s.modes) == .OK
 		if s.terminal {
+			s.suggest = native_suggest_defaults()
+			if content, ok := get_cached_toml_content(); ok {
+				// The editor resets the command arena after each submission.
+				// Keep all parsed prompt strings alive for the interactive session.
+				if virtual.arena_init_growing(&prompt_arena) == nil {
+					context.temp_allocator = virtual.arena_allocator(&prompt_arena)
+					context.allocator = context.temp_allocator
+					native_suggest_configure(&s.suggest, content)
+					s.highlight = native_highlight_styles()
+					s.prompt_options = parse_interactive_config(content)
+					s.vi_mode = s.prompt_options.vi_mode
+					if prompt_is_enabled(content) {
+						s.prompt = parse_full_prompt_config(content)
+					}
+				}
+			}
 			for sig in ([3]posix.Signal {
 					.SIGTSTP,
 					.SIGTTIN,
@@ -653,9 +700,22 @@ handle_native_shell :: proc(action: Action, args: []string) {
 		}
 	}
 	history: Native_History
-	for !s.exiting {
+	if s.terminal && s.suggest.enabled {
+		history.shell_commands = native_read_shell_history()
+	}
+	for first_prompt := true; !s.exiting; first_prompt = false {
 		native_jobs_reap(&s)
+		if interactive && !first_prompt {
+			fmt.eprintln()
+		}
+
 		if s.terminal {
+			if s.jump_hook == "prompt" {
+				if dir, err := os.get_working_directory(context.temp_allocator); err == nil {
+					native_jump_record(dir)
+				}
+			}
+
 			_ = native_history_sync(&history)
 			line, ok := native_edit_line(&s, &history)
 			if !ok {

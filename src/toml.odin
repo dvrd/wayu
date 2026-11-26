@@ -71,14 +71,6 @@ type = "%s"
 `, shell_config_name(shell))
 }
 
-// Default autosuggest accept keys shared by toml_create_default and doc_to_config.
-default_autosuggest_keys :: proc() -> []string {
-	keys := make([]string, 2)
-	keys[0] = strings.clone("^Y")
-	keys[1] = strings.clone("^[[121;5u")
-	return keys
-}
-
 // ============================================================================
 // TOML VALUE TYPES
 // ============================================================================
@@ -316,7 +308,7 @@ handle_validate :: proc() -> bool {
 // Schema check: keys wayu reads (docs/config-reference.md)
 // ============================================================================
 
-TOML_TABLES :: []string{"shell", "settings", "tools", "prompt", "secrets"}
+TOML_TABLES :: []string{"shell", "settings", "autosuggest", "tools", "prompt", "secrets"}
 
 // Tables wayu.toml no longer holds: their entries are managed with
 // `wayu <cli> add` in the entry store. Strict validation reports them as
@@ -376,6 +368,8 @@ toml_key_known :: proc(p: []string) -> bool {
 		return len(p) == 1
 	case "shell":
 		return len(p) == 2 && p[1] == "type"
+	case "autosuggest":
+		return len(p) == 2 && in_set(p[1], {"enabled", "accept_keybind", "style"})
 	case "settings":
 		if len(p) == 3 && p[1] == "highlight_styles" {
 			return highlight_style_index(p[2]) >= 0
@@ -547,6 +541,28 @@ toml_schema_issues :: proc(doc: ^TomlDoc) -> [dynamic]TomlSchemaIssue {
 				&issues,
 				TomlSchemaIssue{line, fmt.tprintf("unknown key %s (ignored)", dotted(p)), false},
 			)
+			continue
+		}
+		if len(p) == 2 && p[0] == "autosuggest" {
+			msg := ""
+			switch p[1] {
+			case "enabled":
+				if e.value.type != .BOOLEAN {
+					msg = "autosuggest.enabled must be true or false"
+				}
+			case "accept_keybind":
+				if _, ok := autosuggest_ctrl_letter(e.value.str_val);
+				   e.value.type != .STRING || !ok {
+					msg = "autosuggest.accept_keybind must be a string like \"ctrl+y\" (ctrl+a through ctrl+z)"
+				}
+			case "style":
+				if e.value.type != .STRING || !autosuggest_style_valid(e.value.str_val) {
+					msg = "autosuggest.style must be a highlight spec string like \"fg=8\""
+				}
+			}
+			if msg != "" {
+				append(&issues, TomlSchemaIssue{line, msg, true})
+			}
 			continue
 		}
 		if msg := script_default_lang_issue(p, e.value); len(msg) > 0 {
@@ -979,19 +995,7 @@ doc_parse_base_fields :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
 
 @(private = "file")
 doc_parse_settings_section :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
-	val := get_toml_value(doc, "settings")
-	if val == nil || val.type != .TABLE {
-		return
-	}
-	if v, ok := val.table_val["autosuggestions_accept_keys"]; ok && v.type == .ARRAY {
-		if keys, ok2 := get_string_array(v); ok2 {
-			config.settings.autosuggestions_accept_keys = keys
-		}
-	}
-	if config.settings.autosuggestions_accept_keys == nil ||
-	   len(config.settings.autosuggestions_accept_keys) == 0 {
-		config.settings.autosuggestions_accept_keys = default_autosuggest_keys()
-	}
+	config.settings.autosuggestions_accept_keys = autosuggest_accept_keys(doc)
 }
 
 // Convert a parsed TomlDoc into the strongly-typed TomlConfig struct.

@@ -3,14 +3,17 @@ package wayu
 import "core:c"
 import "core:encoding/json"
 import "core:fmt"
+import "core:os"
 import "core:strings"
 import "core:sys/posix"
+import "core:unicode/utf8"
 
 Native_History :: struct {
-	path:     string,
-	commands: [dynamic]string,
-	offset:   i64,
-	inode:    u64,
+	path:           string,
+	commands:       [dynamic]string,
+	shell_commands: []string,
+	offset:         i64,
+	inode:          u64,
 }
 
 // Keep each command, including embedded newlines, on one physical record.
@@ -108,4 +111,127 @@ native_history_sync :: proc(h: ^Native_History, record: string = "") -> bool {
 	h.offset += i64(len(line))
 	append(&h.commands, strings.clone(record))
 	return true
+}
+
+// Shell history is a read-only suggestion source. Recall and recording retain
+// their native session semantics and never rewrite the launching shell's file.
+native_read_shell_history :: proc() -> []string {
+	path := os.get_env("HISTFILE", context.temp_allocator)
+	switch wayu.shell_ext {
+	case "zsh", "bash":
+		if path == "" {
+			path = fmt.tprintf("%s/.%s_history", wayu.home, wayu.shell_ext)
+		}
+	case "fish":
+		root := os.get_env("XDG_DATA_HOME", context.temp_allocator)
+		if root == "" {
+			root = fmt.tprintf("%s/.local/share", wayu.home)
+		}
+
+		name := os.get_env("fish_history", context.temp_allocator)
+		if name == "" {
+			name = "fish"
+		}
+
+		path = fmt.tprintf("%s/fish/%s_history", root, name)
+	case:
+		return nil
+	}
+
+	if !os.is_file(path) {
+		return nil
+	}
+
+	data, err := os.read_entire_file_from_path(path, context.temp_allocator)
+	if err != nil {
+		return nil
+	}
+
+	lines := strings.split(string(data), "\n", context.temp_allocator)
+	commands := make([dynamic]string)
+	for i := 0; i < len(lines); i += 1 {
+		cmd := lines[i]
+		switch wayu.shell_ext {
+		case "zsh":
+			if strings.has_prefix(cmd, ": ") {
+				meta, sep, body := strings.partition(cmd[2:], ";")
+				start, colon, duration := strings.partition(meta, ":")
+				if sep != "" && colon != "" && all_digits(start) && all_digits(duration) {
+					cmd = body
+				}
+			}
+
+			if strings.has_suffix(cmd, "\\") {
+				b := strings.builder_make(context.temp_allocator)
+				for strings.has_suffix(cmd, "\\") && i + 1 < len(lines) {
+					strings.write_string(&b, cmd[:len(cmd) - 1])
+					strings.write_byte(&b, '\n')
+					i += 1
+					cmd = lines[i]
+				}
+
+				strings.write_string(&b, cmd)
+				cmd = strings.to_string(b)
+			}
+			if !utf8.valid_string(cmd) && strings.index_byte(cmd, 0x83) >= 0 {
+				b := strings.builder_make(context.temp_allocator)
+				for j := 0; j < len(cmd); j += 1 {
+					ch := cmd[j]
+					if ch == 0x83 && j + 1 < len(cmd) {
+						j += 1
+						ch = cmd[j] ~ 0x20
+					}
+
+					strings.write_byte(&b, ch)
+				}
+
+				cmd = strings.to_string(b)
+			}
+
+		case "bash":
+			if len(cmd) > 1 && cmd[0] == '#' && all_digits(cmd[1:]) {
+				first := i + 1
+				for i + 1 < len(lines) {
+					next := lines[i + 1]
+					if len(next) > 1 && next[0] == '#' && all_digits(next[1:]) {
+						break
+					}
+
+					i += 1
+				}
+
+				end := i + 1
+				if end == len(lines) && end > first && lines[end - 1] == "" {
+					end -= 1
+				}
+
+				cmd = strings.join(lines[first:end], "\n", context.temp_allocator)
+			}
+		case "fish":
+			if !strings.has_prefix(cmd, "- cmd: ") {
+				continue
+			}
+
+			cmd = cmd[7:]
+			b := strings.builder_make(context.temp_allocator)
+			for j := 0; j < len(cmd); j += 1 {
+				if cmd[j] == '\\' &&
+				   j + 1 < len(cmd) &&
+				   (cmd[j + 1] == 'n' || cmd[j + 1] == '\\') {
+					j += 1
+					strings.write_byte(&b, '\n' if cmd[j] == 'n' else '\\')
+				} else {
+					strings.write_byte(&b, cmd[j])
+				}
+			}
+
+			cmd = strings.to_string(b)
+		}
+
+		if cmd != "" && cmd[0] != ' ' && !strings.contains(cmd, "\x00") {
+			append(&commands, strings.clone(cmd))
+		}
+	}
+
+	return commands[:]
 }

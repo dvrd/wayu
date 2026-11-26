@@ -1339,17 +1339,32 @@ Commands support pipes, file redirection (including <code class="nw">2&gt;</code
 conditional execution (<code class="nw">&amp;&amp;</code>, <code class="nw">||</code>). Use <code class="nw">cd</code>, <code class="nw">export</code>, and <code class="nw">unset</code> to change
 session state. Use <code class="nw">jobs</code>, <code class="nw">fg</code>, and <code class="nw">bg</code> to manage jobs started with <code class="nw">&amp;</code> or
 suspended in the foreground.</p>
-<p>The native shell reads wayu&#39;s PATH entries, plain constants, and aliases at
-startup. Interactive sessions then read <code class="nw">config.wayu</code> from the Wayu config
+<p>The native shell loads Wayu’s PATH entries, plain constants, managed aliases,
+and directory aliases from <code class="nw">alias-sources.conf</code> at startup. Interactive sessions then read <code class="nw">config.wayu</code> from the Wayu config
 directory. Use <code class="nw">source &lt;file&gt;</code> to run native commands in the current session.
+The built-in <code class="nw">z &lt;keywords&gt;</code> jumps to a directory visited with <code class="nw">cd</code> or <code class="nw">z</code>.
+Wayu stores visits in <code class="nw">&lt;data&gt;/directories.json</code> across sessions. Keywords
+match the path in order, ignoring case. More visits rank first, with the
+latest visit breaking ties. <code class="nw">z</code> goes home and <code class="nw">z -</code> returns to the previous
+directory. If a zoxide init tool is configured and installed, Wayu can also
+query its existing database when local history has no match.
 Managed functions in Bash, zsh, or Fish run in the corresponding interpreter
 as child processes. Directory and environment changes inside a managed
 function are local to that process. Shell-specific editor plugins and rc files
 belong to their respective interpreters. The beta supports simple commands,
 pipelines, and command lists. Use a script with a shebang for shell-specific
 syntax such as Bash loops or command substitution.</p>
+<p>Interactive sessions leave a blank line before each subsequent prompt.
+Ctrl+L clears the visible screen and redraws the prompt, preserving the current
+command and cursor position. Configure suggestion acceptance with
+<code>[autosuggest] accept_keybind = &quot;ctrl+y&quot;</code> and the prompt toggle with
+<code>[prompt.interactive] toggle_key</code>. Other native editor bindings are fixed.</p>
 <p>At the prompt, Ctrl+N/P cycles history suggestions and Right accepts
-the displayed suffix. Tab cycles matching command or path names. Up/Down recall
+the displayed suffix. Ctrl+Y also accepts it by default. Suggestions include saved
+shell history and configured Atuin history, with command names as a fallback. Tab cycles matching commands and paths. When Fish is installed, Tab also
+loads command-specific argument and flag completions from Fish and from
+<code>&lt;data&gt;/completions/&lt;command&gt;.fish</code>. Simple aliases use the underlying
+command’s completions. Up/Down recall
 previous lines, and Ctrl+_ undoes an edit. Ctrl+R searches history by
 substring. Enter accepts the result for further editing. Set <code class="nw">[prompt]</code>
 <code class="nw">vi_mode = true</code> to enable vi insert and normal modes. Interactive history is stored under

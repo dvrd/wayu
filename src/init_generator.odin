@@ -1546,6 +1546,7 @@ read_startup_settings :: proc() -> StartupSettings {
 		{"settings.defer_plugins", &s.defer_plugins},
 		{"settings.lazy_compinit", &s.lazy_compinit},
 		{"settings.autosuggest", &s.autosuggest},
+		{"autosuggest.enabled", &s.autosuggest},
 		{"settings.highlight", &s.highlight},
 	}
 	for k in keys {
@@ -1553,12 +1554,20 @@ read_startup_settings :: proc() -> StartupSettings {
 			k.field^ = v.bool_val
 		}
 	}
-	if v := get_toml_value(&doc, "settings.autosuggest_style");
+	if v := autosuggest_style_value(&doc);
 	   v != nil && v.type == .STRING && autosuggest_style_valid(v.str_val) {
 		s.autosuggest_style = strings.clone(v.str_val, context.temp_allocator)
 	}
 	s.highlight_styles = read_highlight_styles(&doc)
 	return s
+}
+
+autosuggest_style_value :: proc(doc: ^TomlDoc) -> ^TomlValue {
+	if v := get_toml_value(doc, "autosuggest.style"); v != nil {
+		return v
+	}
+
+	return get_toml_value(doc, "settings.autosuggest_style")
 }
 
 // A usable `[settings] autosuggest_style`: a short region_highlight spec

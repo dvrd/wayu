@@ -15,9 +15,12 @@ Native_Editor :: struct {
 	matches:      [dynamic]string,
 	match:        int,
 	has_matches:  bool,
+	sources:      Native_Suggest_Sources,
+	hint_style:   string,
 	all_matches:  bool,
 	vi:           bool,
 	pending_byte: int,
+	highlight:    Native_Highlight,
 	operator:     string,
 	row:          int,
 }
@@ -45,31 +48,7 @@ native_forward :: proc(e: Native_Edit) -> int {
 	return e.cursor + max(width, 1)
 }
 
-native_suggestions :: proc(e: ^Native_Editor, h: ^Native_History, all: bool = false) {
-	if e.has_matches && (!all || e.all_matches) {
-		return
-	}
-	clear(&e.matches)
-	e.match = 0
-	if len(e.line) == 0 && !all {
-		return
-	}
-	e.has_matches = true
-	e.all_matches = all
-	seen := make(map[string]bool, context.temp_allocator)
-	for i := len(h.commands) - 1; i >= 0; i -= 1 {
-		v := h.commands[i]
-		if len(v) > len(e.line) && strings.has_prefix(v, e.line) && !seen[v] {
-			append(&e.matches, v)
-			if !all {
-				break
-			}
-			seen[v] = true
-		}
-	}
-}
-
-native_display :: proc(e: ^Native_Editor, prompt, hint: string) {
+native_display :: proc(e: ^Native_Editor, prompt, hint: string, right := "") {
 	size: winsize
 	width := 80
 	if ioctl(2, TIOCGWINSZ, &size) == 0 && size.ws_col >= 2 {
@@ -82,14 +61,56 @@ native_display :: proc(e: ^Native_Editor, prompt, hint: string) {
 	}
 	strings.write_string(&b, "\x1b[J")
 	row, col, at_row, at_col := 0, 0, 0, 0
+	prompt_row := 0
+	ink := ""
+	mate := -1
+	if e.highlight.styles != nil && e.highlight.match_style != "" {
+		if idx, ok := e.highlight.pairs[e.cursor]; ok {
+			mate = idx
+		}
+	}
 	for part, i in ([4]string{prompt, e.line[:e.cursor], e.line[e.cursor:], hint}) {
+		if i == 1 {
+			prompt_row = row
+		}
 		if i == 2 {
 			at_row, at_col = row, col
 		}
 		if i == 3 {
-			strings.write_string(&b, "\x1b[2m")
+			if ink != "" {
+				strings.write_string(&b, "\x1b[0m")
+			}
+			if hint != "" {
+				strings.write_string(&b, e.hint_style)
+			}
 		}
-		for r in part {
+		for pos := 0; pos < len(part); {
+			if i == 0 && strings.has_prefix(part[pos:], "\x1b[") {
+				end := pos + 2
+				for end < len(part) &&
+				    ((part[end] >= '0' && part[end] <= '9') || part[end] == ';') {end += 1}
+				if end < len(part) && part[end] == 'm' {
+					strings.write_string(&b, part[pos:end + 1])
+					pos = end + 1
+					continue
+				}
+			}
+			if (i == 1 || i == 2) && e.highlight.styles != nil {
+				offset := pos if i == 1 else pos + e.cursor
+				next := e.highlight.styles[e.highlight.colors[offset]]
+				if offset == mate {
+					next = e.highlight.match_style
+				}
+				if next != ink {
+					if ink != "" {
+						strings.write_string(&b, "\x1b[0m")
+					}
+					strings.write_string(&b, next)
+					ink = next
+				}
+			}
+			r, n := utf8.decode_rune_in_string(part[pos:])
+			pos += max(1, n)
 			if r == '\n' {
 				strings.write_string(&b, "\r\n")
 				row += 1
@@ -113,6 +134,12 @@ native_display :: proc(e: ^Native_Editor, prompt, hint: string) {
 				row += 1
 				col = 0
 			}
+		}
+	}
+	if right != "" && row == prompt_row && !strings.contains(right, "\n") {
+		right_col := width - visible_width(right)
+		if right_col > col {
+			fmt.sbprintf(&b, "\x1b[0m\x1b[%dG%s", right_col + 1, right)
 		}
 	}
 	strings.write_string(&b, "\x1b[0m\r")
@@ -236,25 +263,79 @@ native_edit_line :: proc(s: ^Native_Session, h: ^Native_History) -> (string, boo
 		redo         = make([dynamic]Native_Edit, context.temp_allocator),
 		matches      = make([dynamic]string, context.temp_allocator),
 	}
-	prompt := "wayu> "
-	if s.prompt_success != "" {
-		prompt = fmt.tprintf("%s ", s.prompt_success if s.status == 0 else s.prompt_error)
+	e.hint_style = s.suggest.style
+	e.highlight = native_highlight_init(s)
+	values := native_prompt_values(s)
+	if native_prompt_cache_matches(&s.prompt_cache, values) {
+		values.pending = s.prompt_cache.pending
+		values.version = s.prompt_cache.version
 	}
+	worker: Native_Prompt_Worker
+	start_worker := true
+	defer native_prompt_worker_close(&worker, true)
+	prompt, normal_prompt, right: string
+	refresh_prompt := true
 	history_pos := len(h.commands)
 	draft := ""
 	completion: Native_Completion
 	for {
-		native_suggestions(&e, h)
+		if !e.vi && e.cursor == len(e.line) {
+			native_suggestions(&e, h, s)
+		}
 		hint := ""
 		if !e.vi && e.cursor == len(e.line) && len(e.matches) > 0 {
 			hint = e.matches[e.match][len(e.line):]
 		}
-		shown := prompt
-		if e.vi && s.prompt_normal != "" {
-			shown = fmt.tprintf("%s ", s.prompt_normal)
+		if refresh_prompt {
+			prompt = native_prompt_render(s, values, false)
+			normal_prompt = native_prompt_render(s, values, true)
+			right = native_right_prompt(s, values)
+			refresh_prompt = false
 		}
-		native_display(&e, shown, hint)
+		shown := normal_prompt if e.vi else prompt
+		native_highlight_line(&e.highlight, s, e.line)
+		native_display(&e, shown, hint, right)
+		if start_worker {
+			worker = native_prompt_worker_start(s, values)
+			start_worker = false
+		}
+		if e.pending_byte < 0 && native_prompt_wait(&worker, &values, &s.prompt_cache) {
+			refresh_prompt = true
+			continue
+		}
 		key := native_key(&e)
+		if hint != "" && key in s.suggest.accept_keys {
+			native_edit_replace(&e, e.cursor, e.cursor, hint)
+			continue
+		}
+
+		switch key {
+		case "\x1b[103;5u":
+			key = "\x07"
+		case "\x1b[112;5u":
+			key = "\x10"
+		case "\x1b[110;5u":
+			key = "\x0e"
+		}
+
+		toggle := s.prompt_options.toggle_key
+		if s.prompt.format != "" &&
+		   s.prompt_options.toggle_enabled &&
+		   (e.line == "" || (key != "\x10" && key != "\x0e")) &&
+		   len(toggle) == 2 &&
+		   toggle[0] == '^' &&
+		   len(key) == 1 &&
+		   key[0] == (toggle[1] & 31) {
+			s.minimal_prompt = !s.minimal_prompt
+			refresh_prompt = true
+			continue
+		}
+		if key == "\x0c" || key == "\x1b[108;5u" {
+			fmt.eprint("\x1b[2J\x1b[H")
+			e.row = 0
+			continue
+		}
+
 		if e.vi && e.operator != "" {
 			operator := e.operator
 			e.operator = ""
@@ -309,12 +390,15 @@ native_edit_line :: proc(s: ^Native_Session, h: ^Native_History) -> (string, boo
 				continue
 			}
 			e.cursor = len(e.line)
-			native_display(&e, prompt, "")
+			native_display(&e, shown, "", right)
 			fmt.eprint("\r\n")
 			return e.line, true
 		case "\x0e", "\x10":
 			had := e.has_matches && len(e.matches) > 0
-			native_suggestions(&e, h, true)
+			if e.vi || e.cursor != len(e.line) || !s.suggest.enabled {
+				continue
+			}
+			native_suggestions(&e, h, s, true)
 			if had {
 				n := len(e.matches)
 				e.match = (e.match + (1 if key == "\x0e" else n - 1)) % n

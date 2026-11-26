@@ -66,7 +66,6 @@ shell_statements_destroy :: proc(stmts: ^[dynamic]ShellStatement) {
 	delete(stmts^)
 }
 
-@(private = "file")
 shell_is_op_byte :: proc(c: u8) -> bool {
 	switch c {
 	case ';', '&', '|', '<', '>', '(', ')':
@@ -75,7 +74,6 @@ shell_is_op_byte :: proc(c: u8) -> bool {
 	return false
 }
 
-@(private = "file")
 shell_is_blank :: proc(c: u8) -> bool {
 	return c == ' ' || c == '\t' || c == '\r'
 }

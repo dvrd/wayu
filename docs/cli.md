@@ -707,9 +707,15 @@ conditional execution (`&&`, `||`). Use `cd`, `export`, and `unset` to change
 session state. Use `jobs`, `fg`, and `bg` to manage jobs started with `&` or
 suspended in the foreground.
 
-The native shell reads wayu's PATH entries, plain constants, and aliases at
-startup. Interactive sessions then read `config.wayu` from the Wayu config
+The native shell loads Wayu’s PATH entries, plain constants, managed aliases,
+and directory aliases from `alias-sources.conf` at startup. Interactive sessions then read `config.wayu` from the Wayu config
 directory. Use `source <file>` to run native commands in the current session.
+The built-in `z <keywords>` jumps to a directory visited with `cd` or `z`.
+Wayu stores visits in `<data>/directories.json` across sessions. Keywords
+match the path in order, ignoring case. More visits rank first, with the
+latest visit breaking ties. `z` goes home and `z -` returns to the previous
+directory. If a zoxide init tool is configured and installed, Wayu can also
+query its existing database when local history has no match.
 Managed functions in Bash, zsh, or Fish run in the corresponding interpreter
 as child processes. Directory and environment changes inside a managed
 function are local to that process. Shell-specific editor plugins and rc files
@@ -717,8 +723,18 @@ belong to their respective interpreters. The beta supports simple commands,
 pipelines, and command lists. Use a script with a shebang for shell-specific
 syntax such as Bash loops or command substitution.
 
+Interactive sessions leave a blank line before each subsequent prompt.
+Ctrl+L clears the visible screen and redraws the prompt, preserving the current
+command and cursor position. Configure suggestion acceptance with
+`[autosuggest] accept_keybind = "ctrl+y"` and the prompt toggle with
+`[prompt.interactive] toggle_key`. Other native editor bindings are fixed.
+
 At the prompt, Ctrl+N/P cycles history suggestions and Right accepts
-the displayed suffix. Tab cycles matching command or path names. Up/Down recall
+the displayed suffix. Ctrl+Y also accepts it by default. Suggestions include saved
+shell history and configured Atuin history, with command names as a fallback. Tab cycles matching commands and paths. When Fish is installed, Tab also
+loads command-specific argument and flag completions from Fish and from
+`<data>/completions/<command>.fish`. Simple aliases use the underlying
+command’s completions. Up/Down recall
 previous lines, and Ctrl+_ undoes an edit. Ctrl+R searches history by
 substring. Enter accepts the result for further editing. Set `[prompt]`
 `vi_mode = true` to enable vi insert and normal modes. Interactive history is stored under

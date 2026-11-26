@@ -18,7 +18,7 @@ send :: proc(t: ^testing.T, fd: posix.FD, data: string) {
 	written := posix.write(fd, raw_data(data), c.size_t(len(data)))
 	testing.expect_value(t, int(written), len(data))
 }
-expect_text :: proc(t: ^testing.T, fd: posix.FD, want: string) {
+expect_text :: proc(t: ^testing.T, fd: posix.FD, want: string) -> string {
 	start := time.tick_now()
 	response := strings.builder_make(context.temp_allocator)
 	for time.tick_since(start) < 5 * time.Second {
@@ -37,7 +37,7 @@ expect_text :: proc(t: ^testing.T, fd: posix.FD, want: string) {
 		}
 		strings.write_string(&response, string(buf[:n]))
 		if strings.contains(strings.to_string(response), want) {
-			return
+			return strings.to_string(response)
 		}
 	}
 	testing.fail_now(
@@ -55,19 +55,7 @@ native_shell_terminal :: proc(t: ^testing.T) {
 	write_fixture(t, fmt.tprintf("%s/wayu.toml", config), "[prompt]\nvi_mode = true\n")
 	write_fixture(t, fmt.tprintf("%s/config.wayu", config), "export WAYU_STARTUP=ready\n")
 	write_fixture(t, fmt.tprintf("%s/file with spaces", cli.home), "completed file\n")
-	env := make([]cstring, len(cli.env) + 1, context.temp_allocator)
-	for v, i in cli.env {env[i] = strings.clone_to_cstring(v, context.temp_allocator)}
-	exe := strings.clone_to_cstring(cli.binary, context.temp_allocator)
-	args := [3]cstring{exe, "shell", nil}
-	master: posix.FD
-	pid := forkpty(&master, nil, nil, nil)
-	if pid < 0 {
-		testing.fail_now(t, "could not open pseudo-terminal")
-	}
-	if pid == 0 {
-		posix.execve(exe, raw_data(args[:]), raw_data(env))
-		posix._exit(127)
-	}
+	master, pid := start_native_pty(t, cli)
 	defer {
 		posix.close(master)
 		posix.kill(pid, .SIGKILL)
@@ -87,8 +75,16 @@ native_shell_terminal :: proc(t: ^testing.T) {
 	send(t, master, "\x1b[C\r")
 	expect_text(t, master, "ONE\r\n")
 	expect_text(t, master, "wayu> ")
+	for key in ([]string{"\x0c", "\x1b[108;5u"}) {
+		send(t, master, fmt.tprintf("echo AC\x1b[D%s", key))
+		expect_text(t, master, "\x1b[2J\x1b[H\r\x1b[Jwayu> echo AC")
+		send(t, master, "B\r")
+		expect_text(t, master, "\x1b[?2004lABC\r\n")
+		expect_text(t, master, "wayu> ")
+	}
+
 	send(t, master, "echo $WAYU_STARTUP\r")
-	expect_text(t, master, "\x1b[?2004lready\r\n")
+	expect_text(t, master, "\x1b[?2004lready\r\n\r\n\x1b[?2004h")
 	expect_text(t, master, "wayu> ")
 	send(t, master, "echo catX\x1bxA!\r")
 	expect_text(t, master, "\x1b[?2004lcat!\r\n")
@@ -217,4 +213,255 @@ run_native_launcher :: proc(t: ^testing.T, cli: CLI, shell, path: string) {
 	expect_text(t, fd, "wayu> ")
 	send(t, fd, "exit\r")
 	expect_text(t, fd, "launcher returned\r\n")
+}
+
+start_native_pty :: proc(t: ^testing.T, cli: CLI) -> (posix.FD, posix.pid_t) {
+	env := make([]cstring, len(cli.env) + 1, context.temp_allocator)
+	for v, i in cli.env {env[i] = strings.clone_to_cstring(v, context.temp_allocator)}
+	exe := strings.clone_to_cstring(cli.binary, context.temp_allocator)
+	args := [3]cstring{exe, "shell", nil}
+	master: posix.FD
+	pid := forkpty(&master, nil, nil, nil)
+	if pid < 0 {
+		testing.fail_now(t, "could not open pseudo-terminal")
+	}
+	if pid == 0 {
+		posix.execve(exe, raw_data(args[:]), raw_data(env))
+		posix._exit(127)
+	}
+	return master, pid
+}
+
+@(test)
+native_configured_prompt :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+	config := fmt.tprintf("%s/.config/wayu", cli.home)
+	project := fmt.tprintf("%s/project", cli.home)
+	testing.expect_value(t, os.make_directory_all(config), nil)
+	testing.expect_value(t, os.make_directory_all(project), nil)
+	write_fixture(
+		t,
+		fmt.tprintf("%s/wayu.toml", config),
+		`[prompt]
+enabled = true
+format = "{dir} {language_context}\n{character} "
+[prompt.dir]
+format = "[$basename](cyan bold)"
+[prompt.contexts.odin]
+format = "odin $version"
+detect = ["*.odin"]
+[prompt.character]
+success_symbol = "[ok>](green)"
+error_symbol = "[err>](red)"
+[prompt.interactive]
+toggle_enabled = true
+rprompt_format = "[branch={git_branch},changes={git_pending}](yellow)"
+`,
+	)
+	write_fixture(t, fmt.tprintf("%s/config.wayu", config), `cd "$HOME/project"`)
+	write_fixture(t, fmt.tprintf("%s/main.odin", project), "package demo")
+	sh := cli
+	sh.binary = "/bin/sh"
+	checked_cli(
+		t,
+		sh,
+		"-c",
+		`cd "$HOME/project" && git init -q && git symbolic-ref HEAD refs/heads/prompt-test`,
+	)
+	fd, pid := start_native_pty(t, cli)
+	defer {
+		posix.close(fd)
+		posix.kill(pid, .SIGKILL)
+		rc: c.int
+		for posix.waitpid(pid, &rc, {}) < 0 && posix.errno() == .EINTR {}
+	}
+	expect_text(t, fd, "project odin ")
+	expect_text(t, fd, "ok> ")
+	expect_text(t, fd, "branch=prompt-test,changes=1")
+	send(t, fd, "false\r")
+	expect_text(t, fd, "err> ")
+	frame := expect_text(t, fd, "\r\x1b[5C")
+	testing.expect(
+		t,
+		strings.contains(frame, "branch=prompt-test,changes=1"),
+		"warm prompt lost Git status on its first frame",
+	)
+	send(t, fd, "touch another-file\r")
+	expect_text(t, fd, "branch=prompt-test,changes=2")
+	send(t, fd, "cd ..\r")
+	expect_text(t, fd, "~ wayu")
+	other_dir := expect_text(t, fd, "\r\x1b[4C")
+	testing.expect(
+		t,
+		!strings.contains(other_dir, "branch=prompt-test"),
+		"previous directory's Git status leaked into the prompt",
+	)
+	send(t, fd, "\x07")
+	expect_text(t, fd, "~ ➜ ")
+	send(t, fd, "\x1b[103;5u")
+	expect_text(t, fd, "~ wayu")
+	expect_text(t, fd, "ok> ")
+	for line in ([]string{"echo ALPHA", "echo BETA"}) {
+		send(t, fd, fmt.tprintf("%s\r", line))
+		expect_text(t, fd, "\x1b[?2004l")
+		expect_text(t, fd, "ok> ")
+	}
+	send(t, fd, "\x1b[112;5u")
+	expect_text(t, fd, "\x1b[2mecho BETA")
+	send(t, fd, "echo ")
+	expect_text(t, fd, "\x1b[2mBETA")
+	send(t, fd, "\x10")
+	expect_text(t, fd, "\x1b[2mALPHA")
+}
+
+@(test)
+native_syntax_highlight :: proc(t: ^testing.T) {
+	for mode in ([]string{"enabled", "disabled", "plain"}) {
+		cli := new_cli(t)
+		defer os.remove_all(cli.home)
+		set_cli_env(&cli, "TERM", "xterm-256color")
+		set_cli_env(&cli, "NO_COLOR", "1" if mode == "plain" else "")
+		set_cli_env(&cli, "WAYU_PLAIN", "")
+		config := fmt.tprintf("%s/.config/wayu", cli.home)
+		testing.expect_value(t, os.make_directory_all(config), nil)
+		write_fixture(
+			t,
+			fmt.tprintf("%s/wayu.toml", config),
+			fmt.tprintf(
+				"[settings]\nhighlight = %s\n[settings.highlight_styles]\nbuiltin = \"fg=244,underline\"\ndouble-hyphen-option = \"none\"\n",
+				"false" if mode == "disabled" else "true",
+			),
+		)
+		fd, pid := start_native_pty(t, cli)
+		defer {
+			posix.close(fd)
+			posix.kill(pid, .SIGKILL)
+			status: c.int
+			for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
+		}
+		expect_text(t, fd, "wayu> ")
+		line := `cd --opt | printf "猫$HOME" 2> file # comment`
+		send(t, fd, fmt.tprintf("\x1b[200~%s\x1b[201~", line))
+		if mode != "enabled" {
+			expect_text(t, fd, fmt.tprintf("wayu> %s\x1b[0m", line))
+			continue
+		}
+		expect_text(t, fd, "\x1b[38;5;244;4mcd\x1b[0m --opt | \x1b[32mprintf\x1b[0m ")
+		expect_text(t, fd, "\x1b[33m\"猫\x1b[0m\x1b[36m$HOME\x1b[0m\x1b[33m\"\x1b[0m ")
+		expect_text(t, fd, "\x1b[33m2>\x1b[0m file \x1b[30;1m# comment\x1b[0m")
+		send(t, fd, "\x15wayu_missing_cmd")
+		expect_text(t, fd, "\x1b[31;1mwayu_missing_cmd\x1b[0m")
+		send(t, fd, "\x15printf 'unfinished")
+		expect_text(t, fd, "\x1b[33m'unfinished\x1b[0m")
+		send(t, fd, "\x15printf [xy]\x1b[D")
+		expect_text(t, fd, "\x1b[7m[\x1b[0mxy")
+		send(t, fd, "\x15")
+	}
+}
+
+@(test)
+native_autosuggestions :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+
+	config := fmt.tprintf("%s/.config/wayu", cli.home)
+	testing.expect_value(t, os.make_directory_all(config), nil)
+	write_fixture(
+		t,
+		fmt.tprintf("%s/wayu.toml", config),
+		`[autosuggest]
+enabled = true
+style = "fg=244"
+accept_keybind = "ctrl+g"
+[tools]
+atuin = {kind = "evalcache", args = "init zsh"}
+`,
+	)
+	history := fmt.tprintf("%s/.zsh_history", cli.home)
+	write_fixture(t, history, ": 1700000000:0;echo shared-shell\n")
+	set_cli_env(&cli, "HISTFILE", history)
+	set_cli_env(&cli, "NO_COLOR", "")
+	set_cli_env(&cli, "WAYU_PLAIN", "")
+	set_cli_env(&cli, "TERM", "xterm-256color")
+	set_cli_env(&cli, "PATH", fmt.tprintf("%s:/usr/bin:/bin", cli.home))
+	for tool in ([]string{"atuin", "wayu_test_executable"}) {
+		path := fmt.tprintf("%s/%s", cli.home, tool)
+		write_fixture(
+			t,
+			path,
+			`#!/bin/sh
+while [ "$#" -gt 1 ]; do
+  if [ "$1" = --format ]; then shift; format=$1; fi
+  shift
+done
+marker=${format%%\{command\}*}
+for cmd in 'echo shared-shell' 'echo shared-atuin' 'echo shared-other'; do
+  printf '%s%s%s\n' "$marker" "$cmd" "$marker"
+done
+`,
+		)
+		testing.expect_value(t, os.chmod(path, {.Read_User, .Write_User, .Execute_User}), nil)
+	}
+
+	fd, pid := start_native_pty(t, cli)
+	defer {
+		posix.close(fd)
+		posix.kill(pid, .SIGKILL)
+		rc: c.int
+		for posix.waitpid(pid, &rc, {}) < 0 && posix.errno() == .EINTR {}
+	}
+
+	expect_text(t, fd, "wayu> ")
+	send(t, fd, "echo shared-")
+	expect_text(t, fd, "\x1b[38;5;244mshell")
+	send(t, fd, "\x0e")
+	expect_text(t, fd, "\x1b[38;5;244matuin")
+	send(t, fd, "\x1b[103;5u\r")
+	expect_text(t, fd, "\x1b[?2004lshared-atuin\r\n")
+	expect_text(t, fd, "wayu> ")
+	send(t, fd, "echo shared-")
+	expect_text(t, fd, "\x1b[38;5;244matuin")
+	send(t, fd, "\x10")
+	expect_text(t, fd, "\x1b[38;5;244mother")
+	send(t, fd, "\x07\r")
+	expect_text(t, fd, "\x1b[?2004lshared-other\r\n")
+	expect_text(t, fd, "wayu> ")
+	send(t, fd, "wayu_test_")
+	expect_text(t, fd, "\x1b[38;5;244mexecutable")
+}
+
+
+@(test)
+native_argument_completion :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+
+	sh := cli
+	sh.binary = "/bin/sh"
+	if _, status := run_cli(t, sh, "-c", "command -v fish"); status != 0 {
+		return
+	}
+
+	dir := fmt.tprintf("%s/.local/share/wayu/completions", cli.home)
+	testing.expect_value(t, os.make_directory_all(dir), nil)
+	write_fixture(
+		t,
+		fmt.tprintf("%s/printf.fish", dir),
+		"complete -c printf -f -a 'preview previous'\n",
+	)
+	checked_cli(t, cli, "alias", "add", "pa", "printf")
+	fd, pid := start_native_pty(t, cli)
+	defer {
+		posix.close(fd)
+		posix.kill(pid, .SIGKILL)
+		rc: c.int
+		for posix.waitpid(pid, &rc, {}) < 0 && posix.errno() == .EINTR {}
+	}
+
+	expect_text(t, fd, "wayu> ")
+	send(t, fd, "pa prx end\x1b[D\x1b[D\x1b[D\x1b[D\x1b[D\t")
+	expect_text(t, fd, "pa preview end")
+	send(t, fd, "\t")
+	expect_text(t, fd, "pa previous end")
 }

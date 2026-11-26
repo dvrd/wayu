@@ -89,6 +89,9 @@ Y = "2"
 
 	for bad in ([]string {
 			"[settings]\nautosuggest = \"yes\"\n",
+			"[autosuggest]\nenabled = 1\n",
+			"[autosuggest]\naccept_keybind = \"ctrl+shift+y\"\n",
+			"[autosuggest]\naccept_keybind = [\"ctrl+y\"]\n",
 			"[settings]\nautosuggest_style = 8\n",
 			"[settings]\nautosuggest_style = \"\"\n",
 		}) {

@@ -208,16 +208,16 @@ test_prompt_toggle_keymap :: proc(t: ^testing.T) {
 		code := wayu.generate_interactive_prompt("", icfg)
 		defer delete(code)
 		vi := strings.index(code, "bindkey -v")
-		bind := strings.index(code, "bindkey -M viins '^P' _wayu_toggle_prompt")
+		bind := strings.index(code, "bindkey -M viins '^G' _wayu_toggle_prompt")
 		testing.expect(t, vi >= 0 && bind > vi, "toggle bound in viins after bindkey -v")
 		testing.expect(
 			t,
-			strings.contains(code, "bindkey -M vicmd '^P' _wayu_toggle_prompt"),
+			strings.contains(code, "bindkey -M vicmd '^G' _wayu_toggle_prompt"),
 			"and in vicmd",
 		)
 		testing.expect(
 			t,
-			!strings.contains(code, "bindkey '^P'"),
+			!strings.contains(code, "bindkey '^G'"),
 			"never into the current main keymap",
 		)
 	}
@@ -229,7 +229,7 @@ test_prompt_toggle_keymap :: proc(t: ^testing.T) {
 		defer delete(code)
 		testing.expect(
 			t,
-			strings.contains(code, "bindkey -M emacs '^P' _wayu_toggle_prompt"),
+			strings.contains(code, "bindkey -M emacs '^G' _wayu_toggle_prompt"),
 			"emacs keymap without vi mode",
 		)
 		testing.expect(t, !strings.contains(code, "bindkey -v"), "no vi keymap forced")
@@ -593,6 +593,6 @@ toggle_key = "^X'; touch pwn"
 	)
 	code2 := wayu.generate_fish_prompt(cfg, icfg2)
 	defer delete(code2)
-	testing.expect(t, strings.contains(code2, `    bind \cp _wayu_toggle_prompt`), "^P -> \\cp")
+	testing.expect(t, strings.contains(code2, `    bind \cg _wayu_toggle_prompt`), "^G -> \\cg")
 	testing.expect(t, !strings.contains(code2, "fish_vi_key_bindings"), "no vi mode by default")
 }

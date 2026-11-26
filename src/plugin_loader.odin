@@ -3,13 +3,24 @@ package wayu
 import "core:fmt"
 import "core:mem/virtual"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import "core:time"
 
-make_default_autosuggest_accept_keys :: proc() -> []string {
+// Convert a readable Ctrl+letter chord to both terminal encodings.
+autosuggest_ctrl_letter :: proc(name: string) -> (u8, bool) {
+	if len(name) != 6 || !strings.equal_fold(name[:5], "ctrl+") {
+		return 0, false
+	}
+
+	letter := name[5] | 0x20
+	return letter, letter >= 'a' && letter <= 'z'
+}
+
+autosuggest_ctrl_keys :: proc(letter: u8) -> []string {
 	keys := make([]string, 2)
-	keys[0] = strings.clone("^Y")
-	keys[1] = strings.clone("^[[121;5u")
+	keys[0] = fmt.aprintf("^%c", letter - 32)
+	keys[1] = fmt.aprintf("^[[%d;5u", letter)
 	return keys
 }
 
@@ -21,12 +32,12 @@ plugin_accept_keys_from_toml :: proc() -> []string {
 		config_path := toml_get_config_path()
 		defer delete(config_path)
 		if !os.exists(config_path) {
-			return make_default_autosuggest_accept_keys()
+			return autosuggest_ctrl_keys('y')
 		}
 		ok: bool
 		uncached_raw, ok = safe_read_file(config_path)
 		if !ok {
-			return make_default_autosuggest_accept_keys()
+			return autosuggest_ctrl_keys('y')
 		}
 		content_str = string(uncached_raw)
 	}
@@ -37,14 +48,28 @@ plugin_accept_keys_from_toml :: proc() -> []string {
 	// Shared TOML parser: the array may span lines and hold comments.
 	arena: virtual.Arena
 	if virtual.arena_init_growing(&arena) != nil {
-		return make_default_autosuggest_accept_keys()
+		return autosuggest_ctrl_keys('y')
 	}
 	defer virtual.arena_destroy(&arena)
 	doc, _ := toml_doc_parse_alloc(content_str, virtual.arena_allocator(&arena))
 
+	return autosuggest_accept_keys(&doc)
+}
+
+autosuggest_accept_keys :: proc(doc: ^TomlDoc) -> []string {
+	if val := get_toml_value(doc, "autosuggest.accept_keybind"); val != nil {
+		if val.type == .STRING {
+			if letter, ok := autosuggest_ctrl_letter(val.str_val); ok {
+				return autosuggest_ctrl_keys(letter)
+			}
+		}
+
+		return autosuggest_ctrl_keys('y')
+	}
+
 	keys := make([dynamic]string)
-	defer if len(keys) == 0 do delete(keys)
-	if val := get_toml_value(&doc, "settings.autosuggestions_accept_keys");
+	defer delete(keys)
+	if val := get_toml_value(doc, "settings.autosuggestions_accept_keys");
 	   val != nil && val.type == .ARRAY {
 		for el in val.arr_val {
 			if el.type != .STRING || len(el.str_val) == 0 {
@@ -63,9 +88,9 @@ plugin_accept_keys_from_toml :: proc() -> []string {
 	}
 
 	if len(keys) == 0 {
-		return make_default_autosuggest_accept_keys()
+		return autosuggest_ctrl_keys('y')
 	}
-	return keys[:]
+	return slice.clone(keys[:])
 }
 
 generate_plugins_runtime_config :: proc(shell: ShellType) -> bool {

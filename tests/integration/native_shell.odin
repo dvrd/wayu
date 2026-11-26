@@ -58,6 +58,31 @@ native_shell :: proc(t: ^testing.T) {
 }
 
 @(test)
+native_alias_sources :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+
+	checked_cli(t, cli, "init", "--shell", "zsh")
+	checked_cli(t, cli, "alias", "add", "shared", "echo managed")
+	for dir in ([]string{"patterns/from_dir", "patterns/shared", "flat"}) {
+		testing.expect_value(t, os.make_directory_all(fmt.tprintf("%s/%s", cli.home, dir)), nil)
+	}
+
+	for file in ([]string{"patterns/ignored_file", "flat/from_file", "flat/from_dir"}) {
+		write_fixture(t, fmt.tprintf("%s/%s", cli.home, file), "")
+	}
+
+	write_fixture(
+		t,
+		fmt.tprintf("%s/.config/wayu/alias-sources.conf", cli.home),
+		"dir ~/missing echo missing\ndir ~/patterns echo dir-{name}\ndir ~/flat echo file-{name}\n",
+	)
+	out := checked_cli(t, cli, "shell", "run", "from_dir 'one two'; from_file; shared")
+	testing.expect_value(t, out, "dir-from_dir one two\nfile-from_file\nmanaged\n")
+	expect_exit(t, cli, 127, "shell", "run", "ignored_file")
+}
+
+@(test)
 native_managed_functions :: proc(t: ^testing.T) {
 	cli := new_cli(t)
 	defer os.remove_all(cli.home)
@@ -91,4 +116,65 @@ native_managed_functions :: proc(t: ^testing.T) {
 		)
 		testing.expect_value(t, out, "<one two>\n<it's three>\n<>\n<shared>\n")
 	}
+}
+
+@(test)
+native_zoxide :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+	config := fmt.tprintf("%s/.config/wayu", cli.home)
+	dest := fmt.tprintf("%s/project with spaces", cli.home)
+	testing.expect_value(t, os.make_directory_all(config), nil)
+	testing.expect_value(t, os.make_directory_all(dest), nil)
+	bin := fmt.tprintf("%s/zoxide", cli.home)
+	write_fixture(
+		t,
+		bin,
+		`#!/bin/sh
+case "$1" in
+add) printf '%s\n' "$3" >> "$HOME/visits" ;;
+query) [ "$2" = --exclude ] && [ "$4" = -- ] && [ "$5" = project ] && [ "$6" = words ] || exit 4
+       printf '%s/project with spaces\n' "$HOME" ;;
+esac
+`,
+	)
+	testing.expect_value(t, os.chmod(bin, {.Read_User, .Write_User, .Execute_User}), nil)
+	set_cli_env(&cli, "PATH", fmt.tprintf("%s:/usr/bin:/bin", cli.home))
+	file := fmt.tprintf("%s/wayu.toml", config)
+	write_fixture(t, file, "[tools]\nzoxide = { args = \"init zsh\" }\n")
+	sh := cli
+	sh.binary = "/bin/sh"
+	home := strings.trim_space(checked_cli(t, sh, "-c", `cd "$HOME" && pwd -P`))
+	physical_dest := fmt.tprintf("%s/project with spaces", home)
+	out := checked_cli(t, cli, "shell", "run", "z; z project words; pwd; z -; pwd")
+	testing.expect_value(t, out, fmt.tprintf("%s\n%s\n", physical_dest, home))
+	testing.expect(t, !os.exists(fmt.tprintf("%s/visits", cli.home)))
+	expect_exit(t, cli, 4, "shell", "run", "z missing")
+	write_fixture(t, file, "[tools]\nzoxide = { args = \"init zsh --cmd jump --hook none\" }\n")
+	out = checked_cli(t, cli, "shell", "run", "jump project words; pwd")
+	testing.expect_value(t, out, fmt.tprintf("%s\n", physical_dest))
+	expect_exit(t, cli, 127, "shell", "run", "z")
+}
+
+@(test)
+native_jump_without_zoxide :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+	set_cli_env(&cli, "PATH", "/usr/bin:/bin")
+	for dir in ([]string{"alpha/project", "beta/project"}) {
+		testing.expect_value(t, os.make_directory_all(fmt.tprintf("%s/%s", cli.home, dir)), nil)
+	}
+	checked_cli(
+		t,
+		cli,
+		"shell",
+		"run",
+		`cd "$HOME/alpha/project"; cd "$HOME/beta/project"; cd "$HOME/alpha/project"; cd "$HOME"`,
+	)
+	out := checked_cli(t, cli, "shell", "run", `z PROJECT && pwd; z beta proj && pwd`)
+	lines := strings.split(strings.trim_space(out), "\n", context.temp_allocator)
+	testing.expect_value(t, len(lines), 2)
+	testing.expect(t, strings.has_suffix(lines[0], "/alpha/project"))
+	testing.expect(t, strings.has_suffix(lines[1], "/beta/project"))
+	expect_exit(t, cli, 1, "shell", "run", "z absent-directory")
 }

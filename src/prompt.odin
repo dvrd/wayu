@@ -1085,6 +1085,19 @@ generate_context_feature :: proc(b: ^strings.Builder, contexts: ^PromptConfigFul
 // Entries with characters outside a conservative filename/glob set are
 // skipped so a config value can never inject shell code. Returns a
 // temp-allocated string ("" when no entry is usable).
+prompt_detect_pattern :: proc(item: string) -> (safe, is_glob: bool) {
+	for c in transmute([]u8)item {
+		switch {
+		case is_env_var_char(c), c >= 0x80, strings.index_byte(".-/+@", c) >= 0:
+		case c == '*' || c == '?':
+			is_glob = true
+		case:
+			return false, false
+		}
+	}
+	return len(item) > 0, is_glob
+}
+
 context_detect_condition :: proc(detects: []string) -> string {
 	sb := strings.builder_make(context.temp_allocator)
 	n := 0
@@ -1093,20 +1106,7 @@ context_detect_condition :: proc(detects: []string) -> string {
 		if len(item) == 0 {
 			continue
 		}
-		safe := true
-		is_glob := false
-		for i in 0 ..< len(item) {
-			c := item[i]
-			switch {
-			case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-			case c == '.' || c == '_' || c == '-' || c == '/' || c == '+' || c == '@':
-			case c == '*' || c == '?':
-				is_glob = true
-			case c >= 0x80: // UTF-8 bytes in file names
-			case:
-				safe = false
-			}
-		}
+		safe, is_glob := prompt_detect_pattern(item)
 		if !safe {
 			continue
 		}
@@ -1336,8 +1336,8 @@ generate_separator_feature :: proc(b: ^strings.Builder) {
 // [prompt] vi_mode and [prompt.interactive] (see prompt_doc_parse).
 parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 	cfg := InteractiveConfig {
-		toggle_key        = "^P",
-		toggle_enabled    = false, // opt-in: ^P is history navigation
+		toggle_key        = "^G",
+		toggle_enabled    = false,
 		vi_mode           = false, // opt-in via [prompt] vi_mode = true (OKAMI-285)
 		vi_mode_indicator = true,
 		vi_insert_symbol  = "[I]",
@@ -1706,14 +1706,14 @@ function _wayu_update_git_info
 end
 `
 
-PromptFishContext :: struct {
+PromptContextRule :: struct {
 	name:   string,
 	detect: []string,
 }
 
-// Built-in context detection for fish: (name, files or `*` globs). Same
+// Built-in context detection for Fish and the native shell: (name, files or `*` globs). Same
 // rules as the zsh BUILTIN table in generate_context_feature.
-PROMPT_FISH_BUILTIN_CONTEXTS := [?]PromptFishContext {
+PROMPT_BUILTIN_CONTEXTS := [?]PromptContextRule {
 	{"rust", {"Cargo.toml"}},
 	{"bun", {"bun.lockb", "bunfig.toml"}},
 	{"gleam", {"gleam.toml"}},
@@ -1941,7 +1941,7 @@ fish_prompt_emit_context :: proc(b: ^strings.Builder, icfg: InteractiveConfig) {
 			first = false
 		}
 	}
-	for entry in PROMPT_FISH_BUILTIN_CONTEXTS {
+	for entry in PROMPT_BUILTIN_CONTEXTS {
 		if configured[entry.name] {
 			continue
 		}
