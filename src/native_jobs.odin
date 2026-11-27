@@ -7,13 +7,14 @@ import "core:strings"
 import "core:sys/posix"
 
 Native_Process :: struct {
-	pid:    posix.pid_t,
-	state:  enum {
+	pid:         posix.pid_t,
+	state:       enum {
 		Running,
 		Stopped,
 		Done,
 	},
-	status: int,
+	status:      int,
+	interrupted: bool,
 }
 Native_Job :: struct {
 	id:        int,
@@ -64,6 +65,7 @@ native_job_update :: proc(job: ^Native_Job, block: bool) {
 				m.state = .Running
 			} else {
 				m.state = .Done
+				m.interrupted = posix.WIFSIGNALED(status) && posix.WTERMSIG(status) == .SIGINT
 				m.status =
 					int(posix.WEXITSTATUS(status)) if \
 						posix.WIFEXITED(status) else \
@@ -116,6 +118,14 @@ native_job_wait :: proc(s: ^Native_Session, job: ^Native_Job, resume: bool) -> i
 	if s.terminal && !native_job_done(job) {
 		job.has_modes = posix.tcgetattr(0, &job.modes) == .OK
 	}
+	if s.terminal {
+		for member in job.members {
+			if member.interrupted {
+				native_interrupt(.SIGINT); return 130
+			}
+		}
+	}
+
 	return job.members[len(job.members) - 1].status
 }
 

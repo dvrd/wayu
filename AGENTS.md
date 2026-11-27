@@ -2,6 +2,26 @@
 
 Agent instructions for AI coding assistants working in this repository.
 
+# Rules
+
+* Omit the alias when it repeats the last component of the import path. Write `import "core:encoding/endian"` and `import "shared:surf"`. Use an explicit alias when the code needs a different local name.
+
+* Leave a blank line between the closing `}` of a completed brace-delimited construct and the next statement or declaration. This applies to structs, procedures, control-flow statements, and braced literals, including single-line forms.
+
+*NOTE*: The only exception is an `if` immediately followed by a `defer` that frees memory. Keep those lines together:
+
+```odin
+data, err := os.read_entire_file(path, context.allocator)
+if err != nil {
+	return err
+}
+defer delete(data)
+
+process(data)
+```
+
+Leave a blank line after every complete `defer` statement, including between consecutive defers and before a closing brace. For a deferred block, place the blank line after its closing brace.
+
 ## Project Overview
 
 wayu is a native shell and shell configuration manager written in Odin. It manages PATH entries, aliases, environment constants, `[tools]` loaders, a native prompt (zsh, fish), plugins, functions and completions. User-edited files live in the config dir `~/.config/wayu/` (`WAYU_CONFIG_DIR`): wayu.toml, hooks.conf, extra.<ext>, tools.<ext>, functions/. Data wayu manages lives in the data dir `${XDG_DATA_HOME:-~/.local/share}/wayu/` (`WAYU_DATA_DIR`): entries.json (PATH entries, aliases, constants), plugins.json, and the generated runtime files (init.<ext>, core.<ext>, path_sync.<ext>, plugins, completions, backups, the lock).
@@ -260,4 +280,3 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 ## Known Stubs / In-Progress Areas
 
 None currently. List acknowledged incomplete features here (do not add workarounds; implement them properly).
-

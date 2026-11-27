@@ -8,6 +8,8 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+- The native shell now supports variables, command substitution, functions, loops, conditionals, and command lookup. Login shells read `login.wayu` in the Wayu config directory.
+
 - `wayu warp <words...>` jumps to the highest-scoring matching directory.
   Initialized interactive Zsh, Bash, and Fish sessions now record directory visits in the same history as the native shell.
   Use `wayu warp edit` to preview directories, adjust rank, or forget entries. `wayu warp search`

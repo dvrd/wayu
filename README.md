@@ -81,6 +81,14 @@ odin build build -out:build_it && ./build_it install
 `~/.local/bin`, which must be on your `PATH`), replacing it atomically, and
 warns when another `wayu` earlier on `PATH` shadows it.
 
+The build and install targets reuse the local executable when its build inputs
+and contents match the last successful build. The first run after upgrading
+the build driver creates this record. For a personal macOS install, run
+`./build_it install` as your normal user. `PREFIX=/` selects the protected
+`/bin` directory. For a system-wide install, build as your user, then run
+`sudo install -m 755 bin/wayu /usr/local/bin/wayu` and run
+`/usr/local/bin/wayu init` as your user.
+
 **Use one install method.** While Homebrew manages wayu, `./build_it install`
 and the install script refuse to run (`--force` / `WAYU_FORCE=1`
 override): two copies on `PATH` mean the shell runs one version and you

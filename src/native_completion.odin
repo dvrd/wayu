@@ -229,6 +229,12 @@ native_command_names :: proc(s: ^Native_Session, choices: ^map[string]bool, pref
 			choices^[name] = true
 		}
 	}
+	for name in s.definitions {
+		if strings.has_prefix(name, prefix) {
+			choices^[name] = true
+		}
+	}
+
 	for name in s.functions {
 		if strings.has_prefix(name, prefix) {
 			choices^[name] = true

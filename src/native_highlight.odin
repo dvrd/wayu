@@ -146,6 +146,8 @@ native_highlight_command :: proc(h: ^Native_Highlight, s: ^Native_Session, raw: 
 	}
 	if raw == name && name in s.aliases {
 		style = "alias"
+	} else if name in s.definitions {
+		style = "function"
 	} else if native_is_builtin(s, name) {
 		style = "builtin"
 	} else if name in s.functions {

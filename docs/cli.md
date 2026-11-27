@@ -2,6 +2,8 @@
 
 ```
 wayu                                   # interactive native shell
+wayu -l | --login                      # start a login shell
+wayu -lc <command>                     # evaluate a command after login startup
 wayu -c <command>                      # evaluate a command and return its status
 wayu <command> [<action>] [arguments] [flags]
 ```
@@ -725,9 +727,19 @@ Use `wayu warp edit` to browse or edit this history.
 Managed functions in Bash, zsh, or Fish run in the corresponding interpreter
 as child processes. Directory and environment changes inside a managed
 function are local to that process. Shell-specific editor plugins and rc files
-belong to their respective interpreters. The beta supports simple commands,
-pipelines, and command lists. Use a script with a shebang for shell-specific
-syntax such as Bash loops or command substitution.
+belong to their respective interpreters. Use native functions to change the current session, for example
+`mkcd() { mkdir -p "$1" && cd "$1"; }`. Functions accept positional parameters,
+`"$@"`, `$#`, and `return [status]`. Use `if/elif/else/fi`, `for name in ...; do ...; done`,
+`while`, and `until` at the prompt, in a sourced file, or with `-c`. Use `break` to leave the nearest loop and `continue` to skip to its next iteration.
+
+A standalone assignment such as `editor=vim` sets a shell variable. Use
+`export editor` to pass it to children or `EDITOR=vim git commit` for one command.
+`${editor:-vi}` supplies a default when the variable is unset or empty.
+`branch=$(git branch --show-current)` captures stdout and trims trailing newlines. Double-quote a substitution to keep its output in one argument.
+Use `type name`, `where name`, or `command -v name` to look up a command.
+
+Login sessions read `login.wayu` from the Wayu config directory before interactive
+`config.wayu`. Start one with `wayu -l`, `wayu --login`, or `wayu -lc 'command'`. Arguments after the command string set `$0`, `$1`, and the remaining positional parameters.
 
 Interactive sessions leave a blank line before each subsequent prompt.
 Ctrl+L clears the visible screen and redraws the prompt, preserving the current

@@ -29,6 +29,7 @@ ShellDialect :: enum {
 ShellWord :: struct {
 	text:   string,
 	active: []bool,
+	quoted: bool,
 }
 
 ShellTokenKind :: enum {
@@ -37,9 +38,10 @@ ShellTokenKind :: enum {
 }
 
 ShellToken :: struct {
-	kind: ShellTokenKind,
-	op:   string, // Op only: operator text (slice of the source)
-	word: ShellWord, // Word only
+	kind:       ShellTokenKind,
+	start, end: int,
+	op:         string, // Op only: operator text (slice of the source)
+	word:       ShellWord, // Word only
 }
 
 // Tokens between two unquoted newlines. Line numbers are 1-based and
@@ -144,6 +146,7 @@ shell_parse_statements :: proc(
 	}
 
 	for i < len(s) {
+		token_start := i
 		c := s[i]
 		switch {
 		case c == '\n':
@@ -168,14 +171,20 @@ shell_parse_statements :: proc(
 				if i < len(s) && (s[i] == symbol || s[i] == '&') {
 					i += 1
 				}
-				append(&cur.tokens, ShellToken{kind = .Op, op = s[start:i]})
+				append(
+					&cur.tokens,
+					ShellToken{start = token_start, end = i, kind = .Op, op = s[start:i]},
+				)
 			} else {
 				i = start
 				w, err := shell_read_word(s, &i, &line, dialect, native_parameters)
 				if err != "" {
 					fail(&out, &cur, s[i:], line, err); return out
 				}
-				append(&cur.tokens, ShellToken{kind = .Word, word = w})
+				append(
+					&cur.tokens,
+					ShellToken{start = token_start, end = i, kind = .Word, word = w},
+				)
 			}
 		case shell_is_op_byte(c):
 			start := i
@@ -190,7 +199,7 @@ shell_parse_statements :: proc(
 						    s[i] == '>') {i += 1}
 			}
 			op := s[start:i]
-			append(&cur.tokens, ShellToken{kind = .Op, op = op})
+			append(&cur.tokens, ShellToken{start = token_start, end = i, kind = .Op, op = op})
 			if strings.has_prefix(op, "<<") && op != "<<<" {
 				fail(&out, &cur, s[i:], line, "here-document")
 				return out
@@ -201,7 +210,7 @@ shell_parse_statements :: proc(
 				fail(&out, &cur, s[i:], line, err)
 				return out
 			}
-			append(&cur.tokens, ShellToken{kind = .Word, word = w})
+			append(&cur.tokens, ShellToken{start = token_start, end = i, kind = .Word, word = w})
 		}
 	}
 	flush(&out, &cur, line)
@@ -430,10 +439,15 @@ shell_read_word :: proc(
 	w.active = make([dynamic]bool)
 
 	ok := true
+	quoted := false
 	loop: for i^ < len(s) {
 		c := s[i^]
 		if c == '\n' || shell_is_blank(c) || shell_is_op_byte(c) {
 			break loop
+		}
+
+		if c == '\'' || c == '"' {
+			quoted = true
 		}
 
 		switch c {
@@ -561,7 +575,7 @@ shell_read_word :: proc(
 	active := make([]bool, len(w.active))
 	copy(active, w.active[:])
 	wb_destroy(&w)
-	return ShellWord{text = text, active = active}, ""
+	return ShellWord{text = text, active = active, quoted = quoted}, ""
 }
 
 // Body of a double-quoted string; i points just past the opening quote.
@@ -599,8 +613,12 @@ shell_read_dq :: proc(
 			if i^ + 1 < len(s) && (s[i^ + 1] == '(' || (dialect == .POSIX && s[i^ + 1] == '{')) {
 				wb_put(w, '$', true)
 				i^ += 1
+				opening := len(w.active)
 				if e := shell_copy_expansion(s, i, line, w, dialect, true); len(e) > 0 {
 					return e
+				}
+				if native_parameters && strings.to_string(w.text)[opening] == '(' {
+					w.active[opening] = false
 				}
 				continue
 			}
@@ -685,9 +703,9 @@ shell_read_ansi_c :: proc(s: string, i: ^int, line: ^int, w: ^WordBuf) -> string
 shell_native_parameter :: proc(source: string, i: ^int, w: ^WordBuf) {
 	i^ += 1
 	start := i^
-	if start < len(source) && source[start] == '?' {
+	if start < len(source) && (strings.index_byte("?#@0123456789", source[start]) >= 0) {
 		wb_put(w, '$', true)
-		wb_put(w, '?', true)
+		wb_put(w, source[start], true)
 		i^ += 1
 		return
 	}
@@ -702,4 +720,45 @@ shell_native_parameter :: proc(source: string, i: ^int, w: ^WordBuf) {
 		i^ += 1
 	}
 	wb_put(w, '}', true)
+}
+
+
+shell_expansion_end :: proc(text: string, start: int) -> int {
+	i, line := start, 1
+	w: WordBuf
+	strings.builder_init(&w.text, context.temp_allocator)
+	w.active = make([dynamic]bool, context.temp_allocator)
+	if shell_copy_expansion(text, &i, &line, &w, .POSIX, false) != "" {
+		return -1
+	}
+
+	return i
+}
+
+native_default_word :: proc(text: string, status: int, s: ^Native_Session) -> (string, bool) {
+	b := strings.builder_make(context.temp_allocator)
+	i, line := 0, 1
+	for i < len(text) {
+		if shell_is_blank(text[i]) || shell_is_op_byte(text[i]) || text[i] == '\n' {
+			strings.write_byte(&b, text[i])
+			i += 1
+			continue
+		}
+
+		w, err := shell_read_word(text, &i, &line, .POSIX, true)
+		if err != "" {
+			return "", false
+		}
+
+		value, ok := native_expand(w, status, false, s)
+		delete(w.text)
+		delete(w.active)
+		if !ok {
+			return "", false
+		}
+
+		strings.write_string(&b, value)
+	}
+
+	return strings.to_string(b), true
 }

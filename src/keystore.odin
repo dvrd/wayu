@@ -437,13 +437,13 @@ keystore_decode_hex :: proc(text: string) -> (key: [SECRETS_KEY_SIZE]byte, ok: b
 	if len(t) != 2 * SECRETS_KEY_SIZE {
 		return
 	}
-	raw, dec_ok := hex.decode(transmute([]byte)t, context.temp_allocator)
-	if !dec_ok || len(raw) != SECRETS_KEY_SIZE {
-		return
+
+	_, ok = hex.decode_into_buffer(transmute([]byte)t, key[:])
+	if !ok {
+		crypto.zero_explicit(&key, size_of(key))
 	}
-	copy(key[:], raw)
-	crypto.zero_explicit(raw_data(raw), len(raw))
-	return key, true
+
+	return
 }
 
 // The text of a master-key item: the 64-hex key, then (multi-machine

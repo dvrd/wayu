@@ -109,7 +109,7 @@ native_alias_tokens :: proc(
 				delete_key(active, name)
 				continue
 			}
-			at_head^ = false
+			at_head^ = native_assignment(t.word)
 		}
 		append(output, t)
 	}

@@ -116,6 +116,8 @@
         <div class="md">
 <h1 id="wayu-cli-reference">wayu CLI reference</h1>
 <div class="code"><pre><code>wayu                                   # interactive native shell
+wayu -l | --login                      # start a login shell
+wayu -lc &lt;command&gt;                     # evaluate a command after login startup
 wayu -c &lt;command&gt;                      # evaluate a command and return its status
 wayu &lt;command&gt; [&lt;action&gt;] [arguments] [flags]
 </code></pre><button type="button" class="icon-btn copy-btn" aria-label="Copy code"><svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
@@ -1352,9 +1354,17 @@ All keyword lookups use Wayu’s history.</p>
 <p>Managed functions in Bash, zsh, or Fish run in the corresponding interpreter
 as child processes. Directory and environment changes inside a managed
 function are local to that process. Shell-specific editor plugins and rc files
-belong to their respective interpreters. The beta supports simple commands,
-pipelines, and command lists. Use a script with a shebang for shell-specific
-syntax such as Bash loops or command substitution.</p>
+belong to their respective interpreters. Use native functions to change the current session, for example
+<code>mkcd() { mkdir -p &quot;$1&quot; &amp;&amp; cd &quot;$1&quot;; }</code>. Functions accept positional parameters,
+<code class="nw">&quot;$@&quot;</code>, <code class="nw">$#</code>, and <code class="nw">return [status]</code>. Use <code class="nw">if/elif/else/fi</code>, <code>for name in ...; do ...; done</code>,
+<code class="nw">while</code>, and <code class="nw">until</code> at the prompt, in a sourced file, or with <code class="nw">-c</code>. Use <code class="nw">break</code> to leave the nearest loop and <code class="nw">continue</code> to skip to its next iteration.</p>
+<p>A standalone assignment such as <code class="nw">editor=vim</code> sets a shell variable. Use
+<code class="nw">export editor</code> to pass it to children or <code class="nw">EDITOR=vim git commit</code> for one command.
+<code class="nw">${editor:-vi}</code> supplies a default when the variable is unset or empty.
+<code>branch=$(git branch --show-current)</code> captures stdout and trims trailing newlines. Double-quote a substitution to keep its output in one argument.
+Use <code class="nw">type name</code>, <code class="nw">where name</code>, or <code class="nw">command -v name</code> to look up a command.</p>
+<p>Login sessions read <code class="nw">login.wayu</code> from the Wayu config directory before interactive
+<code class="nw">config.wayu</code>. Start one with <code class="nw">wayu -l</code>, <code class="nw">wayu --login</code>, or <code class="nw">wayu -lc &#39;command&#39;</code>. Arguments after the command string set <code class="nw">$0</code>, <code class="nw">$1</code>, and the remaining positional parameters.</p>
 <p>Interactive sessions leave a blank line before each subsequent prompt.
 Ctrl+L clears the visible screen and redraws the prompt, preserving the current
 command and cursor position. Configure suggestion acceptance with

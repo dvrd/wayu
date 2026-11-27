@@ -48,7 +48,8 @@ native_shell :: proc(t: ^testing.T) {
 	expect_exit(t, cli, 23, "-c", "exit 23; false")
 	expect_exit(t, cli, 127, "-c", "wayu_missing_test_executable")
 	expect_exit(t, cli, 2, "-c", "printf side-effect > \"$HOME/bad\"; printf |")
-	expect_exit(t, cli, 2, "-c", `if false; then printf wrong > "$HOME/bad"; fi`)
+	expect_exit(t, cli, 2, "-c", `echo bad > "$HOME/bad"; if true; then echo missing-fi`)
+	expect_exit(t, cli, 0, "-c", `if false; then printf wrong > "$HOME/bad"; fi`)
 	testing.expect(t, !os.exists(fmt.tprintf("%s/bad", cli.home)))
 	out = checked_cli(t, cli, "-c", "yes ok | head -n 100000 | wc -l")
 	testing.expect_value(t, strings.trim_space(out), "100000")
@@ -282,4 +283,59 @@ warp_shell_init_visits :: proc(t: ^testing.T) {
 		testing.expect_value(t, visits[dir].count, 2)
 		testing.expect_value(t, visits[cli.home].count, 1)
 	}
+}
+
+@(test)
+native_shell_language :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+
+	checked_cli(t, cli, "init", "--shell", "zsh")
+	write_fixture(t, fmt.tprintf("%s/.config/wayu/login.wayu", cli.home), "login_mode=yes")
+	out := checked_cli(
+		t,
+		cli,
+		"-lc",
+		`mkcd() { mkdir -p "$1" && cd "$1"; }
+mkcd "$HOME/dir with spaces"
+basename "$PWD"
+echo "${login_mode:-missing}"
+name=outer
+name=inner printenv name
+if printenv name; then echo leaked; elif test "$name" = outer; then echo local; fi
+export name
+printenv name
+show() { for item in "$@"; do echo "$item"; done; return 7; }
+show 'two words' three
+echo "$?"
+n=yes
+until test "$n" = no; do n=no; done
+while test "$n" = no; do n=done; done
+echo "$n"
+value=$(printf 'a b\n\n')
+echo "${value:-$(echo wrong)}" "${missing:-$(echo fallback)}"
+type mkcd
+command -v cd
+where mkcd
+for x in $(printf 'a b'); do echo "$x"; done`,
+	)
+	testing.expect_value(
+		t,
+		out,
+		"dir with spaces\nyes\ninner\nlocal\nouter\ntwo words\nthree\n7\ndone\na b fallback\nmkcd is a function\ncd\nmkcd is a function\na\nb\n",
+	)
+	testing.expect_value(
+		t,
+		checked_cli(
+			t,
+			cli,
+			"-lc",
+			`echo "$0:$#:$1"; for x in a b c; do if test "$x" = a; then continue; fi; echo "$x"; break; done`,
+			"script",
+			"arg",
+		),
+		"script:1:arg\nb\n",
+	)
+	expect_exit(t, cli, 1, "-c", "v=$(false)")
+	expect_exit(t, cli, 1, "-c", "command -v wayu_missing_command_xyz")
 }

@@ -239,18 +239,28 @@ main :: proc() {
 		return
 	}
 
-	if len(os.args) == 1 {
-		run_native_shell()
-		return
+	shell_args := os.args[1:]
+	login := strings.has_prefix(os.args[0], "-")
+	if len(shell_args) > 0 && (shell_args[0] == "-l" || shell_args[0] == "--login") {
+		login = true
+		shell_args = shell_args[1:]
 	}
 
-	if os.args[1] == "-c" {
-		if len(os.args) != 3 {
-			fmt.eprintln("Usage: wayu -c <command>")
+	if len(shell_args) == 0 {
+		run_native_shell(login = login)
+		return
+	}
+	if shell_args[0] == "-c" || shell_args[0] == "-lc" || shell_args[0] == "-cl" {
+		if len(shell_args) < 2 {
+			fmt.eprintln("Usage: wayu [-l] -c <command>")
 			wayu_exit(EXIT_USAGE)
 		}
-		run_native_shell(os.args[2])
+		run_native_shell(shell_args[1], login || shell_args[0] != "-c", shell_args[2:])
 		return
+	}
+	if len(shell_args) != len(os.args) - 1 {
+		fmt.eprintln("wayu: expected -c after login flag")
+		wayu_exit(EXIT_USAGE)
 	}
 
 	parsed := parse_args(os.args[1:])
@@ -722,7 +732,7 @@ print_help :: proc() {
 
 	print_section("USAGE:", EMOJI_USER)
 	fmt.printf("  wayu                    Start the native shell\n")
-	fmt.printf("  wayu -c <command>       Evaluate a shell command\n")
+	fmt.printf("  wayu [-l] -c <command>  Evaluate a shell command (-l loads login.wayu)\n")
 	fmt.printf("  wayu <command> [<action>] [arguments]\n")
 	fmt.println()
 

@@ -617,6 +617,8 @@ WayuGlobalFlag :: struct {
 WAYU_GLOBAL_FLAGS := [?]WayuGlobalFlag {
 	{{"--help", "-h"}, "Show help", .NONE, false},
 	{{"--version", "-v"}, "Show version", .NONE, true},
+	{{"--login", "-l"}, "Start a login shell", .NONE, true},
+	{{"-lc"}, "Evaluate a login shell command", .ANY, true},
 	{{"-c"}, "Evaluate a native shell command", .ANY, true},
 	{{"--dry-run", "-n"}, "Preview changes without writing", .NONE, false},
 	{{"--yes", "-y"}, "Skip confirmation prompts", .NONE, false},

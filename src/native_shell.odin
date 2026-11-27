@@ -1,5 +1,6 @@
 package wayu
 
+import "base:intrinsics"
 import "core:c"
 import "core:fmt"
 import "core:mem/virtual"
@@ -8,27 +9,54 @@ import "core:strconv"
 import "core:strings"
 import "core:sys/posix"
 
+native_interrupted: bool
+
+native_interrupt :: proc "c" (_: posix.Signal) {
+	intrinsics.volatile_store(&native_interrupted, true)
+}
+
+native_stop_list :: proc(s: ^Native_Session) -> bool {
+	if s.terminal && intrinsics.volatile_load(&native_interrupted) {
+		s.status = 130
+		return true
+	}
+
+	return s.exiting || s.returning || s.loop_action != .None
+}
+
 Native_Session :: struct {
-	jump_echo:      bool,
-	jump_cmd:       string,
-	jump_hook:      string,
-	functions:      map[string]Native_Function,
-	vi_register:    string,
-	source_depth:   int,
-	aliases:        map[string][dynamic]ShellStatement,
-	vi_mode:        bool,
-	prompt:         PromptConfigFull,
-	prompt_options: InteractiveConfig,
-	prompt_cache:   Native_Prompt_Cache,
-	highlight:      ^Native_Highlight_Styles,
-	suggest:        Native_Suggest_Config,
-	minimal_prompt: bool,
-	status:         int,
-	exiting:        bool,
-	terminal:       bool,
-	modes:          posix.termios,
-	jobs:           [dynamic]Native_Job,
-	next_job:       int,
+	locals, definitions: map[string]string,
+	shell_name:          string,
+	loop_depth:          int,
+	loop_action:         enum {
+		None,
+		Break,
+		Continue,
+	},
+	positional:          []string,
+	returning:           bool,
+	function_depth:      int,
+	sub_status:          int,
+	jump_echo:           bool,
+	jump_cmd:            string,
+	jump_hook:           string,
+	functions:           map[string]Native_Function,
+	vi_register:         string,
+	source_depth:        int,
+	aliases:             map[string][dynamic]ShellStatement,
+	vi_mode:             bool,
+	prompt:              PromptConfigFull,
+	prompt_options:      InteractiveConfig,
+	prompt_cache:        Native_Prompt_Cache,
+	highlight:           ^Native_Highlight_Styles,
+	suggest:             Native_Suggest_Config,
+	minimal_prompt:      bool,
+	status:              int,
+	exiting:             bool,
+	terminal:            bool,
+	modes:               posix.termios,
+	jobs:                [dynamic]Native_Job,
+	next_job:            int,
 }
 Native_Redirect :: struct {
 	target: posix.FD,
@@ -140,7 +168,21 @@ native_parse :: proc(stmts: []ShellStatement) -> ([]Native_Pipeline, string) {
 	return result[:], ""
 }
 
-native_expand :: proc(w: ShellWord, last: int, pattern := false) -> (string, bool) {
+Native_Field_Splits :: struct {
+	offsets:          [dynamic]int,
+	unquoted_capture: bool,
+}
+
+native_expand :: proc(
+	w: ShellWord,
+	last: int,
+	pattern := false,
+	s: ^Native_Session = nil,
+	splits: ^Native_Field_Splits = nil,
+) -> (
+	string,
+	bool,
+) {
 	b := strings.builder_make(context.temp_allocator)
 	for i := 0; i < len(w.text); i += 1 {
 		ch := w.text[i]
@@ -156,8 +198,55 @@ native_expand :: proc(w: ShellWord, last: int, pattern := false) -> (string, boo
 				i += 1
 				continue
 			}
+			if strings.index_byte("#@0123456789", w.text[start]) >= 0 {
+				if s == nil {
+					return "", false
+				}
+				symbol := w.text[start]
+				if symbol == '#' {
+					strings.write_string(&b, fmt.tprintf("%d", len(s.positional)))
+				} else if symbol == '@' {
+					native_expand_literal(
+						&b,
+						strings.join(s.positional, " ", context.temp_allocator),
+						pattern,
+					)
+				} else if symbol == '0' {
+					strings.write_string(&b, s.shell_name)
+				} else if n := int(symbol - '1'); n < len(s.positional) {
+					native_expand_literal(&b, s.positional[n], pattern)
+				}
+				i += 1
+				continue
+			}
 			if w.text[start] == '(' {
-				return "", false
+				if s == nil {
+					return "", false
+				}
+				end := shell_expansion_end(w.text, start)
+				if end < 0 {
+					return "", false
+				}
+				value, ok := native_capture(s, w.text[start + 1:end - 1])
+				if !ok {
+					return "", false
+				}
+				if splits != nil && w.active[start] {
+					splits.unquoted_capture = true
+					from := 0
+					for ch, j in transmute([]u8)value {
+						if ch == ' ' || ch == '\t' || ch == '\n' {
+							native_expand_literal(&b, value[from:j], pattern)
+							append(&splits.offsets, len(strings.to_string(b)))
+							from = j + 1
+						}
+					}
+					native_expand_literal(&b, value[from:], pattern)
+				} else {
+					native_expand_literal(&b, value, pattern)
+				}
+				i = end - 1
+				continue
 			}
 			braced := w.text[start] == '{'
 			if braced {
@@ -165,21 +254,34 @@ native_expand :: proc(w: ShellWord, last: int, pattern := false) -> (string, boo
 			}
 			end := start
 			for end < len(w.text) && w.active[end] && is_env_var_char(w.text[end]) {end += 1}
-			if braced &&
-			   (end >= len(w.text) ||
-					   w.text[end] != '}' ||
-					   !is_shell_var_name(w.text[start:end])) {
+			if braced && !is_shell_var_name(w.text[start:end]) {
+				return "", false
+			}
+			if braced && strings.has_prefix(w.text[end:], ":-") {
+				close := shell_expansion_end(w.text, start - 1)
+				if close < 0 {
+					return "", false
+				}
+				value := native_value(s, w.text[start:end])
+				if value == "" {
+					fallback, ok := native_default_word(w.text[end + 2:close - 1], last, s)
+					if !ok {
+						return "", false
+					}
+					value = fallback
+				}
+				native_expand_literal(&b, value, pattern)
+				i = close - 1
+				continue
+			}
+			if braced && (end >= len(w.text) || w.text[end] != '}') {
 				return "", false
 			}
 			if end == start {
 				strings.write_byte(&b, ch)
 				continue
 			}
-			native_expand_literal(
-				&b,
-				os.get_env(w.text[start:end], context.temp_allocator),
-				pattern,
-			)
+			native_expand_literal(&b, native_value(s, w.text[start:end]), pattern)
 			i = end - 1
 			if braced {
 				i += 1
@@ -207,42 +309,102 @@ native_expand_literal :: proc(b: ^strings.Builder, v: string, pattern: bool) {
 	}
 }
 
-native_arguments :: proc(w: ShellWord, status: int, args: ^[dynamic]string) -> bool {
-	value, ok := native_expand(w, status)
+native_arguments :: proc(w: ShellWord, s: ^Native_Session, args: ^[dynamic]string) -> bool {
+	if w.text == "$@" && w.active[0] {
+		append(args, ..s.positional)
+		return true
+	}
+	glob := false
+	for i := 0; i < len(w.text); i += 1 {
+		if w.active[i] &&
+		   w.text[i] == '$' &&
+		   i + 1 < len(w.text) &&
+		   (w.text[i + 1] == '{' || w.text[i + 1] == '(') {
+			end := shell_expansion_end(w.text, i + 1)
+			if end < 0 {
+				return false
+			}
+			i = end - 1
+		} else if w.active[i] &&
+		   strings.index_byte("*?[", w.text[i]) >= 0 &&
+		   !(i > 0 && w.text[i - 1] == '$' && w.active[i - 1]) {
+			glob = true
+		}
+	}
+	splits := Native_Field_Splits {
+		offsets = make([dynamic]int, context.temp_allocator),
+	}
+	value, ok := native_expand(w, s.status, glob, s, &splits)
 	if !ok || strings.contains(value, "\x00") {
 		return false
 	}
-	for ch, i in transmute([]u8)w.text {
-		if w.active[i] &&
-		   strings.index_byte("*?[", ch) >= 0 &&
-		   !(ch == '?' && i > 0 && w.active[i - 1] && w.text[i - 1] == '$') {
-			pattern, _ := native_expand(w, status, true)
-			matches: posix.glob_t
-			result := posix.glob(
-				strings.clone_to_cstring(pattern, context.temp_allocator),
-				{},
-				nil,
-				&matches,
-			)
-			defer posix.globfree(&matches)
-			if result == .SUCCESS {
-				for m in matches.gl_pathv[:matches.gl_pathc] {append(args, strings.clone(string(m), context.temp_allocator))}
-				return true
-			}
-			if result != .NOMATCH {
-				return false
-			}
-			break
+	if !splits.unquoted_capture {
+		return native_glob_field(value, glob, args)
+	}
+	begin := 0
+	for cut in splits.offsets {
+		if cut > begin && !native_glob_field(value[begin:cut], glob, args) {
+			return false
 		}
+		begin = cut
+	}
+	if len(value) > begin || (value == "" && w.quoted) {
+		return native_glob_field(value[begin:], glob, args)
+	}
+	return true
+}
+
+native_glob_field :: proc(field: string, glob: bool, args: ^[dynamic]string) -> bool {
+	value := field
+	if glob {
+		pattern := value
+		matches: posix.glob_t
+		result := posix.glob(
+			strings.clone_to_cstring(pattern, context.temp_allocator),
+			{},
+			nil,
+			&matches,
+		)
+		defer posix.globfree(&matches)
+		if result == .SUCCESS {
+			for m in matches.gl_pathv[:matches.gl_pathc] {append(args, strings.clone(string(m), context.temp_allocator))}
+			return true
+		}
+		if result != .NOMATCH {
+			return false
+		}
+		b := strings.builder_make(context.temp_allocator)
+		for i := 0; i < len(value); i += 1 {
+			if value[i] == '\\' && i + 1 < len(value) {
+				i += 1
+			}
+			strings.write_byte(&b, value[i])
+		}
+		value = strings.to_string(b)
 	}
 	append(args, value)
 	return true
 }
 
-NATIVE_BUILTINS :: [?]string{"cd", "export", "unset", "exit", "jobs", "fg", "bg", "source"}
+NATIVE_BUILTINS :: [?]string {
+	"cd",
+	"export",
+	"unset",
+	"exit",
+	"jobs",
+	"fg",
+	"bg",
+	"source",
+	"type",
+	"where",
+	"command",
+	"return",
+	"break",
+	"continue",
+}
 
 native_is_builtin :: proc(s: ^Native_Session, name: string) -> bool {
-	if name != "" && name == s.jump_cmd {
+	if name in s.definitions || name != "" && name == s.jump_cmd {
 		return true
 	}
 
@@ -279,7 +441,44 @@ native_builtin :: proc(s: ^Native_Session, args: []string) -> int {
 		return native_jump(s, args)
 	}
 
+	if body, ok := s.definitions[args[0]]; ok {
+		if s.function_depth >= 64 {
+			fmt.eprintln("wayu: function nesting too deep")
+			return 1
+		}
+		previous := s.positional
+		s.positional = args[1:]
+		s.function_depth += 1
+		native_eval(s, strings.clone(body, context.temp_allocator))
+		s.function_depth -= 1
+		s.positional = previous
+		s.returning = false
+		return s.status
+	}
 	switch args[0] {
+	case "where", "type", "command":
+		return native_lookup(s, args)
+	case "break", "continue":
+		if s.loop_depth == 0 || len(args) != 1 {
+			fmt.eprintfln("%s: requires an enclosing loop", args[0])
+			return EXIT_USAGE
+		}
+		s.loop_action = .Break if args[0] == "break" else .Continue
+		return 0
+	case "return":
+		if s.function_depth == 0 || len(args) > 2 {
+			return EXIT_USAGE
+		}
+		code := s.status
+		if len(args) == 2 {
+			v, ok := strconv.parse_int(args[1])
+			if !ok {
+				return EXIT_USAGE
+			}
+			code = v & 255
+		}
+		s.returning = true
+		return code
 	case "source":
 		if len(args) != 2 {
 			fmt.eprintln("usage: source FILE")
@@ -318,13 +517,18 @@ native_builtin :: proc(s: ^Native_Session, args: []string) -> int {
 				return EXIT_USAGE
 			}
 			if args[0] == "unset" {
+				native_forget(&s.locals, name)
 				if !os.unset_env(name) {
 					return 1
 				}
-			} else if eq != "" {
+			} else {
+				if eq == "" {
+					value = native_value(s, name)
+				}
 				if os.set_env(name, value) != nil {
 					return 1
 				}
+				native_forget(&s.locals, name)
 			}
 		}
 	case:
@@ -373,9 +577,9 @@ native_redirection :: proc(operator: string) -> (posix.FD, string, bool) {
 	return posix.FD(fd), op, true
 }
 
-native_redirect :: proc(cmd: Native_Command, status: int) -> bool {
+native_redirect :: proc(cmd: Native_Command, s: ^Native_Session) -> bool {
 	for r in cmd.redirects {
-		path, ok := native_expand(r.path, status)
+		path, ok := native_expand(r.path, s.status, false, s)
 		if !ok || strings.contains(path, "\x00") {
 			return false
 		}
@@ -431,8 +635,11 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 	for cmd, idx in p.commands {
 		args := make([dynamic]string, context.temp_allocator)
 		argv := make([dynamic]cstring, context.temp_allocator)
-		for w in cmd.words {
-			if !native_arguments(w, s.status, &args) {
+		prefix := 0
+		for prefix < len(cmd.words) && native_assignment(cmd.words[prefix]) {prefix += 1}
+		s.sub_status = 0
+		for w in cmd.words[prefix:] {
+			if !native_arguments(w, s, &args) {
 				fmt.eprintln("wayu: invalid word expansion")
 				failed = true
 				break
@@ -442,15 +649,38 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 		if failed {
 			break
 		}
-		name := args[0]
-		builtin := native_is_builtin(s, name) || native_warp_query(args[:])
+		only := len(args) == 0
+		name := ""
+		if !only {
+			name = args[0]
+		}
+		saved := make([dynamic]Native_Binding, context.temp_allocator)
+		defer native_restore(s, saved[:])
+		for w in cmd.words[:prefix] {
+			value, ok := native_expand(w, s.status, false, s)
+			if !ok || strings.contains(value, "\x00") {
+				failed = true
+				break
+			}
+			key, _, v := strings.partition(value, "=")
+			if only && len(p.commands) == 1 && !p.background {
+				native_assign(s, key, v)
+			} else {
+				append(&saved, native_bind(s, key, v))
+			}
+		}
+		if failed {
+			break
+		}
+
+		builtin := only || native_is_builtin(s, name) || native_warp_query(args[:])
 		if builtin && len(p.commands) == 1 && !p.background {
 			if grouped {
 				posix.close(gate[0])
 				posix.close(gate[1])
 			}
 			if len(cmd.redirects) == 0 {
-				return native_builtin(s, args[:])
+				return s.sub_status if only else native_builtin(s, args[:])
 			}
 			in_fd := posix.dup(posix.STDIN_FILENO)
 			out_fd := posix.dup(posix.STDOUT_FILENO)
@@ -467,10 +697,10 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 				posix.dup2(err_fd, posix.STDERR_FILENO)
 				posix.close(err_fd)
 			}
-			if in_fd < 0 || out_fd < 0 || err_fd < 0 || !native_redirect(cmd, s.status) {
+			if in_fd < 0 || out_fd < 0 || err_fd < 0 || !native_redirect(cmd, s) {
 				return 1
 			}
-			return native_builtin(s, args[:])
+			return s.sub_status if only else native_builtin(s, args[:])
 		}
 		launch := args[:]
 		if fn, found := s.functions[name]; found && !builtin {
@@ -513,10 +743,13 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 				}
 				posix.close(fds[1])
 			}
-			if !native_redirect(cmd, s.status) {
+			if !native_redirect(cmd, s) {
 				posix._exit(1)
 			}
 			if builtin {
+				if only {
+					posix._exit(c.int(s.sub_status))
+				}
 				if name == "fg" || name == "bg" {
 					fmt.eprintfln("%s: job control requires the foreground shell", name)
 					posix._exit(1)
@@ -609,6 +842,7 @@ native_continues :: proc(tokens: []ShellToken) -> bool {
 	if len(tokens) == 0 {
 		return false
 	}
+
 	last := tokens[len(tokens) - 1]
 	return last.kind == .Op && (last.op == "|" || last.op == "&&" || last.op == "||")
 }
@@ -616,58 +850,63 @@ native_continues :: proc(tokens: []ShellToken) -> bool {
 native_incomplete :: proc(source: string) -> bool {
 	parts := shell_parse_statements(source, .POSIX, true)
 	defer shell_statements_destroy(&parts)
+
 	if len(parts) == 0 {
 		return false
 	}
+
 	last := parts[len(parts) - 1]
+	parser := native_parser(nil, source, parts[:])
+	_ = native_list(&parser)
+
 	return(
 		strings.has_prefix(last.error, "unterminated") ||
 		last.error == "trailing backslash" ||
-		native_continues(last.tokens[:]) \
+		native_continues(last.tokens[:]) ||
+		parser.incomplete \
 	)
 }
 
 native_eval :: proc(s: ^Native_Session, source: string) {
 	stmts := shell_parse_statements(source, .POSIX, true)
 	defer shell_statements_destroy(&stmts)
-	expanded := make([dynamic]ShellStatement, context.temp_allocator)
-	active := make(map[string]bool, context.temp_allocator)
-	for stmt in stmts {
-		next := stmt
-		next.tokens = make([dynamic]ShellToken, context.temp_allocator)
-		head, target := true, false
-		native_alias_tokens(s, stmt.tokens[:], &next.tokens, &active, &head, &target)
-		if len(expanded) > 0 && native_continues(expanded[len(expanded) - 1].tokens[:]) {
-			prev := &expanded[len(expanded) - 1]
-			append(&prev.tokens, ..next.tokens[:])
-			prev.error = next.error
-		} else {
-			append(&expanded, next)
-		}
-	}
-	pipelines, err := native_parse(expanded[:])
-	if err != "" {
-		fmt.eprintfln("wayu: %s", err)
+
+	parser := native_parser(s, source, stmts[:])
+	nodes := native_list(&parser)
+	if parser.err != "" || parser.i != len(parser.tokens) {
+		fmt.eprintfln("wayu: %s", parser.err if parser.err != "" else "unexpected block delimiter")
 		s.status = 2
 		return
 	}
-	for p in pipelines {
-		if p.condition == "&&" && s.status != 0 || p.condition == "||" && s.status == 0 {
-			continue
-		}
-		s.status = native_pipeline(s, p)
-		if s.exiting {
-			break
-		}
-	}
+	native_run_list(s, nodes)
 }
 
-run_native_shell :: proc(command: Maybe(string) = nil) {
+run_native_shell :: proc(
+	command: Maybe(string) = nil,
+	login := false,
+	parameters: []string = nil,
+) {
 	s: Native_Session
+	s.shell_name = "wayu"
+	if len(parameters) > 0 {
+		s.shell_name = parameters[0]
+		s.positional = parameters[1:]
+	}
+	s.locals = make(map[string]string)
+	s.definitions = make(map[string]string)
 	s.aliases = make(map[string][dynamic]ShellStatement)
 	native_configure(&s)
 	native_jump_configure(&s)
 	native_functions_load(&s)
+	if login {
+		path := fmt.tprintf("%s/login.wayu", wayu.config)
+		if os.exists(path) {
+			s.status = native_source(&s, path)
+			if s.exiting {
+				wayu_exit(s.status)
+			}
+		}
+	}
 	if line, supplied := command.(string); supplied {
 		native_eval(&s, line)
 		wayu_exit(s.status)
@@ -699,7 +938,7 @@ run_native_shell :: proc(command: Maybe(string) = nil) {
 					.SIGTTOU,
 				}) {posix.signal(sig, auto_cast posix.SIG_IGN)}
 		}
-		posix.signal(.SIGINT, auto_cast posix.SIG_IGN)
+		posix.signal(.SIGINT, native_interrupt)
 		posix.signal(.SIGQUIT, auto_cast posix.SIG_IGN)
 	}
 	if interactive {
@@ -732,6 +971,7 @@ run_native_shell :: proc(command: Maybe(string) = nil) {
 			}
 			if len(line) > 0 {
 				_ = native_history_sync(&history, line)
+				intrinsics.volatile_store(&native_interrupted, false)
 				native_eval(&s, line)
 			}
 			free_all(context.temp_allocator)
