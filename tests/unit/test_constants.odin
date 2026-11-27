@@ -105,3 +105,11 @@ test_constant_name_extraction :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+@(test)
+test_constant_unescape_preserves_invalid_scalar :: proc(t: ^testing.T) {
+	decoded := wayu.unescape_toml_string(`é\u0041\uD800`)
+	defer delete(decoded)
+
+	testing.expect_value(t, decoded, `éA\uD800`)
+}
