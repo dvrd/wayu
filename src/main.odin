@@ -1,7 +1,6 @@
 package wayu
 import "base:runtime"
 import "core:fmt"
-import "core:log"
 import "core:mem/virtual"
 import "core:os"
 import "core:strings"
@@ -193,9 +192,6 @@ main :: proc() {
 	wayu.temp_arena = &main_temp_arena
 
 	context.temp_allocator = virtual.arena_allocator(&main_temp_arena)
-
-	context.logger = log.create_console_logger(.Debug, {.Level, .Terminal_Color})
-	defer log.destroy_console_logger(context.logger)
 
 	// Clean up temp arena at the very end (before the arena is destroyed)
 	// This defer executes after all other defers in this scope

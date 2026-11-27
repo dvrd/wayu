@@ -72,6 +72,30 @@ cmd_render :: proc(cmd: Cmd, allocator := context.temp_allocator) -> string {
 	return strings.to_string(sb)
 }
 
+// Produce an explicit child environment. The pinned Odin Linux runtime can
+// repeat the first entry or include an empty terminator when enumerating it.
+// Keep the first value of a name, matching getenv.
+child_environment :: proc() -> []string {
+	entries, err := os.environ(context.temp_allocator)
+	if err != nil {
+		return nil
+	}
+
+	seen := make(map[string]bool, context.temp_allocator)
+	result := make([dynamic]string, 0, len(entries), context.temp_allocator)
+	for entry in entries {
+		key, eq, _ := strings.partition(entry, "=")
+		if key == "" || eq == "" || key in seen {
+			continue
+		}
+
+		seen[key] = true
+		append(&result, entry)
+	}
+
+	return result[:]
+}
+
 // Options for running a command.
 Cmd_Run_Opt :: struct {
 	// Run asynchronously, appending the process to this list.
@@ -144,6 +168,7 @@ cmd_run :: proc(cmd: ^Cmd, opt: Cmd_Run_Opt = {}) -> bool {
 	// redirected, so nothing the build runs can block on the terminal.
 	desc := os.Process_Desc {
 		command = command,
+		env     = child_environment(),
 		stdin   = stdin_file,
 		stdout  = stdout_file if stdout_file != nil else os.stdout,
 		stderr  = stderr_file if stderr_file != nil else os.stderr,

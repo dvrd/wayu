@@ -5,7 +5,7 @@
 // are in other files to avoid redeclaration errors.
 
 package wayu
-@(require) import "core:log"
+@(require) import "core:fmt"
 import "core:strings" // used by debug() under ODIN_DEBUG only
 // ============================================================================
 // TOML CONFIGURATION SYSTEM
@@ -63,7 +63,8 @@ EXIT_EXEC_NOT_FOUND :: 127 // not found on PATH
 // Debug logging that only activates when built with -define:DEBUG=true
 debug :: proc(msg: string, args: ..any) {
 	when ODIN_DEBUG {
-		log.debugf(msg, ..args)
+		fmt.eprint("[DEBUG] --- ")
+		fmt.eprintfln(msg, ..args)
 	}
 }
 

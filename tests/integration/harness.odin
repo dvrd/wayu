@@ -1,5 +1,6 @@
 package integration
 
+import "../../bld"
 import wayu "../../src"
 import "core:fmt"
 import "core:os"
@@ -22,11 +23,7 @@ new_cli :: proc(t: ^testing.T) -> CLI {
 		binary = "./bin/wayu"
 	}
 	env := make([dynamic]string, context.temp_allocator)
-	inherited, env_err := os.environ(context.temp_allocator)
-	if env_err != nil {
-		testing.fail_now(t, "cannot read environment")
-	}
-	for entry in inherited {
+	for entry in bld.child_environment() {
 		key, _, _ := strings.partition(entry, "=")
 		switch key {
 		case "HOME",

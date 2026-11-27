@@ -8,6 +8,8 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+- Debug builds write diagnostics to stderr so redirected command output can be consumed by scripts.
+
 - Native scripts use `.wy`. Run them with `wayu <file.wy> [args...]`. For direct execution with `./file.wy`, add `#!/usr/bin/env wayu` and grant execute permission.
 
 - The native shell now supports variables, command substitution, functions, loops, conditionals, and command lookup. Login shells read `login.wayu` in the Wayu config directory.
