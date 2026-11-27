@@ -706,6 +706,7 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 		if fn, found := s.functions[name]; found && !builtin {
 			launch = native_function_args(fn, args[:])
 		}
+
 		for arg in launch {append(&argv, strings.clone_to_cstring(arg, context.temp_allocator))}
 		append(&argv, nil)
 		fds: [2]posix.FD
@@ -757,6 +758,7 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 				s.terminal = false
 				posix._exit(c.int(native_builtin(s, args[:])))
 			}
+
 			posix.execvp(argv[0], raw_data(argv[:]))
 			err := posix.errno()
 			fmt.eprintfln("wayu: %s: %v", name, err)

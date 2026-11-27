@@ -339,3 +339,63 @@ for x in $(printf 'a b'); do echo "$x"; done`,
 	expect_exit(t, cli, 1, "-c", "v=$(false)")
 	expect_exit(t, cli, 1, "-c", "command -v wayu_missing_command_xyz")
 }
+
+@(test)
+native_script_files :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+
+	path := fmt.tprintf("%s/a script.wy", cli.home)
+	body := `type cd
+printf '<%s>\n' "$0" "$@"
+exit 19`
+	write_fixture(t, path, body)
+	out, err, status := cli_streams(t, cli, path, "--help", "", "a b")
+	testing.expect_value(t, status, 19)
+	testing.expect_value(t, err, "")
+	testing.expect_value(
+		t,
+		out,
+		fmt.tprintf("cd is a shell builtin\n<%s>\n<--help>\n<>\n<a b>\n", path),
+	)
+	expect_exit(t, cli, 126, "-c", `cd "$HOME"; "./a script.wy"`)
+	testing.expect_value(t, os.symlink(cli.binary, fmt.tprintf("%s/wayu", cli.home)), nil)
+	set_cli_env(&cli, "PATH", fmt.tprintf("%s:/usr/bin:/bin", cli.home))
+	write_fixture(t, path, fmt.tprintf("#!/usr/bin/env wayu\n%s", body))
+	testing.expect_value(t, os.chmod(path, {.Read_User, .Execute_User}), nil)
+	out, err, status = cli_streams(
+		t,
+		cli,
+		"-c",
+		`cd "$HOME"; "./a script.wy" 'x y' > result; exit "$?"`,
+	)
+	testing.expect_value(t, status, 19)
+	testing.expect_value(t, err, "")
+	testing.expect_value(
+		t,
+		read_fixture(t, fmt.tprintf("%s/result", cli.home)),
+		"cd is a shell builtin\n<./a script.wy>\n<x y>\n",
+	)
+
+	expect_exit(t, cli, 66, fmt.tprintf("%s/missing.wy", cli.home))
+
+	// execvp uses /bin/sh for executable text without a shebang. Keep
+	// interpreters off PATH so accidental suffix lookups are observable.
+	set_cli_env(&cli, "PATH", cli.home)
+	for suffix in ([]string{"wy", "sh", "bash", "zsh", "fish", "nu"}) {
+		script := fmt.tprintf("setup.%s", suffix)
+		filename := fmt.tprintf("%s/%s", cli.home, script)
+		write_fixture(t, filename, `case "$1" in "x y") printf ok;; *) exit 9;; esac`)
+		command := fmt.tprintf(`cd "$HOME"; ./%s 'x y'`, script)
+		expect_exit(t, cli, 126, "-c", command)
+		expect_exit(t, cli, 126, "-c", script)
+		testing.expect_value(t, os.chmod(filename, {.Read_User, .Execute_User}), nil)
+		testing.expect_value(t, checked_cli(t, cli, "-c", command), "ok")
+		testing.expect_value(t, checked_cli(t, cli, "-c", fmt.tprintf("%s 'x y'", script)), "ok")
+	}
+
+	override := fmt.tprintf("%s/override.zsh", cli.home)
+	write_fixture(t, override, "#!/bin/sh\nprintf 'shebang won'\n")
+	testing.expect_value(t, os.chmod(override, {.Read_User, .Execute_User}), nil)
+	testing.expect_value(t, checked_cli(t, cli, "-c", "override.zsh"), "shebang won")
+}

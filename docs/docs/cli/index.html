@@ -118,6 +118,7 @@
 <div class="code"><pre><code>wayu                                   # interactive native shell
 wayu -l | --login                      # start a login shell
 wayu -lc &lt;command&gt;                     # evaluate a command after login startup
+wayu &lt;file.wy&gt; [args...]               # run a Wayu script
 wayu -c &lt;command&gt;                      # evaluate a command and return its status
 wayu &lt;command&gt; [&lt;action&gt;] [arguments] [flags]
 </code></pre><button type="button" class="icon-btn copy-btn" aria-label="Copy code"><svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
@@ -1338,6 +1339,18 @@ Commands support pipes, file redirection (including <code class="nw">2&gt;</code
 conditional execution (<code class="nw">&amp;&amp;</code>, <code class="nw">||</code>). Use <code class="nw">cd</code>, <code class="nw">export</code>, and <code class="nw">unset</code> to change
 session state. Use <code class="nw">jobs</code>, <code class="nw">fg</code>, and <code class="nw">bg</code> to manage jobs started with <code class="nw">&amp;</code> or
 suspended in the foreground.</p>
+<p>Wayu scripts use the <code class="nw">.wy</code> extension. From any shell, pass the file to
+<code class="nw">wayu</code>. The script receives its path in <code class="nw">$0</code> and its arguments in <code class="nw">&quot;$@&quot;</code>.
+Inside Wayu, direct execution (for example <code class="nw">./build.wy</code> or <code class="nw">./deploy.zsh</code>)
+requires execute permission. A permission denial exits with status 126.
+The shebang selects the interpreter. For executable text files without a
+shebang, the system&#39;s <code class="nw">execvp</code> fallback uses <code class="nw">/bin/sh</code> regardless of the
+filename extension. Explicit interpreter calls such as <code class="nw">wayu build.wy</code> or
+<code class="nw">zsh deploy.zsh</code> only need read permission on the script.</p>
+<p>A launched script runs in a child process and returns its exit status.
+Use <code class="nw">source ./setup.wy</code> to apply native commands to the current session.
+To run a Wayu script directly from another shell, give it execute permission
+and start it with <code class="nw">#!/usr/bin/env wayu</code>.</p>
 <p>The native shell loads Wayu’s PATH entries, plain constants, managed aliases,
 and directory aliases from <code class="nw">alias-sources.conf</code> at startup. Interactive sessions then read <code class="nw">config.wayu</code> from the Wayu config
 directory. Use <code class="nw">source &lt;file&gt;</code> to run native commands in the current session.
@@ -1549,7 +1562,7 @@ values as <code class="nw">********</code> unless <code class="nw">--reveal</cod
 <tr>
 <td>126</td>
 <td><code class="nw">EXIT_EXEC_NOT_RUNNABLE</code></td>
-<td><code class="nw">secrets run</code>: the command was found but cannot be executed</td>
+<td>Native shell or <code class="nw">secrets run</code>: the command was found but cannot be executed</td>
 </tr>
 <tr>
 <td>127</td>

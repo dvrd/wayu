@@ -8,6 +8,8 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+- Native scripts use `.wy`. Run them with `wayu <file.wy> [args...]`. For direct execution with `./file.wy`, add `#!/usr/bin/env wayu` and grant execute permission.
+
 - The native shell now supports variables, command substitution, functions, loops, conditionals, and command lookup. Login shells read `login.wayu` in the Wayu config directory.
 
 - `wayu warp <words...>` jumps to the highest-scoring matching directory.

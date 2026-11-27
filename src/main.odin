@@ -211,11 +211,24 @@ main :: proc() {
 		}
 	}
 
+	shell_args := os.args[1:]
+	login := strings.has_prefix(os.args[0], "-")
+	if len(shell_args) > 0 && (shell_args[0] == "-l" || shell_args[0] == "--login") {
+		login = true
+		shell_args = shell_args[1:]
+	}
+
+	script_file :=
+		len(shell_args) > 0 &&
+		!strings.has_prefix(shell_args[0], "-") &&
+		strings.has_suffix(shell_args[0], ".wy")
+
 	// Check for --no-color flag BEFORE initializing color system
 	// This ensures the flag takes precedence over environment variables
 	no_color_flag :=
-		global_flag_present(os.args[1:], "--no-color") ||
-		global_flag_present(os.args[1:], "--no-colour")
+		!script_file &&
+		(global_flag_present(os.args[1:], "--no-color") ||
+				global_flag_present(os.args[1:], "--no-colour"))
 
 	// Initialize color system (PRP-09 Phase 1)
 	init_colors()
@@ -239,13 +252,6 @@ main :: proc() {
 		return
 	}
 
-	shell_args := os.args[1:]
-	login := strings.has_prefix(os.args[0], "-")
-	if len(shell_args) > 0 && (shell_args[0] == "-l" || shell_args[0] == "--login") {
-		login = true
-		shell_args = shell_args[1:]
-	}
-
 	if len(shell_args) == 0 {
 		run_native_shell(login = login)
 		return
@@ -258,6 +264,25 @@ main :: proc() {
 		run_native_shell(shell_args[1], login || shell_args[0] != "-c", shell_args[2:])
 		return
 	}
+
+	if script_file {
+		path := shell_args[0]
+		if !os.is_file(path) {
+			fmt.eprintfln("wayu: expected a regular script file: %s", path)
+			wayu_exit(EXIT_NOINPUT)
+		}
+
+		source, err := os.read_entire_file_from_path(path, context.allocator)
+		if err != nil {
+			fmt.eprintfln("wayu: cannot read %s: %v", path, err)
+			wayu_exit(EXIT_NOINPUT)
+		}
+		defer delete(source)
+
+		run_native_shell(string(source), login, shell_args)
+		return
+	}
+
 	if len(shell_args) != len(os.args) - 1 {
 		fmt.eprintln("wayu: expected -c after login flag")
 		wayu_exit(EXIT_USAGE)
@@ -733,6 +758,7 @@ print_help :: proc() {
 	print_section("USAGE:", EMOJI_USER)
 	fmt.printf("  wayu                    Start the native shell\n")
 	fmt.printf("  wayu [-l] -c <command>  Evaluate a shell command (-l loads login.wayu)\n")
+	fmt.printf("  wayu <file.wy> [args]   Run a native shell script\n")
 	fmt.printf("  wayu <command> [<action>] [arguments]\n")
 	fmt.println()
 

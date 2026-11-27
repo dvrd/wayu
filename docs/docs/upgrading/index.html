@@ -122,6 +122,8 @@ section after its version and publishes it as the GitHub release&#39;s
 releases, so they are listed here too.</p>
 <h2 id="unreleased">Unreleased<a class="anchor" href="#unreleased" aria-label="Link to this section">#</a></h2>
 <ul>
+<li><p>Native scripts use <code class="nw">.wy</code>. Run them with <code class="nw">wayu &lt;file.wy&gt; [args...]</code>. For direct execution with <code class="nw">./file.wy</code>, add <code class="nw">#!/usr/bin/env wayu</code> and grant execute permission.</p>
+</li>
 <li><p>The native shell now supports variables, command substitution, functions, loops, conditionals, and command lookup. Login shells read <code class="nw">login.wayu</code> in the Wayu config directory.</p>
 </li>
 <li><p><code class="nw">wayu warp &lt;words...&gt;</code> jumps to the highest-scoring matching directory.

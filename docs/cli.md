@@ -4,6 +4,7 @@
 wayu                                   # interactive native shell
 wayu -l | --login                      # start a login shell
 wayu -lc <command>                     # evaluate a command after login startup
+wayu <file.wy> [args...]               # run a Wayu script
 wayu -c <command>                      # evaluate a command and return its status
 wayu <command> [<action>] [arguments] [flags]
 ```
@@ -709,6 +710,20 @@ conditional execution (`&&`, `||`). Use `cd`, `export`, and `unset` to change
 session state. Use `jobs`, `fg`, and `bg` to manage jobs started with `&` or
 suspended in the foreground.
 
+Wayu scripts use the `.wy` extension. From any shell, pass the file to
+`wayu`. The script receives its path in `$0` and its arguments in `"$@"`.
+Inside Wayu, direct execution (for example `./build.wy` or `./deploy.zsh`)
+requires execute permission. A permission denial exits with status 126.
+The shebang selects the interpreter. For executable text files without a
+shebang, the system's `execvp` fallback uses `/bin/sh` regardless of the
+filename extension. Explicit interpreter calls such as `wayu build.wy` or
+`zsh deploy.zsh` only need read permission on the script.
+
+A launched script runs in a child process and returns its exit status.
+Use `source ./setup.wy` to apply native commands to the current session.
+To run a Wayu script directly from another shell, give it execute permission
+and start it with `#!/usr/bin/env wayu`.
+
 The native shell loads Wayu’s PATH entries, plain constants, managed aliases,
 and directory aliases from `alias-sources.conf` at startup. Interactive sessions then read `config.wayu` from the Wayu config
 directory. Use `source <file>` to run native commands in the current session.
@@ -858,7 +873,7 @@ BSD `sysexits.h` values (`EXIT_*` in `src/interfaces.odin`):
 | 74 | `EXIT_IOERR` | Read/write failure, failed git operation |
 | 77 | `EXIT_NOPERM` | Permission denied |
 | 78 | `EXIT_CONFIG` | Configuration problem: not initialized, invalid `hooks.conf`, `entries.json` or `plugins.json` (`build`), relative `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR`, `doctor` found an error, `export check` found no current turbo file |
-| 126 | `EXIT_EXEC_NOT_RUNNABLE` | `secrets run`: the command was found but cannot be executed |
+| 126 | `EXIT_EXEC_NOT_RUNNABLE` | Native shell or `secrets run`: the command was found but cannot be executed |
 | 127 | `EXIT_EXEC_NOT_FOUND` | `secrets run`: the command was not found |
 
 Interrupted (`SIGINT`, `SIGTERM`, `SIGHUP`) while a child process runs (git,
