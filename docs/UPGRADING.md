@@ -8,7 +8,7 @@ releases, so they are listed here too.
 
 ## Unreleased
 
-- Debug builds write diagnostics to stderr so redirected command output can be consumed by scripts.
+- Set `WAYU_DEBUG=1` to enable diagnostic logging in a debug build. Diagnostics go to stderr so redirected command output can be consumed by scripts.
 
 - Native scripts use `.wy`. Run them with `wayu <file.wy> [args...]`. For direct execution with `./file.wy`, add `#!/usr/bin/env wayu` and grant execute permission.
 

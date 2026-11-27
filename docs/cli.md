@@ -959,6 +959,7 @@ parse.
 | Variable | Effect |
 |---|---|
 | `WAYU_CONFIG_DIR` | Config dir (wayu.toml, extra/tools, hooks.conf); default `~/.config/wayu`. Must be absolute (else exit `78`) |
+| `WAYU_DEBUG` | Set to `1` to print debug-build diagnostics to stderr. |
 | `WAYU_DATA_DIR` | Data dir (entries.json, functions/, scripts/, bin/, plugins, generated init files, completions, backups); default `${XDG_DATA_HOME:-~/.local/share}/wayu`. Must be absolute (else exit `78`) |
 | `XDG_DATA_HOME` | Base of the default data dir (ignored when relative) |
 | `SHELL` | Shell detection (override with `--shell`) |
