@@ -704,7 +704,7 @@ them instead (with backups) and prints what it moved.
 ### Native shell
 
 Run `wayu` to start the native shell, or pipe commands to its standard input.
-`wayu -c 'command'` evaluates one command string and returns its exit status.
+`wayu -c 'echo hello'` evaluates one command string and returns its exit status.
 Commands support pipes, file redirection (including `2>` and `2>&1`), sequencing, and
 conditional execution (`&&`, `||`). Use `cd`, `export`, and `unset` to change
 session state. Use `jobs`, `fg`, and `bg` to manage jobs started with `&` or
@@ -754,7 +754,7 @@ A standalone assignment such as `editor=vim` sets a shell variable. Use
 Use `type name`, `where name`, or `command -v name` to look up a command.
 
 Login sessions read `login.wayu` from the Wayu config directory before interactive
-`config.wayu`. Start one with `wayu -l`, `wayu --login`, or `wayu -lc 'command'`. Arguments after the command string set `$0`, `$1`, and the remaining positional parameters.
+`config.wayu`. Start one with `wayu -l`, `wayu --login`, or `wayu -lc 'echo hello'`. Arguments after the command string set `$0`, `$1`, and the remaining positional parameters.
 
 Interactive sessions leave a blank line before each subsequent prompt.
 Ctrl+L clears the visible screen and redraws the prompt, preserving the current

@@ -1334,7 +1334,7 @@ one is newer, runs <code class="nw">wayu optimize --notify</code> once, which pr
 them instead (with backups) and prints what it moved.</p>
 <h3 id="native-shell">Native shell<a class="anchor" href="#native-shell" aria-label="Link to this section">#</a></h3>
 <p>Run <code class="nw">wayu</code> to start the native shell, or pipe commands to its standard input.
-<code class="nw">wayu -c &#39;command&#39;</code> evaluates one command string and returns its exit status.
+<code class="nw">wayu -c &#39;echo hello&#39;</code> evaluates one command string and returns its exit status.
 Commands support pipes, file redirection (including <code class="nw">2&gt;</code> and <code class="nw">2&gt;&amp;1</code>), sequencing, and
 conditional execution (<code class="nw">&amp;&amp;</code>, <code class="nw">||</code>). Use <code class="nw">cd</code>, <code class="nw">export</code>, and <code class="nw">unset</code> to change
 session state. Use <code class="nw">jobs</code>, <code class="nw">fg</code>, and <code class="nw">bg</code> to manage jobs started with <code class="nw">&amp;</code> or
@@ -1377,7 +1377,7 @@ belong to their respective interpreters. Use native functions to change the curr
 <code>branch=$(git branch --show-current)</code> captures stdout and trims trailing newlines. Double-quote a substitution to keep its output in one argument.
 Use <code class="nw">type name</code>, <code class="nw">where name</code>, or <code class="nw">command -v name</code> to look up a command.</p>
 <p>Login sessions read <code class="nw">login.wayu</code> from the Wayu config directory before interactive
-<code class="nw">config.wayu</code>. Start one with <code class="nw">wayu -l</code>, <code class="nw">wayu --login</code>, or <code class="nw">wayu -lc &#39;command&#39;</code>. Arguments after the command string set <code class="nw">$0</code>, <code class="nw">$1</code>, and the remaining positional parameters.</p>
+<code class="nw">config.wayu</code>. Start one with <code class="nw">wayu -l</code>, <code class="nw">wayu --login</code>, or <code class="nw">wayu -lc &#39;echo hello&#39;</code>. Arguments after the command string set <code class="nw">$0</code>, <code class="nw">$1</code>, and the remaining positional parameters.</p>
 <p>Interactive sessions leave a blank line before each subsequent prompt.
 Ctrl+L clears the visible screen and redraws the prompt, preserving the current
 command and cursor position. Configure suggestion acceptance with

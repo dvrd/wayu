@@ -234,8 +234,8 @@ native_expand :: proc(
 				if splits != nil && w.active[start] {
 					splits.unquoted_capture = true
 					from := 0
-					for ch, j in transmute([]u8)value {
-						if ch == ' ' || ch == '\t' || ch == '\n' {
+					for byte_value, j in transmute([]u8)value {
+						if byte_value == ' ' || byte_value == '\t' || byte_value == '\n' {
 							native_expand_literal(&b, value[from:j], pattern)
 							append(&splits.offsets, len(strings.to_string(b)))
 							from = j + 1
