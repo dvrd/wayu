@@ -2,7 +2,7 @@
 //
 // Extracted from main.odin (2026-04-24) per code review L1. Owns CLI
 // argument parsing: global flags (--dry-run, --yes, --json, --no-color,
-// --shell, --tui, --source, --version, --help), command + action
+// --shell, --source, --version, --help), command + action
 // resolution, and doctor/component-test option flags.
 //
 // Pure parsing: `parse_args` returns a fully-populated `ParsedArgs` struct.
@@ -19,7 +19,6 @@ ParsedArgs :: struct {
 	action:              Action,
 	args:                []string,
 	shell:               ShellType,
-	tui:                 bool, // TUI mode flag
 	path_portable:       bool, // path add --portable, never a literal after --
 
 	// Component testing (PRP-13)
@@ -49,7 +48,6 @@ ParsedArgs :: struct {
 
 // Flag parsing state returned by parse_global_flags.
 GlobalFlags :: struct {
-	tui:                bool,
 	component_test:     bool,
 	component_name:     string,
 	component_snapshot: bool,
@@ -184,7 +182,6 @@ is_simple_global_flag :: proc(arg: string) -> bool {
 	     "-n",
 	     "--yes",
 	     "-y",
-	     "--tui",
 	     "--snapshot",
 	     "--test",
 	     "--json",
@@ -244,7 +241,7 @@ check_source_value :: proc(parsed: ^ParsedArgs, value: string) {
 	}
 }
 
-// Parse global flags (--dry-run, --yes, --tui, --json, --no-color, --shell,
+// Parse global flags (--dry-run, --yes, --json, --no-color, --shell,
 // --source, etc.) from raw CLI args. Returns the remaining (non-flag)
 // arguments in `filtered_args`. Mutates `wayu` for side-effect flags.
 @(private = "file")
@@ -293,8 +290,6 @@ parse_global_flags :: proc(
 			wayu.dry_run = true
 		case arg == "--yes" || arg == "-y":
 			wayu.yes_flag = true
-		case arg == "--tui":
-			flags.tui = true
 		case strings.has_prefix(arg, "-c=") && len(filtered_args) == 0:
 			// The dev component flag only before a command word:
 			// `plugin search -c=dev` is the command's (OKAMI-351).
@@ -397,7 +392,11 @@ parse_command_and_action :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 			}
 		} else if has_actions {
 			parsed.action = find_spec_action(spec, rest[0])
-			rest = rest[1:]
+			if spec.command == .WARP && parsed.action == .UNKNOWN {
+				parsed.action = .RUN
+			} else {
+				rest = rest[1:]
+			}
 		}
 	}
 	if len(rest) > 0 {
@@ -449,7 +448,6 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	flags := parse_global_flags(args, &parsed, &filtered_args)
 	defer delete(flags.flag_like)
 
-	parsed.tui = flags.tui
 	parsed.component_test = flags.component_test
 	parsed.component_name = flags.component_name
 	parsed.component_snapshot = flags.component_snapshot
@@ -477,14 +475,12 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	parsed.ambiguous_tail_flag = flags.ambiguous_tail
 	// Flags that mean nothing for this command are usage errors, not
 	// silently ignored (OKAMI-353): --snapshot/--test only go with -c=,
-	// --full/--source only with the PATH/alias/const list views (and TUI).
+	// --full/--source only with the PATH/alias/const lists.
 	if flags.component_snapshot {
 		parsed.unknown_flag = "--snapshot"
 	} else if flags.component_verify {
 		parsed.unknown_flag = "--test"
-	} else if len(flags.source_flag) > 0 &&
-	   !flags.tui &&
-	   !source_filter_applies(parsed.command, parsed.action) {
+	} else if len(flags.source_flag) > 0 && !source_filter_applies(parsed.command, parsed.action) {
 		parsed.unknown_flag = flags.source_flag
 	}
 	for idx in flags.flag_like {

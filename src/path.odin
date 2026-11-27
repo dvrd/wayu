@@ -137,7 +137,7 @@ handle_path_command :: proc(action: Action, args: []string, portable := false) {
 }
 
 // The checks `wayu path add` applies to its path argument before writing,
-// shared with the TUI add form and templates: valid format, resolvable to an
+// shared with templates: valid format, resolvable to an
 // absolute path ($VAR set, relative paths against the working directory), and
 // an existing directory (missing: EXIT_NOINPUT; another file: EXIT_DATAERR).
 // On success `expanded` is the resolved path (caller deletes) and code is
@@ -405,7 +405,6 @@ path_values_equal :: proc(a, b: string) -> bool {
 
 // is_env_var_char returns true for characters valid in a shell identifier:
 // A-Z, a-z, 0-9, underscore.
-@(private = "file")
 is_env_var_char :: proc(c: byte) -> bool {
 	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'
 }
@@ -495,7 +494,7 @@ expand_env_vars :: proc(path: string, require_resolved: bool = false) -> string 
 	result := strings.clone(strings.to_string(builder))
 
 	// Make the path absolute without resolving symlinks or requiring it to
-	// exist (TUI and templates may stage paths before creating directories).
+	// exist (templates may stage paths before creating directories).
 	defer delete(result)
 	if filepath.is_abs(result) {
 		cleaned, err := filepath.clean(result)
@@ -931,7 +930,7 @@ path_add_result :: proc(
 	name_hint: string = "",
 	portable := false,
 ) -> PathOpResult {
-	// Freeze the intended path at every write boundary (CLI, TUI, templates)
+	// Freeze the intended path at every write boundary (CLI and templates)
 	// before duplicate detection or key generation.
 	path := expand_env_vars(raw_path, require_resolved = true)
 	defer delete(path)
@@ -992,18 +991,10 @@ path_add_result :: proc(
 
 	if wayu.dry_run {
 		defer delete(new_key)
-		// The TUI sets print_quiet and shows its own preview.
-		if !print_quiet {
-			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-			fmt.println()
-			fmt.printfln(
-				"%sWould add PATH entry: %s = %q%s",
-				BRIGHT_CYAN,
-				new_key,
-				stored_path,
-				RESET,
-			)
-		}
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		fmt.printfln("%sWould add PATH entry: %s = %q%s", BRIGHT_CYAN, new_key, stored_path, RESET)
+
 		return .OK
 	}
 
@@ -1028,65 +1019,6 @@ path_portable_value :: proc(path: string) -> string {
 	return ""
 }
 
-// Point the entry matching `target` (key, stored dir, or resolved dir — same
-// match order as remove) at `raw_path`, in place: the entry keeps its key and
-// its position (= PATH precedence). Used by the TUI edit action. NOOP when it
-// already holds that path; INVALID when another entry does. Honors --dry-run
-// (preview silenced under print_quiet).
-path_replace_result :: proc(target, raw_path: string) -> PathOpResult {
-	path := expand_env_vars(raw_path, require_resolved = true)
-	defer delete(path)
-	if len(path) == 0 {
-		print_error("Could not resolve path to an absolute path: %s", raw_path)
-		return .INVALID
-	}
-
-	if !config_lock_acquire() {
-		return .IO_ERROR
-	}
-	defer config_lock_release()
-
-	store, read_res := path_store_read()
-	if read_res != .OK {
-		return read_res
-	}
-	defer entries_store_destroy(&store)
-
-	idx := path_store_match(store.paths[:], target)
-	if idx < 0 {
-		print_error("PATH entry not found: %s", target)
-		return .NOT_FOUND
-	}
-	if store.paths[idx].dir == path {
-		return .NOOP
-	}
-	for e, i in store.paths {
-		if i != idx && path_values_equal(e.dir, path) {
-			print_error("Path already added: %s (key %q)", e.dir, e.key)
-			return .INVALID
-		}
-	}
-	if wayu.dry_run {
-		if !print_quiet {
-			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-			fmt.printfln(
-				"%sWould set PATH entry: %s = %q%s",
-				BRIGHT_CYAN,
-				store.paths[idx].key,
-				path,
-				RESET,
-			)
-		}
-		return .OK
-	}
-	delete(store.paths[idx].dir)
-	store.paths[idx].dir = strings.clone(path)
-	if !entries_save(&store) {
-		return .IO_ERROR
-	}
-	return .OK
-}
-
 // Remove the entry `target` names (key, exact dir, resolved dir).
 path_remove_result :: proc(target: string) -> PathOpResult {
 	if !config_lock_acquire() {
@@ -1107,17 +1039,16 @@ path_remove_result :: proc(target: string) -> PathOpResult {
 	}
 
 	if wayu.dry_run {
-		if !print_quiet {
-			removed := store.paths[idx]
-			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-			fmt.printfln(
-				"%sWould remove PATH entry: %s = %q%s",
-				BRIGHT_CYAN,
-				removed.key,
-				removed.dir,
-				RESET,
-			)
-		}
+		removed := store.paths[idx]
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.printfln(
+			"%sWould remove PATH entry: %s = %q%s",
+			BRIGHT_CYAN,
+			removed.key,
+			removed.dir,
+			RESET,
+		)
+
 		return .OK
 	}
 

@@ -2,9 +2,29 @@
 
 Agent instructions for AI coding assistants working in this repository.
 
+# Rules
+
+* Omit the alias when it repeats the last component of the import path. Write `import "core:encoding/endian"` and `import "shared:surf"`. Use an explicit alias when the code needs a different local name.
+
+* Leave a blank line between the closing `}` of a completed brace-delimited construct and the next statement or declaration. This applies to structs, procedures, control-flow statements, and braced literals, including single-line forms.
+
+*NOTE*: The only exception is an `if` immediately followed by a `defer` that frees memory. Keep those lines together:
+
+```odin
+data, err := os.read_entire_file(path, context.allocator)
+if err != nil {
+	return err
+}
+defer delete(data)
+
+process(data)
+```
+
+Leave a blank line after every complete `defer` statement, including between consecutive defers and before a closing brace. For a deferred block, place the blank line after its closing brace.
+
 ## Project Overview
 
-wayu is a shell configuration management CLI written in Odin. It manages PATH entries, aliases, environment constants, `[tools]` loaders, a native prompt (zsh, fish), plugins, functions and completions. User-edited files live in the config dir `~/.config/wayu/` (`WAYU_CONFIG_DIR`): wayu.toml, hooks.conf, extra.<ext>, tools.<ext>, functions/. Data wayu manages lives in the data dir `${XDG_DATA_HOME:-~/.local/share}/wayu/` (`WAYU_DATA_DIR`): entries.json (PATH entries, aliases, constants), plugins.json, and the generated runtime files (init.<ext>, core.<ext>, path_sync.<ext>, plugins, completions, backups, the lock).
+wayu is a native shell and shell configuration manager written in Odin. It manages PATH entries, aliases, environment constants, `[tools]` loaders, a native prompt (zsh, fish), plugins, functions and completions. User-edited files live in the config dir `~/.config/wayu/` (`WAYU_CONFIG_DIR`): wayu.toml, hooks.conf, extra.<ext>, tools.<ext>, functions/. Data wayu manages lives in the data dir `${XDG_DATA_HOME:-~/.local/share}/wayu/` (`WAYU_DATA_DIR`): entries.json (PATH entries, aliases, constants), plugins.json, and the generated runtime files (init.<ext>, core.<ext>, path_sync.<ext>, plugins, completions, backups, the lock).
 
 User docs: [README.md](README.md) (install, shell setup, upgrade), [docs/cli.md](docs/cli.md) (every command/flag, `--json` shapes, exit codes), [docs/config-reference.md](docs/config-reference.md) (wayu.toml, entries.json and the other config files), [docs/UPGRADING.md](docs/UPGRADING.md) (behavior changes per release), [docs/STABILITY.md](docs/STABILITY.md) (what is stable, migration and deprecation policy).
 
@@ -32,21 +52,16 @@ User docs: [README.md](README.md) (install, shell setup, upgrade), [docs/cli.md]
 ./build_it dev path list   # debug build + run
 ```
 
-**Integration tests** (Ruby, stdlib only; each suite builds `bin/wayu` first unless `WAYU_BIN` is set, and runs in a temp HOME):
+**Integration tests** (Odin and remaining Ruby suites; each suite builds `bin/wayu` first unless `WAYU_BIN` is set, and runs in a temp HOME):
 ```bash
-ruby tests/integration/run_all.rb          # every tests/integration/test_*.rb
-ruby tests/integration/test_path.rb        # one suite
-WAYU_BIN=$PWD/bin/wayu ruby tests/integration/test_exit_codes.rb   # skip the rebuild
-```
-
-**TUI layout tests** (Python, needs `pip install pyte`; uses `bin/wayu`, override with `WAYU_BIN`; runs in a temp HOME with a fixed config; also run by CI):
-```bash
-./build_it && python3 tests/tui/test_responsive.py
+./build_it integration          # every Odin and Ruby integration suite
+./build_it integration integration.path_entries   # one Odin test
+WAYU_BIN=$PWD/bin/wayu ./build_it integration integration.exit_codes   # skip the rebuild
 ```
 
 **Visual regression (golden files)**:
 ```bash
-ruby tests/integration/test_golden.rb             # compare every golden (also run by run_all.rb)
+./build_it integration integration.golden             # compare every golden (included in the full integration run)
 ./bin/wayu -c=header --test width=40 height=3 title=PATH count=10      # check one component
 ./bin/wayu -c=header --snapshot width=40 height=3 title=PATH count=10  # regenerate one golden
 ```
@@ -105,10 +120,10 @@ needs a deprecation warning for at least one minor release first.
 3. Entry commands (path/alias/const) edit `<data>/entries.json` (`entries.odin`: strict read, whole-file rewrite under the config lock, atomic write), then regenerate `core.<ext>` / `path_sync.<ext>` (`init_generator.odin`)
 4. Each file is backed up before its first write in a run
 
-### Dual-Mode Architecture
+### Entry Points
 
-- **CLI mode (default)**: Fully non-interactive, all operations require explicit arguments, BSD sysexits.h exit codes, `--yes` flag for destructive operations
-- **TUI mode** (`wayu --tui`): Full-screen interactive UI using The Elm Architecture (TEA)
+- Running `wayu` starts the native shell. `wayu -c <command>` evaluates a command string.
+- Management commands use explicit arguments, BSD sysexits.h exit codes, and `--yes` for destructive operations.
 
 ### Key Source Files
 
@@ -159,15 +174,14 @@ needs a deprecation warning for at least one minor release first.
 | `src/rune_width_table.odin` | Generated by `tests/tui/gen_rune_width.py` (Unicode widths) — do not edit |
 | `src/hot_reload.odin` | `wayu reload`/`watch`: file watcher, debounced core regeneration |
 | `src/profile.odin` | `wayu build profile`: startup timing + per-section/tool/plugin breakdown (zsh, bash 5+) |
-| `src/tui_core.odin` | TUI main loop, state machine, data loading, render orchestrator |
-| `src/tui_views.odin` | TUI view renderers (list, overlays, cache, handlers, hooks, plugins, settings) |
-| `src/tui_io.odin` | TUI terminal I/O: raw mode, input, screen buffer, events, colors, layout, components |
+| `src/tui_core.odin` | Shared terminal lifecycle and rendering for interactive commands |
+| `src/tui_io.odin` | Terminal I/O: raw mode, input, screen buffer, events, colors, layout, components |
 | `src/prompt.odin` | Native zsh + fish prompt (opt-in: `[prompt] enabled = true`) + vi-mode; values escaped |
 | `src/highlight.odin` | Built-in zsh syntax highlighting (opt-in: `[settings] highlight`): style table (`HIGHLIGHT_STYLES`), `highlight_styles` reading/validation, emits `src/highlight.zsh` (embedded with `#load`) into core.zsh |
 | `src/fuzzy.odin` | Fuzzy matching, interactive terminal selection, completions extraction |
 | `src/interfaces.odin` | Shared types (TomlConfig, etc.), exit codes, debug |
 | `src/colors.odin` | ANSI color profiles + output helpers |
-| `src/style.odin` | TUI styling: render pipeline, text styling, unicode width utilities |
+| `src/style.odin` | Terminal styling: render pipeline, text styling, unicode width utilities |
 
 ### Config File Format
 
@@ -176,11 +190,6 @@ Reference: `docs/config-reference.md`.
 - `entries.json` (data dir, managed): `{"version":1,"paths":[{"key","dir"}],"aliases":[{"name","value"}],"env":[{"name","value"}]}` (env entries may carry `"secret": true` and `"run_only": true`, serialized only when true; the encrypted value is in `secrets.json`, see `src/secrets_store.odin`); optional `"fpath":[dir]` and `"generators":[{"shell","cmd","args"}]` (written only when non-empty; `src/optimize.odin`). `src/entries.odin`: strict read (malformed → EXIT_CONFIG naming the file; missing → empty store), writes atomic under the lock, 0600, pretty-printed, stable order (array order = PATH priority / export order).
 - `functions/`, `scripts/`, `bin/` (data dir, managed by `wayu function` / `wayu script`): the directories are the source of truth.
 - Generated shell code: `src/init_generator.odin` compiles wayu.toml + entries.json into `core.<ext>` (the one file `init.<ext>` sources) and `path_sync.<ext>`; never edit those by hand.
-
-### TUI Architecture (src/tui_core.odin, tui_views.odin, tui_io.odin)
-
-The Elm Architecture: centralized state → events → update → render.
-All TUI code lives in 3 consolidated files (down from 18). No separate `tui/` package — everything is in the `wayu` package to avoid circular imports. Data loads lazily per view (`tui_views_cache`); cache clears after mutations.
 
 ### Exit Codes
 
@@ -194,7 +203,7 @@ Always use the `EXIT_*` constants from `src/interfaces.odin`, and exit with `way
 | EXIT_DATAERR | 65 | Input data error |
 | EXIT_NOINPUT | 66 | File not found / unreadable |
 | EXIT_UNAVAILABLE | 69 | Required tool missing (script interpreter/compiler) |
-| EXIT_OSERR | 71 | TUI could not set up the terminal |
+| EXIT_OSERR | 71 | Could not set up the terminal |
 | EXIT_CANTCREAT | 73 | Cannot create output file |
 | EXIT_IOERR | 74 | I/O error |
 | EXIT_NOPERM | 77 | Permission denied |
@@ -231,16 +240,16 @@ if !wayu.yes_flag {
 }
 ```
 
-Every exit goes through `wayu_exit(code)` (`src/tui_io.odin`), which restores the terminal first when the TUI owns it: on Linux the Odin runtime's `os.exit` is a raw `exit_group` that skips atexit handlers, so a bare `os.exit` reachable from the TUI would leave the shell in raw mode on the alternate screen. Forked children use `posix._exit`.
+Every exit goes through `wayu_exit(code)` (`src/tui_io.odin`), which restores the terminal first when a terminal picker owns it: on Linux the Odin runtime's `os.exit` is a raw `exit_group` that skips atexit handlers, so a bare `os.exit` reachable from a picker would leave the shell in raw mode on the alternate screen. Forked children use `posix._exit`.
 
 ## Testing Structure
 
 ```
 tests/
 ├── unit/          # Odin unit tests, one file per module (test_cli_doc.odin checks docs/cli.md against WAYU_COMMAND_SPECS)
-├── golden/        # Component goldens + cases.txt (checked by integration/test_golden.rb)
+├── golden/        # Component goldens + cases.txt (checked by integration/golden.odin)
 ├── integration/   # Ruby, end-to-end CLI behavior (run_all.rb; fixtures/init-prev.zsh = previous release's init.zsh; test_exit_codes.rb runs docs/cli.md's exit code table)
-├── tui/           # TUI tests (Python/pyte: test_responsive.py) + gen_rune_width.py
+├── tui/           # Unicode width table generator
 ├── release/       # Pre-ship checks, run by hand (macOS): upgrade_from_release.sh (previous tag → this build), fresh_shells.sh (clean install, zsh/bash/fish), bash_trial.sh
 └── benchmark/     # startup.sh: shell startup timing (hyperfine); compare.sh: vs other zsh setups (zsh-bench); budget.sh: CI startup budget
 ```
@@ -263,12 +272,11 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 - `--no-color`: disables ANSI colors (equivalent to `NO_COLOR=1`)
 - `--yes` / `-y`: confirm destructive operations (required by: `path clean`, `path dedup`, `backup restore`, `backup rm`, `plugin remove`, `function remove`, `script remove`, `config scan --fix`, `doctor --fix`, `optimize`, `secrets recipient rm`, `secrets adopt`, `secrets recovery rm`); without it they exit 64
 - `--`: ends flag parsing; in `alias add` / `const add` the rest of the line after the first value word is the value (see `docs/cli.md`). Unknown options exit 64
-- `--json`: machine-readable output for `path|alias|const|plugin|backup|script list`, `secrets recipient list`, `search`, `doctor` (the `json` bit_set in `WAYU_COMMAND_SPECS`; elsewhere exit 64). Schemas are documented in `docs/cli.md` "JSON output" and pinned by `test_json_schema` in `tests/integration/test_cli_output.rb` — update both when a shape changes
-- `docs/cli.md` is the CLI contract: when you add/rename a command, action or flag in `WAYU_COMMAND_SPECS`, or change an exit code, update it (`tests/unit/test_cli_doc.odin` and `tests/integration/test_exit_codes.rb` fail otherwise)
+- `--json`: machine-readable output for `path|alias|const|plugin|backup|script list`, `secrets recipient list`, `search`, `doctor` (the `json` bit_set in `WAYU_COMMAND_SPECS`; elsewhere exit 64). Schemas are documented in `docs/cli.md` "JSON output" and pinned by `integration.cli_output` in `tests/integration/cli_output.odin` — update both when a shape changes
+- `docs/cli.md` is the CLI contract: when you add/rename a command, action or flag in `WAYU_COMMAND_SPECS`, or change an exit code, update it (`tests/unit/test_cli_doc.odin` and `tests/integration/exit_codes.odin` fail otherwise)
 - `wayu doctor` exits `EXIT_CONFIG` (78) when any check reports an error, so it can gate CI
 - `--dry-run`: show what would happen without writing
 
 ## Known Stubs / In-Progress Areas
 
 None currently. List acknowledged incomplete features here (do not add workarounds; implement them properly).
-

@@ -579,7 +579,7 @@
           <li><a href="https://github.com/dvrd/wayu/blob/main/LICENSE">MIT licensed</a></li>
           <li>zsh · bash · fish</li>
           <li>Standalone CLI · Git for plugins</li>
-          <li><a href="https://github.com/dvrd/wayu/tree/main/tests" data-gen="unit-tests">700+ unit tests</a> + end-to-end suites</li>
+          <li><a href="https://github.com/dvrd/wayu/tree/main/tests" data-gen="unit-tests">690+ unit tests</a> + end-to-end suites</li>
           <li><a href="docs/stability/">Stable from 7.0 on</a></li>
           <li><a href="docs/validation/">Failure and upgrade checks</a></li>
         </ul>
@@ -938,17 +938,17 @@ _wayu_prompt_full() {
 
         <div class="demo reveal">
           <div>
-            <h3>The 41-second recording</h3>
-            <p>Path, alias and a run-only secret, the masked constants list, a Python script run with the secret, <code>doctor</code>, then an alias added in the TUI. Recorded with <a href="https://github.com/charmbracelet/vhs">VHS</a> in a throwaway home; the tape is in <a href="https://github.com/dvrd/wayu/tree/main/docs/demo"><code>docs/demo/</code></a>.</p>
+            <h3>The 28-second recording</h3>
+            <p>Path, alias and a run-only secret, the masked constants list, a Python script run with the secret, and <code>doctor</code>. Recorded with <a href="https://github.com/charmbracelet/vhs">VHS</a> in a throwaway home; the tape is in <a href="https://github.com/dvrd/wayu/tree/main/docs/demo"><code>docs/demo/</code></a>.</p>
           </div>
           <div class="demo-frame">
             <video id="demo-video" muted playsinline loop preload="none" poster="demo/poster.webp" width="1200" height="720"
-                   aria-label="Terminal recording: wayu adds a PATH entry, an alias and a run-only secret, lists constants with the secret masked, creates a Python script and runs it with the secret, runs doctor, then adds an alias in the TUI.">
+                   aria-label="Terminal recording: wayu adds a PATH entry, an alias and a run-only secret, lists constants with the secret masked, creates a Python script and runs it with the secret, then runs doctor.">
               <source src="demo/demo.mp4" type="video/mp4" />
               <a href="demo/demo.gif">Watch the recording (GIF)</a>
             </video>
             <button class="demo-play" id="demo-play" type="button">
-              <span><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 2.8v10.4a.8.8 0 0 0 1.2.7l8.3-5.2a.8.8 0 0 0 0-1.4L5.7 2.1a.8.8 0 0 0-1.2.7Z"/></svg>Play<span class="sr-only"> the recording</span> · 0:41</span>
+              <span><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 2.8v10.4a.8.8 0 0 0 1.2.7l8.3-5.2a.8.8 0 0 0 0-1.4L5.7 2.1a.8.8 0 0 0-1.2.7Z"/></svg>Play<span class="sr-only"> the recording</span> · 0:28</span>
             </button>
           </div>
         </div>
@@ -1214,7 +1214,6 @@ git status -sb</pre>
               <tr role="row"><th scope="row" role="rowheader">Install plugins from a git URL</th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span><span class="part">clone into $ZSH_CUSTOM by hand</span></td><td role="cell" data-label="zinit / antidote"><span class="mk y"><span class="sr-only">Yes</span></span></td></tr>
               <tr role="row"><th scope="row" role="rowheader">Preview every write, automatic backups<small>--dry-run; backup before the first write</small></th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span></td></tr>
               <tr role="row"><th scope="row" role="rowheader">JSON output and sysexits exit codes</th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span></td></tr>
-              <tr role="row"><th scope="row" role="rowheader">Full-screen TUI for entries</th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span></td></tr>
             </tbody>
           </table>
         </div>

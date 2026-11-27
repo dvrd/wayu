@@ -1,0 +1,16 @@
+package test_wayu
+
+import wayu "../../src"
+import "core:testing"
+
+@(test)
+test_local_binding_overwrite_and_forget :: proc(t: ^testing.T) {
+	s: wayu.Native_Session
+	defer delete(s.locals)
+
+	wayu.native_store(&s.locals, "answer", "old")
+	wayu.native_store(&s.locals, "answer", "new")
+	testing.expect_value(t, wayu.native_value(&s, "answer"), "new")
+	wayu.native_forget(&s.locals, "answer")
+	testing.expect(t, "answer" not_in s.locals)
+}

@@ -24,8 +24,12 @@ package main
 
 import bld "../bld"
 import "core:fmt"
+import "core:hash"
 import "core:os"
+import "core:path/filepath"
+import "core:slice"
 import "core:strings"
+import "core:sys/posix"
 
 SRC_DIR :: "src"
 BIN_DIR :: "bin"
@@ -42,6 +46,20 @@ debug_path :: proc() -> string {
 }
 
 main :: proc() {
+	when ODIN_OS == .Darwin {
+		if len(os.args) > 1 && os.args[1] == "install" {
+			dir, _ := install_dir()
+			clean, _ := os.clean_path(dir, context.temp_allocator)
+			if clean == "/bin" || clean == "/usr/bin" {
+				bld.log_error(
+					"%s is a protected macOS system directory. Run ./build_it install for ~/.local/bin, or use /usr/local/bin for a system-wide install.",
+					clean,
+				)
+				os.exit(1)
+			}
+		}
+	}
+
 	bld.go_rebuild_urself("build", "bld", "build/markdown")
 
 	target := "build"
@@ -50,7 +68,7 @@ main :: proc() {
 	}
 
 	switch target {
-	case "build", "debug", "test", "check", "install", "dev", "release":
+	case "build", "debug", "test", "integration", "check", "install", "dev", "release":
 		warn_if_odin_unpinned()
 	}
 
@@ -61,6 +79,10 @@ main :: proc() {
 		do_debug()
 	case "test":
 		do_test()
+	case "integration":
+		if !run_integration_tests() {
+			os.exit(1)
+		}
 	case "check":
 		do_check()
 	case "clean":
@@ -85,6 +107,8 @@ main :: proc() {
 // The Odin release wayu is built and released with (CI + release builds).
 ODIN_PIN_FILE :: ".github/odin-release"
 
+compiler_version: string
+
 // Warn (never fail) when the local `odin` isn't the pinned release series.
 // Release tags look like dev-2026-11a while `odin version` prints
 // dev-2026-11:<hash>, so the comparison is on the dev-YYYY-MM series.
@@ -106,6 +130,7 @@ warn_if_odin_unpinned :: proc() {
 		return
 	}
 	have := strings.trim_space(string(out))
+	compiler_version = strings.clone(have)
 	if strings.contains(have, series) {
 		return
 	}
@@ -211,14 +236,99 @@ build_target_arg :: proc() -> string {
 	os.exit(1)
 }
 
-do_build :: proc(target := "") {
-	if len(target) > 0 {
-		bld.log_info("Building %s (optimized, %s)...", BINARY_NAME, target)
-	} else {
-		bld.log_info("Building %s (optimized)...", BINARY_NAME)
+// The source package is flat and embeds highlight.zsh alongside its Odin files.
+build_inputs :: proc(config: bld.Build_Config) -> string {
+	paths, err := os.glob("src/*.odin", context.temp_allocator)
+	if err != nil || len(paths) == 0 {
+		bld.log_error("Cannot enumerate Wayu source files")
+		os.exit(1)
 	}
+	slice.sort(paths)
+	inputs := strings.builder_make(context.temp_allocator)
+	fmt.sbprintln(
+		&inputs,
+		compiler_version,
+		ODIN_OS,
+		ODIN_ARCH,
+		config.target,
+		config.opt,
+		config.debug,
+		config.extra_flags,
+	)
+	for env in ([]string{"ODIN_ROOT", "SDKROOT", "MACOSX_DEPLOYMENT_TARGET"}) {
+		fmt.sbprintln(&inputs, env, os.get_env(env, context.temp_allocator))
+	}
+
+	files := make([dynamic]string, context.temp_allocator)
+	append(&files, ..paths)
+	append(&files, "src/highlight.zsh", "build/build.odin", "bld/odin.odin", ODIN_PIN_FILE)
+	for path in files {
+		data, read_err := os.read_entire_file_from_path(path, context.temp_allocator)
+		if read_err != nil {
+			bld.log_error("Cannot read build input %s: %v", path, read_err)
+			os.exit(1)
+		}
+
+		fmt.sbprintfln(&inputs, "%s %x", path, hash.fnv64a(data))
+	}
+
+	return fmt.tprintf("%x", hash.fnv64a(transmute([]byte)strings.to_string(inputs)))
+}
+
+// Verify both the inputs and the actual executable: host and cross builds
+// share bin/wayu, and an interrupted build can leave an old stamp behind.
+build_stamp :: proc(path, inputs: string) -> string {
+	data, err := os.read_entire_file_from_path(path, context.temp_allocator)
+	if err != nil || len(data) == 0 {
+		return ""
+	}
+	return fmt.tprintf("%s %x\n", inputs, hash.fnv64a(data))
+}
+
+build_binary :: proc(config: bld.Build_Config, install_to := "") {
 	bld.mkdir_if_not_exists(BIN_DIR)
-	ok := bld.build(
+	lock, err := os.open(fmt.tprintf("%s.lock", config.out), {.Read, .Write, .Create})
+	if err != nil {
+		bld.log_error("Cannot open build lock: %v", err)
+		os.exit(1)
+	}
+	defer os.close(lock)
+
+	for posix.lockf(posix.FD(os.fd(lock)), .LOCK, 0) != .OK {
+		if posix.errno() != .EINTR {
+			bld.log_error("Cannot lock %s", config.out)
+			os.exit(1)
+		}
+	}
+
+	inputs := build_inputs(config)
+	stamp_path := fmt.tprintf("%s.build-id", config.out)
+	saved, read_err := os.read_entire_file_from_path(stamp_path, context.temp_allocator)
+	if compiler_version != "" &&
+	   read_err == nil &&
+	   len(saved) > 0 &&
+	   string(saved) == build_stamp(config.out, inputs) {
+		bld.log_info("%s is up to date", config.out)
+	} else {
+		if !bld.build(config) {
+			bld.log_error("Build failed")
+			os.exit(1)
+		}
+		stamp := build_stamp(config.out, inputs)
+		if stamp == "" || os.write_entire_file(stamp_path, transmute([]byte)stamp) != nil {
+			bld.log_error("Cannot record build of %s", config.out)
+			os.exit(1)
+		}
+		bld.log_info("Built %s", config.out)
+	}
+
+	if install_to != "" {
+		install_binary(install_to)
+	}
+}
+
+do_build :: proc(target := "", install_to := "") {
+	build_binary(
 		{
 			package_path = SRC_DIR,
 			out = bin_path(),
@@ -226,25 +336,14 @@ do_build :: proc(target := "") {
 			target = target,
 			extra_flags = platform_flags(target),
 		},
+		install_to,
 	)
-	if !ok {
-		bld.log_error("Build failed")
-		os.exit(1)
-	}
-	bld.log_info("Built %s", bin_path())
 }
 
 do_debug :: proc() {
-	bld.log_info("Building %s (debug)...", BINARY_NAME)
-	bld.mkdir_if_not_exists(BIN_DIR)
-	ok := bld.build(
+	build_binary(
 		{package_path = SRC_DIR, out = debug_path(), debug = true, extra_flags = platform_flags()},
 	)
-	if !ok {
-		bld.log_error("Debug build failed")
-		os.exit(1)
-	}
-	bld.log_info("Built %s", debug_path())
 }
 
 do_test :: proc() {
@@ -256,6 +355,54 @@ do_test :: proc() {
 		os.exit(1)
 	}
 	bld.log_info("All tests passed")
+}
+
+run_integration_tests :: proc() -> bool {
+	if _, supplied := os.lookup_env("WAYU_BIN", context.temp_allocator); !supplied {
+		do_build()
+	}
+	dir, ok := make_private_tmp_dir("wayu_integration_*")
+	if !ok {
+		return false
+	}
+	defer remove_private_tmp_dir(dir)
+	defines := make([dynamic]bld.Define, context.temp_allocator)
+	append(
+		&defines,
+		bld.Define{name = "ODIN_TEST_THREADS", value = "1"},
+		bld.Define{name = "ODIN_TEST_FAIL_ON_BAD_MEMORY", value = "true"},
+	)
+	if len(os.args) > 2 {
+		append(&defines, bld.Define{name = "ODIN_TEST_NAMES", value = os.args[2]})
+	}
+	passed := bld.test(
+		{
+			package_path = "tests/integration",
+			out = fmt.tprintf("%s/integration", dir),
+			defines = defines[:],
+			ignore_unused_defineables = true,
+		},
+	)
+	if len(os.args) > 2 {
+		return passed
+	}
+
+	// Keep unported suites in the same local and CI gate during migration.
+	suites, err := os.glob("tests/integration/test_*.rb", context.temp_allocator)
+	if err != nil {
+		bld.log_error("Cannot enumerate integration suites: %v", err); return false
+	}
+	for suite in suites {
+		if strings.has_suffix(suite, "/test_helper.rb") {
+			continue
+		}
+		cmd := bld.cmd_create(context.temp_allocator)
+		bld.cmd_append(&cmd, "ruby", suite)
+		if !bld.cmd_run(&cmd) {
+			passed = false
+		}
+	}
+	return passed
 }
 
 // Run the unit tests with HOME sandboxed, then restore HOME and remove the
@@ -511,8 +658,33 @@ do_install :: proc() {
 		os.exit(1)
 	}
 
-	do_build()
+	do_build(install_to = install_path)
 
+	// Run the already-built binary instead of recompiling from source.
+	bld.log_info("Running %s init...", BINARY_NAME)
+	init_cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&init_cmd, install_path, "init")
+	if !bld.cmd_run(&init_cmd) {
+		bld.log_error("Init failed")
+		os.exit(1)
+	}
+
+	bld.log_info("Installed %s", install_path)
+	// Say so when a shell would not run what was just installed.
+	if found := wayu_on_path(); found == "" {
+		bld.log_warn("%s is not on your PATH; add it to use the installed wayu", dir)
+	} else if found != install_path {
+		bld.log_warn(
+			"`wayu` on your PATH is %s, which shadows %s; put %s earlier in PATH",
+			found,
+			install_path,
+			dir,
+		)
+	}
+}
+
+install_binary :: proc(install_path: string) {
+	dir := filepath.dir(install_path)
 	if !os.is_dir(dir) {
 		if err := os.make_directory_all(dir); err != nil {
 			bld.log_error("Cannot create %s: %v", dir, err)
@@ -541,28 +713,6 @@ do_install :: proc() {
 		os.remove(tmp_path)
 		bld.log_error("Failed to install %s: %v", install_path, err)
 		os.exit(1)
-	}
-
-	// Run the already-built binary instead of recompiling from source.
-	bld.log_info("Running %s init...", BINARY_NAME)
-	init_cmd := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&init_cmd, bin_path(), "init")
-	if !bld.cmd_run(&init_cmd) {
-		bld.log_error("Init failed")
-		os.exit(1)
-	}
-
-	bld.log_info("Installed %s", install_path)
-	// Say so when a shell would not run what was just installed.
-	if found := wayu_on_path(); found == "" {
-		bld.log_warn("%s is not on your PATH; add it to use the installed wayu", dir)
-	} else if found != install_path {
-		bld.log_warn(
-			"`wayu` on your PATH is %s, which shadows %s; put %s earlier in PATH",
-			found,
-			install_path,
-			dir,
-		)
 	}
 }
 
@@ -974,6 +1124,7 @@ do_help :: proc() {
 	fmt.println("  build     Optimized release build (default) [--target=darwin_amd64|...]")
 	fmt.println("  debug     Debug build with symbols")
 	fmt.println("  test      Run unit tests (optional: NAME[,NAME] to run only those)")
+	fmt.println("  integration Run CLI integration suites (optional: integration.NAME[,NAME...])")
 	fmt.println("  check     Type-check only")
 	fmt.println("  clean     Remove build artifacts")
 	fmt.println(

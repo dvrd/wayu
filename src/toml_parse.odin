@@ -1,8 +1,7 @@
 // toml_parse.odin - the one TOML parser (OKAMI-240)
 //
 // Every reader of wayu.toml goes through toml_doc_parse_alloc: `toml
-// validate`, doctor, backup restore, the settings/[tools]/[prompt] readers
-// and the TUI, so a file is never "invalid" for one command and fine for
+// validate`, doctor, backup restore, and the settings/[tools]/[prompt] readers, so a file is never "invalid" for one command and fine for
 // another.
 //
 // The parser is a real TOML 1.0 parser (plus the 1.1 conveniences \e, \xHH

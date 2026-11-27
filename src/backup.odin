@@ -20,14 +20,14 @@ BackupInfo :: struct {
 	pre_restore:   bool, // taken by `backup restore` of the state it replaced
 }
 
-// Backups kept per file after every CLI/TUI write (create_backup_cli/_tui).
+// Backups kept per file after every write.
 BACKUP_KEEP_COUNT :: 5
 
 // Filename suffix of the snapshot `backup restore` takes before restoring.
 // A default restore skips these, so repeated restores don't ping-pong.
 BACKUP_PRE_RESTORE_TAG :: ".pre-restore"
 
-// Files already backed up by create_backup_cli in this (non-TUI) process.
+// Files already backed up by create_backup_cli in this process.
 // A command that writes the same file many times (template apply,
 // doctor --fix) keeps ONE backup: the state before the command ran.
 // Allocated on the raw heap: lives for the whole process.
@@ -343,17 +343,16 @@ delete_backup_keys :: proc(keys: []string, allocator := context.allocator) {
 // Returns false only when the file existed but the backup failed.
 //
 // Retention: after a new backup, only the newest BACKUP_KEEP_COUNT are kept.
-// Outside the TUI a file is backed up once per process (see
+// A file is backed up once per process (see
 // _backed_up_this_run), so bulk commands can't flood the backup dir or
 // prune away their own pre-command snapshot.
 create_backup_cli :: proc(file_path: string) -> bool {
-	if !wayu.tui_mode {
-		for f in _backed_up_this_run {
-			if f == file_path {
-				return true
-			}
+	for f in _backed_up_this_run {
+		if f == file_path {
+			return true
 		}
 	}
+
 	file_existed := os.exists(file_path)
 
 	backup_path, ok := create_backup(file_path)
@@ -361,20 +360,18 @@ create_backup_cli :: proc(file_path: string) -> bool {
 
 	if !ok && file_existed {
 		// File was present but backup failed — abort to prevent data loss.
-		if !wayu.tui_mode {
-			print_error("Failed to create backup for %s", file_path)
-			fmt.println("Aborting operation to prevent data loss.")
-		}
+		print_error("Failed to create backup for %s", file_path)
+		fmt.println("Aborting operation to prevent data loss.")
+
 		return false
 	}
 
 	if ok {
-		if !wayu.tui_mode {
-			if _backed_up_this_run.allocator.procedure == nil {
-				_backed_up_this_run.allocator = runtime.heap_allocator()
-			}
-			append(&_backed_up_this_run, strings.clone(file_path, runtime.heap_allocator()))
+		if _backed_up_this_run.allocator.procedure == nil {
+			_backed_up_this_run.allocator = runtime.heap_allocator()
 		}
+		append(&_backed_up_this_run, strings.clone(file_path, runtime.heap_allocator()))
+
 		prune_backups(file_path, BACKUP_KEEP_COUNT)
 	}
 	return true
@@ -419,33 +416,6 @@ free_backup_infos :: proc(backups: []BackupInfo) {
 		delete(b.backup_file)
 	}
 	delete(backups)
-}
-
-// TUI version — returns false on backup failure without blocking on stdin.
-// In TUI raw mode os.read(stdin) would deadlock, so we rely on the caller
-// (the TUI notification bar) to surface the error to the user.
-create_backup_tui :: proc(file_path: string, auto_backup := true) -> bool {
-	if !auto_backup {
-		return true
-	}
-
-	file_existed := os.exists(file_path)
-
-	backup_path, ok := create_backup(file_path)
-	defer if ok do delete(backup_path)
-
-	if !ok && file_existed {
-		// Suppress stdout noise in TUI mode; the notification bar handles messaging.
-		if !wayu.tui_mode {
-			print_warning("Failed to create backup for %s", file_path)
-		}
-		return false
-	}
-	if ok {
-		prune_backups(file_path, BACKUP_KEEP_COUNT)
-	}
-
-	return true
 }
 
 // Pick the backup a restore uses. `selector` is "" (newest backup that is
@@ -965,8 +935,7 @@ handle_backup_command :: proc(action: Action, args: []string) {
 
 // The groups `backup list` / `backup rm` act on: wayu.toml and entries.json
 // always (so they are shown even with no backups), then every other group in
-// the backup dir (the rc file from init, plugins.json, ...). Also the TUI
-// Backups view and its cleanup. Free with delete_backup_keys.
+// the backup dir (the rc file from init, plugins.json, ...). Free with delete_backup_keys.
 backup_list_groups :: proc() -> []string {
 	keys := list_backup_keys()
 	out := make([dynamic]string, 0, len(keys) + 2)

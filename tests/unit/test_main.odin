@@ -195,9 +195,9 @@ test_parse_args_double_dash_terminator :: proc(t: ^testing.T) {
 
 	testing.expect(
 		t,
-		!wayu.global_flag_present([]string{"alias", "add", "x", "echo", "--tui"}, "--tui"),
+		!wayu.global_flag_present([]string{"alias", "add", "x", "echo", "--version"}, "--version"),
 	)
-	testing.expect(t, !wayu.global_flag_present([]string{"--", "--tui"}, "--tui"))
+	testing.expect(t, !wayu.global_flag_present([]string{"--", "--version"}, "--version"))
 	testing.expect(
 		t,
 		wayu.global_flag_present([]string{"path", "list", "--no-color"}, "--no-color"),

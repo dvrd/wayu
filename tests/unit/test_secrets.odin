@@ -125,8 +125,7 @@ test_backup_is_owner_only :: proc(t: ^testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// List views mask secret-looking values unless revealed (`const list`,
-// TUI constants view). Values below are fake.
+// List views mask secret-looking values unless revealed with `const list --reveal`. Values below are fake.
 // ---------------------------------------------------------------------------
 
 @(test)
@@ -202,69 +201,6 @@ test_parse_args_reveal_flag :: proc(t: ^testing.T) {
 		}
 		if len(parsed.args) > 0 do delete(parsed.args)
 	}
-}
-
-// Render the current view into a screen and return its text (caller deletes).
-@(private = "file")
-render_view_text :: proc(state: ^wayu.TUIState) -> string {
-	screen := wayu.screen_create(state.terminal_width, state.terminal_height)
-	defer wayu.screen_destroy(&screen)
-	wayu.tui_render(state, &screen)
-	return wayu.screen_to_string(&screen)
-}
-
-@(test)
-test_tui_constants_view_masks_until_reveal_key :: proc(t: ^testing.T) {
-	state := wayu.tui_state_init()
-	defer wayu.tui_state_destroy(&state)
-	state.terminal_width = 120
-	state.terminal_height = 30
-
-	items := make([dynamic]string)
-	meta := make([dynamic]wayu.RowMeta)
-	wayu.cache_push(&items, &meta, strings.clone("EDITOR=vim"), "EDITOR", "vim", .WAYU_ACTIVE)
-	wayu.cache_push(
-		&items,
-		&meta,
-		strings.clone("FAKE_API_KEY=********"),
-		"FAKE_API_KEY",
-		"fake-key-0001",
-		.WAYU_ACTIVE,
-	)
-	wayu.tui_store_cache(&state, .CONSTANTS_VIEW, items, meta)
-	state.current_view = .CONSTANTS_VIEW
-
-	masked := render_view_text(&state)
-	defer delete(masked)
-	testing.expect(
-		t,
-		!strings.contains(masked, "fake-key-0001"),
-		"secret must be masked by default",
-	)
-	testing.expect(t, strings.contains(masked, wayu.SECRET_MASK), "mask must be shown")
-	testing.expect(t, strings.contains(masked, "vim"), "non-secret values stay visible")
-	testing.expect(t, strings.contains(masked, "v Reveal"), "footer must advertise the reveal key")
-
-	wayu.handle_data_view_event(&state, wayu.KeyEvent{key = .Char, char = 'v'})
-	revealed := render_view_text(&state)
-	defer delete(revealed)
-	testing.expect(t, strings.contains(revealed, "fake-key-0001"), "`v` must reveal the value")
-	testing.expect(t, strings.contains(revealed, "v Hide"), "footer must offer to hide again")
-
-	wayu.handle_data_view_event(&state, wayu.KeyEvent{key = .Char, char = 'v'})
-	hidden := render_view_text(&state)
-	defer delete(hidden)
-	testing.expect(t, !strings.contains(hidden, "fake-key-0001"), "second `v` must mask again")
-
-	// Reveal never outlives the view.
-	wayu.handle_data_view_event(&state, wayu.KeyEvent{key = .Char, char = 'v'})
-	wayu.tui_state_goto_view(&state, .MAIN_MENU)
-	testing.expect(t, !state.reveal_secrets, "leaving the view must reset reveal")
-
-	// `v` is constants-only: other data views ignore it.
-	state.current_view = .ALIAS_VIEW
-	wayu.handle_data_view_event(&state, wayu.KeyEvent{key = .Char, char = 'v'})
-	testing.expect(t, !state.reveal_secrets, "`v` must be a no-op outside the constants view")
 }
 
 // A secret constant's name comes from entries.json and secrets.json; the

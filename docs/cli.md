@@ -1,7 +1,11 @@
 # wayu CLI reference
 
 ```
-wayu                                   # interactive TUI
+wayu                                   # interactive native shell
+wayu -l | --login                      # start a login shell
+wayu -lc <command>                     # evaluate a command after login startup
+wayu <file.wy> [args...]               # run a Wayu script
+wayu -c <command>                      # evaluate a command and return its status
 wayu <command> [<action>] [arguments] [flags]
 ```
 
@@ -10,7 +14,7 @@ comes from one table in the source, `WAYU_COMMAND_SPECS`
 (`src/wayu_completions.odin`), which also drives dispatch, `wayu help` and
 wayu's own shell completions. `tests/unit/test_cli_doc.odin` fails when this
 file misses a command, alias, action or flag from that table, and
-`tests/integration/test_exit_codes.rb` runs the [exit code
+`tests/integration/exit_codes.odin` runs the [exit code
 examples](#exit-code-examples) below.
 
 The config file format is described in [config-reference.md](config-reference.md);
@@ -34,7 +38,6 @@ behavior changes between releases in [UPGRADING.md](UPGRADING.md).
 | `--shell <zsh\|bash\|fish>` | Act on this shell's files instead of the one detected from `$SHELL` |
 | `--full`, `-f` | `path`/`alias`/`const list`: include external entries (same as `--source all`); elsewhere exit `64` |
 | `--source <filter>`, `--source=<filter>` | `path`/`alias`/`const list`: `wayu` (default), `inactive`, `external` or `all`; elsewhere exit `64` |
-| `--tui` | Open the TUI (same as running `wayu` with no arguments) |
 | `--help`, `-h`, `help` | Global help, or a command's help after the command (`wayu path --help`) |
 | `--version`, `-v`, `version` | Print `wayu vX.Y.Z` |
 | `--` | End of flags: every later word is a literal argument |
@@ -698,6 +701,110 @@ one is newer, runs `wayu optimize --notify` once, which prints
 (once per change). With `[settings] auto_optimize = true` in wayu.toml it moves
 them instead (with backups) and prints what it moved.
 
+### Native shell
+
+Run `wayu` to start the native shell, or pipe commands to its standard input.
+`wayu -c 'echo hello'` evaluates one command string and returns its exit status.
+Commands support pipes, file redirection (including `2>` and `2>&1`), sequencing, and
+conditional execution (`&&`, `||`). Use `cd`, `export`, and `unset` to change
+session state. Use `jobs`, `fg`, and `bg` to manage jobs started with `&` or
+suspended in the foreground.
+
+Wayu scripts use the `.wy` extension. From any shell, pass the file to
+`wayu`. The script receives its path in `$0` and its arguments in `"$@"`.
+Inside Wayu, direct execution (for example `./build.wy` or `./deploy.zsh`)
+requires execute permission. A permission denial exits with status 126.
+The shebang selects the interpreter. For executable text files without a
+shebang, the system's `execvp` fallback uses `/bin/sh` regardless of the
+filename extension. Explicit interpreter calls such as `wayu build.wy` or
+`zsh deploy.zsh` only need read permission on the script.
+
+A launched script runs in a child process and returns its exit status.
+Use `source ./setup.wy` to apply native commands to the current session.
+To run a Wayu script directly from another shell, give it execute permission
+and start it with `#!/usr/bin/env wayu`.
+
+The native shell loads Wayu’s PATH entries, plain constants, managed aliases,
+and directory aliases from `alias-sources.conf` at startup. Interactive sessions then read `config.wayu` from the Wayu config
+directory. Use `source <file>` to run native commands in the current session.
+The built-in `z <keywords>` jumps to a directory visited with `cd` or `z`.
+Wayu stores visits in `<data>/directories.json` across sessions. Keywords
+match in order, ignoring case. The final keyword must end in the last path
+component, so `z wayu` can select `~/dev/wayu` without landing in its
+`tests` subdirectory. Visits gain rank. The last visit multiplies that rank
+by 4 within one hour, 2 within one day, 0.5 within one week, or 0.25 after
+that. When total rank exceeds 10,000, Wayu scales it back to 9,000 and drops
+entries below 1. `z` goes home and `z -` returns to the previous directory.
+All keyword lookups use Wayu’s history.
+
+Use `wayu warp edit` to browse or edit this history.
+
+Managed functions in Bash, zsh, or Fish run in the corresponding interpreter
+as child processes. Directory and environment changes inside a managed
+function are local to that process. Shell-specific editor plugins and rc files
+belong to their respective interpreters. Use native functions to change the current session, for example
+`mkcd() { mkdir -p "$1" && cd "$1"; }`. Functions accept positional parameters,
+`"$@"`, `$#`, and `return [status]`. Use `if/elif/else/fi`, `for name in ...; do ...; done`,
+`while`, and `until` at the prompt, in a sourced file, or with `-c`. Use `break` to leave the nearest loop and `continue` to skip to its next iteration.
+
+A standalone assignment such as `editor=vim` sets a shell variable. Use
+`export editor` to pass it to children or `EDITOR=vim git commit` for one command.
+`${editor:-vi}` supplies a default when the variable is unset or empty.
+`branch=$(git branch --show-current)` captures stdout and trims trailing newlines. Double-quote a substitution to keep its output in one argument.
+Use `type name`, `where name`, or `command -v name` to look up a command.
+
+Login sessions read `login.wayu` from the Wayu config directory before interactive
+`config.wayu`. Start one with `wayu -l`, `wayu --login`, or `wayu -lc 'echo hello'`. Arguments after the command string set `$0`, `$1`, and the remaining positional parameters.
+
+Interactive sessions leave a blank line before each subsequent prompt.
+Ctrl+L clears the visible screen and redraws the prompt, preserving the current
+command and cursor position. Configure suggestion acceptance with
+`[autosuggest] accept_keybind = "ctrl+y"` and the prompt toggle with
+`[prompt.interactive] toggle_key`. Other native editor bindings are fixed.
+
+At the prompt, Ctrl+N/P cycles history suggestions and Right accepts
+the displayed suffix. Ctrl+Y also accepts it by default. Suggestions include saved
+shell history and configured Atuin history, with command names as a fallback. Tab cycles matching commands and paths. When Fish is installed, Tab also
+loads command-specific argument and flag completions from Fish and from
+`<data>/completions/<command>.fish`. Simple aliases use the underlying
+command’s completions. Up/Down recall
+previous lines, and Ctrl+_ undoes an edit. Ctrl+R searches history by
+substring. Enter accepts the result for further editing. Set `[prompt]`
+`vi_mode = true` to enable vi insert and normal modes. Interactive history is stored under
+the wayu data directory in `history.jsonl`; a leading space omits a command
+from history. History is recorded only in interactive sessions.
+
+```sh
+wayu -c 'printf "%s\n" one two | wc -l'
+```
+
+### `wayu warp`
+
+In the native shell or an initialized interactive Zsh, Bash, or Fish shell,
+`wayu warp <words...>` changes to the highest-scoring matching directory.
+Wayu automatically learns visits in initialized interactive shells. Zsh and Fish
+record directory changes as they happen. Bash records ordinary changes at the next
+prompt and Warp jumps immediately. Repeated prompts in the same directory add
+no visits. The score combines visit rank and recency. Words match in order and the last
+word matches the destination directory name. The current directory and missing
+directories are skipped. Invoking the executable directly prints the path.
+
+The `edit` action opens the directory history editor. Type to filter by path,
+then use ↑/↓ or Ctrl+N/P to move. The preview shows the selected directory’s
+contents. Ctrl+W raises its rank, Ctrl+S lowers it, Ctrl+D asks to forget it
+from history, and Ctrl+R reloads the database. Esc closes the editor. With
+redirected input or output, `wayu warp edit` prints a score-and-path listing.
+
+The `search` action opens a picker. Optional words narrow the initial list.
+Enter writes the selected directory path and a newline to standard output.
+The interface uses the controlling terminal, so piping captures only the path.
+Cancelling or finding no matches exits 1 with empty stdout. If there are matches
+but no controlling terminal, selection exits 69.
+
+```sh
+wayu warp search projects | tee selected-directory.txt
+```
+
 ### `wayu reload` (`watch`, `hot-reload`)
 
 `wayu reload [start|stop|status|regenerate]`. `start` (the default) watches
@@ -726,7 +833,7 @@ Prints the global help: commands, flags, command flags, examples, exit codes.
 `--json` is accepted by `path|alias|const|plugin|backup|script list`,
 `secrets recipient list`, `search` and `doctor` (and by any `help`); anywhere else it exits `64`. Output is one
 JSON document on stdout (errors stay on stderr); an empty list is `[]`. The
-shapes below are checked by `tests/integration/test_cli_output.rb` — new
+shapes below are checked by `tests/integration/cli_output.odin` — new
 keys may be added, existing ones keep their meaning.
 
 | Command | Document |
@@ -756,17 +863,17 @@ BSD `sysexits.h` values (`EXIT_*` in `src/interfaces.odin`):
 | Code | Name | Meaning |
 |---|---|---|
 | 0 | `EXIT_SUCCESS` | Success (also: nothing to do) |
-| 1 | `EXIT_FAILURE` | General error (e.g. the editor exited non-zero; the TUI started without a terminal); `optimize --check`: lines can be optimized |
+| 1 | `EXIT_FAILURE` | General error (e.g. the editor exited non-zero); `optimize --check`: lines can be optimized |
 | 64 | `EXIT_USAGE` | Bad usage: unknown command, action or option; missing argument; `--json` where unsupported; missing `--yes` |
 | 65 | `EXIT_DATAERR` | Bad input: invalid name or value, no such entry, unknown template, `toml validate` failed |
 | 66 | `EXIT_NOINPUT` | Input file or directory not found or unreadable (`path add` of a missing dir) |
 | 69 | `EXIT_UNAVAILABLE` | A required tool is not installed (`script new`: the language's interpreter or compiler) |
-| 71 | `EXIT_OSERR` | TUI: the terminal could not be put in raw mode |
+| 71 | `EXIT_OSERR` | Could not set up the terminal |
 | 73 | `EXIT_CANTCREAT` | Cannot create an output file or directory |
 | 74 | `EXIT_IOERR` | Read/write failure, failed git operation |
 | 77 | `EXIT_NOPERM` | Permission denied |
 | 78 | `EXIT_CONFIG` | Configuration problem: not initialized, invalid `hooks.conf`, `entries.json` or `plugins.json` (`build`), relative `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR`, `doctor` found an error, `export check` found no current turbo file |
-| 126 | `EXIT_EXEC_NOT_RUNNABLE` | `secrets run`: the command was found but cannot be executed |
+| 126 | `EXIT_EXEC_NOT_RUNNABLE` | Native shell or `secrets run`: the command was found but cannot be executed |
 | 127 | `EXIT_EXEC_NOT_FOUND` | `secrets run`: the command was not found |
 
 Interrupted (`SIGINT`, `SIGTERM`, `SIGHUP`) while a child process runs (git,
@@ -777,7 +884,7 @@ Ctrl-C, `143` for `SIGTERM`, `129` for `SIGHUP`).
 ### Exit code examples
 
 Run against a freshly initialized config (`wayu init`) by
-`tests/integration/test_exit_codes.rb`; keep the table format
+`tests/integration/exit_codes.odin`; keep the table format
 (`` | `wayu …` | code | `` ).
 
 | Command | Exit |
@@ -852,6 +959,7 @@ parse.
 | Variable | Effect |
 |---|---|
 | `WAYU_CONFIG_DIR` | Config dir (wayu.toml, extra/tools, hooks.conf); default `~/.config/wayu`. Must be absolute (else exit `78`) |
+| `WAYU_DEBUG` | Set to `1` to print debug-build diagnostics to stderr. |
 | `WAYU_DATA_DIR` | Data dir (entries.json, functions/, scripts/, bin/, plugins, generated init files, completions, backups); default `${XDG_DATA_HOME:-~/.local/share}/wayu`. Must be absolute (else exit `78`) |
 | `XDG_DATA_HOME` | Base of the default data dir (ignored when relative) |
 | `SHELL` | Shell detection (override with `--shell`) |
@@ -861,5 +969,4 @@ parse.
 | `COLUMNS` | Table width when not writing to a terminal |
 | `XDG_CACHE_HOME` | Base of the `[tools]` evalcache |
 | `WAYU_GIT_TIMEOUT` | Seconds before a plugin clone/fetch/check is killed |
-| `WAYU_THEME` | TUI: `light` or `dark` (skips background detection) |
-| `ESCDELAY` | TUI: milliseconds that separate `Esc` from an Alt+key chord (default 100) |
+| `ESCDELAY` | Warp editor: milliseconds that separate `Esc` from an Alt+key chord (default 100) |

@@ -74,6 +74,18 @@ they live, and which files are generated.
 - The `[tools]` evalcache lives outside both:
   `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache` (`wayu build clean` deletes it).
 
+### Native shell startup and history
+
+Interactive Wayu sessions read `config.wayu` in `WAYU_CONFIG_DIR`
+after loading Wayu-managed entries. For example, `export EDITOR=vi` in that
+file sets the editor for commands launched from the native prompt. Managed
+functions run in child processes using the interpreter named by their file
+extension. Existing shell-specific startup files apply when using those shells.
+
+The native shell appends interactive commands to `history.jsonl` in
+`WAYU_DATA_DIR`. Each record is a JSON string, so multiline commands survive
+across sessions. Start a command with a space to omit it. Suggestions can also read your previous shell history and Atuin.
+
 ## wayu.toml
 
 `$WAYU_CONFIG_DIR/wayu.toml` is the file you edit for `[shell]`,
@@ -99,11 +111,9 @@ This file passes `wayu toml validate` and `wayu build` as-is.
 [shell]
 type = "zsh"
 
-[settings]
-autosuggestions_accept_keys = [
-  "^Y",
-  "^[[121;5u",
-]
+[autosuggest]
+enabled = true
+accept_keybind = "ctrl+y"
 
 [tools]
 zoxide = { kind = "evalcache", args = "init zsh" }
@@ -183,7 +193,7 @@ Keys:
 | Reader | On a syntax error |
 |---|---|
 | `wayu toml validate`, `wayu doctor`, `wayu backup restore` (strict) | Fail and name the line: `Failed to parse <file>: line 5: invalid value "ls" (strings must be quoted)` |
-| Everything else: the generator (`wayu build`, every write), the TUI (lenient) | Use what was recovered; a line that is not valid TOML is skipped |
+| Everything else: the generator (`wayu build`, every write) (lenient) | Use what was recovered; a line that is not valid TOML is skipped |
 
 Strict-only failures: a key defined twice in one table, a table defined twice,
 an integer with leading zeros (`007`), an unquoted string, a raw control
@@ -222,35 +232,69 @@ top-level `shell = "..."` string is not read (`toml validate` rejects it).
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `autosuggest` | boolean | `false` | zsh only (interactive). Built-in fish-like suggestions from history, in place of the zsh-autosuggestions plugin: see [Autosuggestions](#autosuggestions). A non-boolean value is an error (`toml validate`, `doctor`). |
-| `autosuggest_style` | string | `"fg=8"` | zsh only. How the suggestion is drawn: a `region_highlight` spec (`fg=244`, `fg=8,underline`; one line, at most 64 bytes, else an error). |
-| `autosuggestions_accept_keys` | array of strings | `["^Y", "^[[121;5u"]` | zsh only. Key sequences that accept the whole suggestion: bound to `autosuggest-accept` (zsh-autosuggestions) in the `main`, `emacs` and `viins` keymaps, or, with `autosuggest = true`, to `wayu-suggest-accept` in `emacs` and `viins`. Entries must start with `^` or contain `[`; others, non-strings, empties and duplicates are ignored. An empty or missing array uses the default. The array may span lines. |
 | `auto_optimize` | boolean | `false` | When an open shell notices that a startup file changed (prompt hook) and it has lines `wayu optimize` can move, move them right away (backups first) and print what moved, instead of printing the `wayu: ~/.zshrc changed: N lines can be optimized` notice. |
 
 | `compinit_guard` | boolean | `true` | zsh only. After wayu's `compinit`, `compinit` is a function that only registers the completions (`#compdef` / `#autoload` files) of `fpath` dirs added since; its flags (`-C`, `-i`, `-u`, `-d <dump>`, ...) are accepted and ignored. An installer's `autoload -Uz compinit && compinit` in `.zshrc` then costs a glob of the new dirs instead of a second full completion setup (audit, dump check/rewrite), and its dirs' completions work even with `-C`. The same registration runs once at the first prompt, for dirs added to `fpath` without a `compinit` call. `false`: later `compinit` calls are zsh's own. |
 | `defer_plugins` | boolean | `false` | zsh only. Load the plugins (`plugins.zsh`, `plugins/config.zsh`) after the first prompt is drawn (through zsh-defer) instead of during startup. They then load after `tools.zsh` / `extra.zsh`: code there that needs a plugin widget should run through `zsh-defer`. |
-| `highlight` | boolean | `false` | zsh only (interactive). Built-in syntax highlighting of the command line, in place of the zsh-syntax-highlighting / fast-syntax-highlighting plugins: see [Syntax highlighting](#syntax-highlighting). A non-boolean value is an error. |
-| `highlight_styles` | table of strings | see [styles](#syntax-highlighting) | zsh only. Per-style `region_highlight` specs, as an inline table (`highlight_styles = { command = "fg=blue", comment = "fg=244" }`) or a `[settings.highlight_styles]` table. `"none"`: not highlighted. A value that isn't a one-line string of at most 64 bytes is an error; an unknown style name is a warning (ignored). |
+| `highlight` | boolean | `false` | Interactive zsh and the native shell. Built-in syntax highlighting of the command line, in place of the zsh-syntax-highlighting / fast-syntax-highlighting plugins: see [Syntax highlighting](#syntax-highlighting). A non-boolean value is an error. |
+| `highlight_styles` | table of strings | see [styles](#syntax-highlighting) | Per-style `region_highlight` specs for zsh and the native shell, as an inline table (`highlight_styles = { command = "fg=blue", comment = "fg=244" }`) or a `[settings.highlight_styles]` table. `"none"`: not highlighted. A value that isn't a one-line string of at most 64 bytes is an error; an unknown style name is a warning (ignored). |
 | `lazy_compinit` | boolean | `false` | zsh only. No `compinit` at startup: the completion widgets (Tab, `^D` list, ...) set up completion on first use and then complete. `compdef` calls made before that are queued and replayed. `$_comps` and completion functions don't exist until then. |
 
 The plugin bindings are written to `<data>/plugins/config.zsh`, which
 `core.zsh` sources after the plugins; they apply only when the
 `autosuggest-accept` widget exists. No other `[settings]` key is read.
 
-#### Autosuggestions
+### Autosuggestions
 
-`autosuggest = true` puts suggestions in `core.zsh` itself (interactive zsh;
-nothing forks, no extra files). As you type, the newest history entry
+```toml
+[autosuggest]
+enabled = true
+accept_keybind = "ctrl+y"
+```
+
+`enabled` defaults to true in the native shell and false in zsh.
+`accept_keybind` defaults to `"ctrl+y"`. Use `ctrl+` followed by one letter
+from a through z. For example, `"ctrl+g"` means hold Ctrl and press G.
+Wayu handles both terminal encodings automatically. Set the optional
+`style` string to change the hint color (default `"fg=8"`).
+
+Existing `[settings]` keys `autosuggest`, `autosuggestions_accept_keys`, and
+`autosuggest_style` remain supported. Each new setting takes precedence over
+its legacy equivalent.
+
+At the native prompt, type a command prefix to see a suggested suffix. The
+editor checks Wayu history first, then the detected shell’s saved history
+(zsh or Bash `HISTFILE` or its default, or the Fish history file). It reads
+that shell file once per session. When Atuin is configured under `[tools]`
+or `ATUIN_SESSION` is set, the editor also searches Atuin synchronously.
+Ctrl+N/P cycles distinct literal-prefix matches. When history has no match,
+a single command prefix suggests builtins, aliases, managed functions and
+executables. Right or your configured accept key inserts the suggestion for
+editing. Enter executes the text you have accepted or typed.
+
+`[autosuggest] enabled = true` puts suggestions in `core.zsh` itself (interactive zsh). As you type, the newest history entry
 that starts with the line (typed glob characters are literal) is shown after
-the cursor in `autosuggest_style`. It is computed in a `zle-line-pre-redraw`
+the cursor in the configured style. It is computed in a `zle-line-pre-redraw`
 hook (`add-zle-hook-widget`, which zsh-syntax-highlighting 0.8+ also uses)
 instead of wrapping every widget at the first prompt and before every prompt
 as the zsh-autosuggestions plugin does.
 
+When the Atuin zsh integration is loaded, wayu also searches the full local
+Atuin database synchronously for the prefix. Native zsh matches take priority,
+followed by distinct Atuin matches and then the existing command-name fallback
+if neither history has a match. Cycling reuses Atuin results for the same prefix.
+
+- In emacs and vi insert mode, Ctrl-N cycles to the next older distinct history
+  match and Ctrl-P cycles back. Both wrap around and leave the typed prefix
+  in place. On an empty line either key previews the newest history entry,
+  then cycles through distinct entries. If the first word has no longer history
+  match, the keys cycle matching command names from PATH. With no candidates
+  the keys leave the line and prompt alone. Other custom
+  bindings and configured accept keys take precedence.
 - Accept all: `forward-char`, `end-of-line`, `vi-forward-char`,
   `vi-end-of-line`, `vi-add-eol` (→, `^F`, `^E`/End where bound, vi `l`
   `$` `A`) with the cursor at the end of the line, and the
-  `autosuggestions_accept_keys` (default `^Y`).
+  configured accept key (default Ctrl+Y).
 - Accept part: `forward-word`, `emacs-forward-word`, `vi-forward-word`,
   `vi-forward-word-end`, `vi-forward-blank-word`, `vi-forward-blank-word-end`,
   `vi-find-next-char`, `vi-find-next-char-skip` (`M-f`, vi `w` `e` `W` `E`
@@ -260,7 +304,7 @@ as the zsh-autosuggestions plugin does.
   the suggestion is gone when the cursor isn't at the end, after history
   and search widgets (the line already came from history) and once the line
   is accepted: Enter runs only what you typed.
-- With `autosuggest = true` the zsh-autosuggestions plugin is not loaded,
+- With `[autosuggest] enabled = true` the zsh-autosuggestions plugin is not loaded,
   even if installed and enabled (`wayu doctor` warns until it is removed or
   disabled). `defer_plugins` / `lazy_compinit` don't affect it (it is set up
   at startup; it is cheap). bash and fish ignore it (`doctor` notes it).
@@ -271,6 +315,13 @@ as the zsh-autosuggestions plugin does.
   shorter. No completion strategy beyond that.
 
 #### Syntax highlighting
+
+In the native shell, `[settings] highlight = true` colors the editable command
+line using the same `highlight_styles` table as zsh. The native editor
+recognizes commands on PATH, builtins, managed aliases and functions,
+options, existing paths, quotes, variable expansions, globs, redirects,
+comments, and matching brackets. History suggestions keep their own style.
+`NO_COLOR` and `--no-color` disable syntax colors.
 
 `highlight = true` puts a syntax highlighter in `core.zsh` itself
 (interactive zsh; nothing forks, no extra files, no widget is wrapped).
@@ -427,7 +478,7 @@ the plugins; `login_only` tools after `tools.<ext>` and `extra.<ext>`.
 
 ### `[prompt]`
 
-A native prompt for zsh and fish, off by default. It is generated only when
+A native prompt for the native shell, zsh, and fish, off by default. It is generated only when
 `[prompt] enabled = true`, and set up only in interactive shells. bash
 ignores the whole table. fish differences: see [fish](#prompt-in-fish).
 
@@ -538,12 +589,24 @@ name. A built-in match without a user `format` shows the shell name.
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `toggle_enabled` | boolean | `false` | Bind `toggle_key` to switch between the full and the minimal prompt. Bound in `viins` + `vicmd` with `vi_mode`, else in `emacs`. |
-| `toggle_key` | string | `"^P"` | Key sequence for the toggle. |
+| `toggle_key` | string | `"^G"` | Key sequence for the toggle. |
 | `transient_enabled` | boolean | `true` | Minimal prompt = current dir + success/error symbol. `false`: minimal prompt = `%~ ➜ `. Only reachable through the toggle. |
 | `vi_mode_indicator` | boolean | `true` | With `vi_mode`, track the keymap in `{character}`. `zle-line-init` / `zle-keymap-select` already defined are kept and run first. |
 | `context_aware` | boolean | `true` | Detect the project type on `cd` (for `{language_context}`). |
 | `async_rprompt` | boolean | `true` | Background job after each command: git changed-file count (right prompt) and context version. Started only in a git work tree or a context with a version command; elsewhere the right prompt is cleared without forking. |
 | `rprompt_format` | string | `"[ {git_pending}](242)"` | Right prompt, shown when the work tree has changes. `{git_pending}` = number of changed files, `{git_branch}` = branch. |
+
+#### Prompt in the native shell
+
+The native shell reads the same prompt layout, module formats, colors, and vi
+symbols at startup. Project versions and the Git right prompt update in the
+background while you edit. In the same directory, branch, and project context,
+the next prompt displays the last known values immediately. Outside a configured project, the context token
+shows `wayu`. The right prompt clears when the input needs its space.
+
+Ctrl+G toggles the minimal prompt when enabled. Ctrl+P cycles to the previous autosuggestion.
+With the minimal-prompt toggle explicitly bound to Ctrl+P or Ctrl+N, use it on an empty
+line. Once you type a prefix, those keys cycle history suggestions.
 
 #### Prompt in fish
 
@@ -766,7 +829,7 @@ listed one by one.
 ## Managed data
 
 PATH entries, aliases and constants are data wayu manages: `wayu path|alias|
-const add|rm`, the TUI and templates edit them, and `wayu build` compiles them
+const add|rm` and templates edit them, and `wayu build` compiles them
 into `core.<ext>`. They are not read from `wayu.toml`; a `[paths]`,
 `[aliases]` or `[env]` table there is an error for `wayu toml validate` and
 `wayu doctor`, naming the command to use instead.
@@ -875,7 +938,7 @@ entry is a `key` (a label) and a `dir`.
 `wayu alias add ll 'ls -lah'`: each entry is a `name` and a command
 (`value`).
 
-One rule for `alias add`, the TUI, templates and `entries.json`:
+One rule for `alias add`, templates and `entries.json`:
 
 | Rule | |
 |---|---|
@@ -935,7 +998,6 @@ its value starts with a known token prefix (`sk-`, `sk_`, `pk_live_`,
 | Where | Shows |
 |---|---|
 | `wayu const list` (text and `--json`, with or without `--full`) | `********` for secret-looking constants and environment variables; `--reveal` shows them |
-| TUI constants view | Masked; `v` toggles reveal |
 | Dry-run previews | Masked |
 | `wayu const get NAME` | The real value |
 
@@ -985,8 +1047,7 @@ Placeholder quoting:
 | Inside `"..."`, also within `'...'`: `sh -c "echo {value}"`, `sh -c 'sh -c "echo {value}"'` | Refused. Any wayu operation that would run hooks exits `78` before writing anything and names the line; `wayu hooks` marks it `INVALID`. Use `"$WAYU_HOOK_VALUE"` when you need double quotes. |
 
 Hooks run with `sh -c`, stdin on `/dev/null`; their exit status is ignored.
-In the CLI a hook's stdout and stderr are shown (in the TUI they are
-captured). Pre-hooks run only when the operation will change something,
+A hook's stdout and stderr are shown. Pre-hooks run only when the operation will change something,
 post-hooks only after a successful write, and none under `--dry-run`. Hooks
 run outside wayu's config lock (pre-hooks before it is taken, post-hooks
 after it is released), so a hook may run `wayu` itself. A hook still running
@@ -1115,21 +1176,23 @@ here):
 ### alias-sources.conf
 
 `$WAYU_CONFIG_DIR/alias-sources.conf` lists external alias sources that
-`wayu alias list` shows as read-only (they are not defined in the shell):
+`wayu alias list` shows as read-only. The native shell loads them at startup:
 
 ```
 # dir <path> <command_template>
-dir ~/.config/fabric/patterns fabric --pattern {name}
+dir ~/.config/man-topics man {name}
 ```
 
-Each entry of `<path>` (leading `~` expanded) becomes a name; `{name}` in the
-template is replaced with it. Lines not starting with `dir ` and comment lines
+Each subdirectory supplies an alias name. A directory containing only files uses
+file names instead. Wayu expands a leading `~` in the path and substitutes the
+name for `{name}` in the template. In the native shell, managed aliases take
+priority, followed by sources in file order. Unsafe alias names are skipped. Lines not starting with `dir ` and comment lines
 are ignored.
 
 ## Generated files
 
 Do not edit these; wayu overwrites them. They are regenerated by `wayu build`,
-`wayu init` and every `path` / `alias` / `const` change (CLI or TUI), for
+`wayu init` and every `path` / `alias` / `const` change, for
 every shell initialized in the data dir.
 
 | File (data dir) | Content |
@@ -1139,7 +1202,7 @@ every shell initialized in the data dir.
 | `path_sync.<ext>` | The PATH entry list (after `bin/` when it holds a script); line 1 is its signature. The prompt hook re-sources it when the signature changes. |
 | `turbo.<ext>` | zsh/bash. Same content as `core.<ext>`, refreshed with it, only if it exists (created by `wayu export`). |
 | `plugins.<ext>` | Plugin loader, regenerated on any `plugin` change and by `wayu init`. |
-| `plugins/config.zsh` | `[settings] autosuggestions_accept_keys` bindings. |
+| `plugins/config.zsh` | `[autosuggest] accept_keybind` bindings. |
 | `secrets.json` | Encrypted constants (see [`[secrets]`](#secrets)); written by `wayu const add --secret`, `const rm`, `secrets rekey` and the multi-machine `secrets recipient` / `recovery` commands (experimental). Not generated from wayu.toml. |
 | `backup/` | Timestamped backups `<file>.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]` (UTC), 5 newest per file (see `wayu backup`). `<file>` is the name of a file directly in the config/data dir, `@` + its relative path with `/` as `%` for a nested one (`@functions%init.zsh`), or the path of a file outside them (`.zshrc`, `.config%zsh%.zshrc`). Files named otherwise are ignored. |
 

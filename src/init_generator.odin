@@ -356,7 +356,6 @@ sync_init_orchestrator :: proc() {
 // discarded) is repeated where a human can see it.
 @(private = "file")
 warn_customized_init :: proc(path, current: string) {
-	if wayu.tui_mode do return
 	marker := fmt.tprintf("%s/.%s.customized", wayu.data, filepath.base(path))
 	sig := fmt.tprintf("%x\n", hash.fnv64a(transmute([]byte)current))
 	if old, err := os.read_entire_file(marker, context.temp_allocator);
@@ -564,7 +563,7 @@ emit_bash_glob_source :: proc(b: ^strings.Builder, dir_q: string, patterns: []st
 // core sources $data/path_sync.<ext>, whose FIRST LINE is a signature of the
 // [paths] list. A prompt hook reads just that line with the `read` builtin (no
 // fork) and re-sources the file only when it changed, so `wayu path add/rm`
-// and TUI edits reach already-open shells at the next prompt.
+// reach already-open shells at the next prompt.
 //
 // Hand edits of wayu.toml (or a restored entries.json): the hook also
 // compares mtimes (`-nt`, a builtin test, no fork). When wayu.toml or
@@ -697,6 +696,7 @@ _wayu_paths_sync() {
 }
 autoload -Uz add-zsh-hook
 add-zsh-hook precmd _wayu_paths_sync
+if [[ -o interactive ]]; then add-zsh-hook chpwd _wayu_warp_visit; fi
 `
 
 // zsh login shell running a -c command (see WAYU_PATH_SYNC_ZSH): restore
@@ -773,6 +773,7 @@ WAYU_PATH_SYNC_BASH :: `_wayu_paths_apply() {
 _wayu_paths_sync() {
   local s=$? l
   local m="$_WAYU_PATHS_FILE.regen-failed"
+  if [[ $- == *i* && ${_wayu_warp_pwd-} != "$PWD" ]]; then _wayu_warp_visit; fi
   if [ "${_WAYU_PATHS_REGEN-1}" = 1 ] && { [ "${_WAYU_TOML_FILE-}" -nt "$_WAYU_PATHS_FILE" ] || [ "${_WAYU_ENTRIES_FILE-}" -nt "$_WAYU_PATHS_FILE" ]; } &&
      { [ ! -e "$m" ] || ! [ "${_WAYU_TOML_FILE-}" -ot "$m" ] || ! [ "${_WAYU_ENTRIES_FILE-}" -ot "$m" ]; }; then
     WAYU_PROMPT_HOOK=1 command "${_WAYU_BIN:-wayu}" build </dev/null >/dev/null
@@ -1241,6 +1242,36 @@ build_core_content :: proc(mask := false) -> string {
 	emit_env_exports(&b, mask = mask)
 	fmt.sbprintln(&b)
 
+	fmt.sbprintln(
+		&b,
+		`if [[ $- == *i* ]]; then
+: "${_wayu_warp_pwd:=$PWD}"
+function _wayu_warp_visit {
+    if [[ $_wayu_warp_pwd != "$PWD" ]]; then
+        command "${_WAYU_BIN:-wayu}" __warp_visit "$PWD" && _wayu_warp_pwd=$PWD
+    fi
+    return 0
+}
+function wayu {
+    case "${1-}:${2-}" in
+        warp:|warp:edit|warp:search|warp:help|warp:-*) ;;
+        warp:*)
+            local destination word
+            for word in "$@"; do
+                case "$word" in -*) command "${_WAYU_BIN:-wayu}" "$@"; return ;; esac
+            done
+            destination=$(command "${_WAYU_BIN:-wayu}" "$@" && printf .) || return
+            builtin cd -- "${destination%??}" || return
+            _wayu_warp_visit
+            return
+            ;;
+    esac
+    command "${_WAYU_BIN:-wayu}" "$@"
+}
+fi`,
+	)
+
+
 	// PATH from [paths] (file order = priority). The startup apply is the same
 	// call path_sync.<ext> makes, inlined (no extra file read); the prompt
 	// hook re-sources path_sync.<ext> when its signature changes.
@@ -1546,6 +1577,7 @@ read_startup_settings :: proc() -> StartupSettings {
 		{"settings.defer_plugins", &s.defer_plugins},
 		{"settings.lazy_compinit", &s.lazy_compinit},
 		{"settings.autosuggest", &s.autosuggest},
+		{"autosuggest.enabled", &s.autosuggest},
 		{"settings.highlight", &s.highlight},
 	}
 	for k in keys {
@@ -1553,12 +1585,20 @@ read_startup_settings :: proc() -> StartupSettings {
 			k.field^ = v.bool_val
 		}
 	}
-	if v := get_toml_value(&doc, "settings.autosuggest_style");
+	if v := autosuggest_style_value(&doc);
 	   v != nil && v.type == .STRING && autosuggest_style_valid(v.str_val) {
 		s.autosuggest_style = strings.clone(v.str_val, context.temp_allocator)
 	}
 	s.highlight_styles = read_highlight_styles(&doc)
 	return s
+}
+
+autosuggest_style_value :: proc(doc: ^TomlDoc) -> ^TomlValue {
+	if v := get_toml_value(doc, "autosuggest.style"); v != nil {
+		return v
+	}
+
+	return get_toml_value(doc, "settings.autosuggest_style")
 }
 
 // A usable `[settings] autosuggest_style`: a short region_highlight spec
@@ -1629,11 +1669,31 @@ emit_zsh_suggest :: proc(b: ^strings.Builder, style: string) {
 }
 
 ZSH_SUGGEST :: `if [[ -o interactive && -o zle ]]; then
+  function _wayu_suggest_load_atuin {
+    emulate -L zsh
+    [[ ${_wayu_atuin_prefix+x} && $BUFFER == "$_wayu_atuin_prefix" ]] && return 0
+    typeset -g _wayu_atuin_prefix=$BUFFER
+    _wayu_atuin_matches=()
+    (( ${+widgets[atuin-search]} && ${+commands[atuin]} )) || return 0
+
+    # Atuin 18 search has no --print0. Frame commands before splitting so
+    # embedded and trailing newlines survive the command substitution.
+    local marker=$'\x1e'wayu-$$-$RANDOM-$RANDOM-$RANDOM sep output
+    sep=$marker$'\n'
+    output=$(command atuin search --filter-mode global --search-mode prefix \
+      --format "{command}$marker" -- "$BUFFER" 2>/dev/null) || return 0
+    [[ -n $output ]] || return 0
+    output+=$'\n'
+    local -a entries
+    entries=( "${(@ps.$sep.)output}" )
+    # Atuin accepts wildcard queries; ZLE buffers are literal prefixes.
+    _wayu_atuin_matches=( "${(@M)entries:#"$BUFFER"?*}" )
+  }
   function _wayu_suggest_redraw {
     emulate -L zsh
     local -i end=$#BUFFER
     [[ $KEYMAP == vicmd ]] && (( end-- ))
-    if (( ! $#BUFFER || CURSOR != end || PENDING )) || [[ $LASTWIDGET == (*history*|*search*) ]]; then
+    if (( CURSOR != end || PENDING )) || [[ -z $BUFFER && -n $_wayu_suggest_buf ]] || [[ $LASTWIDGET == (*history*|*search*) ]]; then
       POSTDISPLAY=
       _wayu_suggest_buf=
     elif [[ $BUFFER != "$_wayu_suggest_buf" ]]; then
@@ -1641,6 +1701,10 @@ ZSH_SUGGEST :: `if [[ -o interactive && -o zle ]]; then
       if [[ -z $_wayu_suggest_buf || $BUFFER != "$_wayu_suggest_buf"* ||
             ( -n $_wayu_suggest_full && $_wayu_suggest_full != "$BUFFER"* ) ]]; then
         _wayu_suggest_full=${history[(r)${(b)BUFFER}*]}
+        _wayu_suggest_load_atuin
+        if [[ -z $_wayu_suggest_full || $_wayu_suggest_full == "$BUFFER" ]] && (( $#_wayu_atuin_matches )); then
+          _wayu_suggest_full=$_wayu_atuin_matches[1]
+        fi
         # No history match on the first word: complete a command name from
         # PATH (shortest, then alphabetical).
         if [[ -z $_wayu_suggest_full && $BUFFER != *[^[:alnum:]_.+-]* ]]; then
@@ -1668,6 +1732,8 @@ ZSH_SUGGEST :: `if [[ -o interactive && -o zle ]]; then
   }
   function _wayu_suggest_finish {
     emulate -L zsh
+    unset _wayu_atuin_prefix
+    _wayu_atuin_matches=()
     POSTDISPLAY=
     _wayu_suggest_buf=
     _wayu_suggest_paint
@@ -1719,11 +1785,42 @@ ZSH_SUGGEST :: `if [[ -o interactive && -o zle ]]; then
     _wayu_suggest_buf=$BUFFER
     return ret
   }
+  function _wayu_suggest_cycle {
+    emulate -L zsh
+    local direction=${WIDGET##*-} event
+    local -a matches
+    (( CURSOR == $#BUFFER )) || return 0
+    # Sort matching event numbers newest first and omit exact matches.
+    for event in ${(Onk)history[(R)${(b)BUFFER}?*]}; do
+      matches+=( "${history[$event]}" )
+    done
+    _wayu_suggest_load_atuin
+    matches+=( "${_wayu_atuin_matches[@]}" )
+    if (( ! $#matches )) && [[ -n $BUFFER && $BUFFER != *[^[:alnum:]_.+-]* ]]; then
+      matches=( "${(@ok)commands[(I)${(b)BUFFER}?*]}" )
+    fi
+    (( $#matches )) || return 0
+    matches=( "${(@u)matches}" )
+    local -i i=0
+    [[ -z $POSTDISPLAY ]] || i=${matches[(Ie)$_wayu_suggest_full]}
+    if (( ! i )); then
+      i=1
+    elif [[ $direction == next ]]; then
+      (( i = i % $#matches + 1 ))
+    else
+      (( i = i <= 1 ? $#matches : i - 1 ))
+    fi
+    _wayu_suggest_full=$matches[i]
+    _wayu_suggest_buf=$BUFFER
+    POSTDISPLAY=${_wayu_suggest_full[$#BUFFER+1,-1]}
+    _wayu_suggest_paint
+  }
   function _wayu_suggest_key { _wayu_suggest_accept "" "$@"; }
   () {
     emulate -L zsh
     [[ $ZSH_VERSION == (5.<3->|<6->.)* ]] || return 0
     zmodload zsh/parameter zsh/zleparameter 2>/dev/null || return 0
+    typeset -ga _wayu_atuin_matches
     typeset -g _wayu_suggest_style=@STYLE@ _wayu_suggest_hl= _wayu_suggest_buf= _wayu_suggest_full=
     [[ $ZSH_VERSION == (5.<9->|<6->.)* ]] && _wayu_suggest_style+=", memo=wayu-suggest"
     (( ${+widgets[_wayu_suggest_redraw]} )) && return 0
@@ -1736,6 +1833,20 @@ ZSH_SUGGEST :: `if [[ -o interactive && -o zle ]]; then
       zle -A $w _wayu_suggest_orig_$w
       functions[_wayu_suggest_$w]="_wayu_suggest_$fn $w \"\$@\""
       zle -N $w _wayu_suggest_$w
+    done
+    local map key direction binding
+    for direction key in next '^N' previous '^P'; do
+      for map in emacs viins; do
+        binding=$(bindkey -M $map "$key")
+        # Leave macros and custom key bindings in place.
+        case ${binding##* } in
+          up-line-or-history|down-line-or-history|vi-up-line-or-history|vi-down-line-or-history|self-insert|undefined-key|_wayu_toggle_prompt) ;;
+          *) continue ;;
+        esac
+        w=wayu-suggest-$map-$direction
+        zle -N $w _wayu_suggest_cycle
+        bindkey -M $map "$key" $w
+      done
     done
     zle -N wayu-suggest-accept _wayu_suggest_key
     zle -N _wayu_suggest_redraw
@@ -3117,6 +3228,48 @@ build_core_content_fish :: proc(mask := false) -> string {
 	fmt.sbprintln(b, "# === Environment ===")
 	emit_env_exports_fish(b, mask)
 	fmt.sbprintln(b)
+
+	fmt.sbprintln(
+		b,
+		`if status is-interactive
+set -q _wayu_warp_pwd; or set -g _wayu_warp_pwd "$PWD"
+function _wayu_warp_visit --on-variable PWD
+    if test "$_wayu_warp_pwd" != "$PWD"
+        set -l exe wayu
+        if set -q _WAYU_BIN; and test -n "$_WAYU_BIN"
+            set exe $_WAYU_BIN
+        end
+        command $exe __warp_visit "$PWD"; and set -g _wayu_warp_pwd "$PWD"
+    end
+end
+function wayu
+    set -l exe wayu
+    if set -q _WAYU_BIN; and test -n "$_WAYU_BIN"
+        set exe $_WAYU_BIN
+    end
+    if test "$argv[1]" = warp; and test (count $argv) -ge 2
+        switch "$argv[2]"
+            case edit search help '-*'
+            case '*'
+                for word in $argv
+                    if string match -q -- '-*' "$word"
+                        command $exe $argv
+                        return
+                    end
+                end
+                set -l destination (command $exe $argv | string collect --no-trim-newlines)
+                set -l result $pipestatus[1]
+                test $result -eq 0; or return $result
+                set destination (string split -r -m1 \n -- "$destination")
+                builtin cd -- "$destination[1]"
+                return
+        end
+    end
+    command $exe $argv
+end
+end`,
+	)
+
 
 	// PATH: the same call path_sync.fish makes, inlined; the fish_prompt
 	// hook re-sources path_sync.fish when its signature changes.

@@ -5,7 +5,7 @@
 package wayu
 import "core:fmt"
 import "core:os"
-import "core:sort"
+import "core:slice"
 import "core:strings"
 // Main handler for ALIAS commands.
 //
@@ -329,7 +329,7 @@ ALIAS_SOURCES_FILE :: "alias-sources.conf"
 AliasSource :: struct {
 	label:            string, // human-readable label (derived from path basename)
 	path:             string, // expanded directory path
-	command_template: string, // e.g. "fabric --pattern {name}"
+	command_template: string, // e.g. "man {name}"
 }
 
 // Read and parse alias-sources.conf. Returns owned slice — caller must call
@@ -438,70 +438,52 @@ path_basename :: proc(p: string) -> string {
 	return trimmed[idx + 1:]
 }
 
-// Render one external alias source as a labelled table section.
-// Silently skips if the directory doesn't exist.
-print_alias_source :: proc(source: AliasSource) {
-	if !os.exists(source.path) {
-		return
+// Source directories use subdirectories when present, otherwise file names.
+alias_source_names :: proc(source: AliasSource) -> []string {
+	if !os.is_dir(source.path) {
+		return nil
 	}
 
-	dir_handle, err := os.open(source.path)
+	dir, err := os.open(source.path)
 	if err != nil {
-		return
+		return nil
 	}
-	defer os.close(dir_handle)
+	defer os.close(dir)
 
-	file_infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
+	infos, read_err := os.read_dir(dir, -1, context.temp_allocator)
 	if read_err != nil {
-		return
+		return nil
 	}
-	defer os.file_info_slice_delete(file_infos, context.allocator)
 
-	// Collect non-directory entry names, sorted
-	names := make([dynamic]string)
-	defer delete(names)
-
-	// Collect names: prefer directories (e.g. fabric patterns), fall back to
-	// files if no directories exist (allows flat-file sources too).
 	has_dirs := false
-	for info in file_infos {
+	for info in infos {
 		if info.type == .Directory {
 			has_dirs = true
 			break
 		}
 	}
 
-	for info in file_infos {
-		if has_dirs {
-			// Directory-based source (e.g. fabric patterns): one alias per subdir
-			if info.type != .Directory {
-				continue
-			}
-		} else {
-			// File-based source: one alias per file
-			if info.type == .Directory {
-				continue
-			}
+	names := make([dynamic]string, context.temp_allocator)
+	for info in infos {
+		if !has_dirs || info.type == .Directory {
+			append(&names, info.name)
 		}
-		append(&names, info.name)
 	}
 
+	slice.sort(names[:])
+	return names[:]
+}
+
+alias_source_command :: proc(source: AliasSource, name: string) -> string {
+	cmd, _ := strings.replace_all(source.command_template, "{name}", name, context.temp_allocator)
+	return cmd
+}
+
+print_alias_source :: proc(source: AliasSource) {
+	names := alias_source_names(source)
 	if len(names) == 0 {
 		return
 	}
-
-	sort.sort(sort.Interface {
-		len = proc(it: sort.Interface) -> int {return len((cast(^[dynamic]string)it.collection)^)},
-		less = proc(it: sort.Interface, i, j: int) -> bool {
-			arr := (cast(^[dynamic]string)it.collection)^
-			return arr[i] < arr[j]
-		},
-		swap = proc(it: sort.Interface, i, j: int) {
-			arr := cast(^[dynamic]string)it.collection
-			arr[i], arr[j] = arr[j], arr[i]
-		},
-		collection = &names,
-	})
 
 	// Print section header: "External: <label> (<path>)  [read-only]"
 	fmt.printf(
@@ -528,11 +510,7 @@ print_alias_source :: proc(source: AliasSource) {
 	table_border(&table, .Normal)
 
 	for name in names {
-		// strings.replace returns the input itself (allocated=false) when
-		// there is nothing to replace — only free what it allocated.
-		cmd, allocated := strings.replace(source.command_template, "{name}", name, 1)
-		defer if allocated do delete(cmd)
-		row := []string{name, cmd}
+		row := []string{name, alias_source_command(source, name)}
 		table_add_row(&table, row)
 	}
 

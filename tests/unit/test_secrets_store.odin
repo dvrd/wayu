@@ -201,6 +201,9 @@ test_keystore_hex :: proc(t: ^testing.T) {
 	testing.expect(t, ok && back == key)
 	_, ok = wayu.keystore_decode_hex("abcd")
 	testing.expect(t, !ok)
+	bad := strings.concatenate({string(hex[:len(hex) - 1]), "x"}, context.temp_allocator)
+	back, ok = wayu.keystore_decode_hex(bad)
+	testing.expect(t, !ok && back == [wayu.SECRETS_KEY_SIZE]byte{})
 }
 
 @(test)

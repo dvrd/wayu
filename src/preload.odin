@@ -16,8 +16,8 @@ ALIAS_SOURCES_TEMPLATE :: `# alias-sources.conf - External alias source registry
 # <path>             : directory whose entries become alias names
 # <command_template> : command to run; {name} is replaced with the entry name
 #
-# Example - fabric AI patterns:
-#   dir ~/.config/fabric/patterns fabric --pattern {name}
+# Example - shortcuts for frequently used manual pages:
+#   dir ~/.config/man-topics man {name}
 #
 `
 

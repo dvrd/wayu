@@ -21,7 +21,6 @@ such change is listed under "⚠ Upgrade notes" in the release and in
 
 - Human-readable output: wording, colors, icons, table layout. Scripts use
   `--json` and exit codes.
-- The TUI (`wayu --tui`): layout, keys, views.
 - Generated shell code (`core.<ext>`, `path_sync.<ext>`, `turbo.<ext>`,
   plugin loaders) and every file wayu writes in the data dir besides the
   data files above: caches, backups, the lock, `.zwc` digests. Never edit

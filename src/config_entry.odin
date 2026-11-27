@@ -207,7 +207,7 @@ exit_with_entry_error :: proc(err: string) -> ! {
 	wayu_exit(exit_code)
 }
 
-// Print usage error with hint to TUI mode (CLI-specific error handling)
+// Print usage and an example for an entry command
 print_cli_usage_error :: proc(spec: ^ConfigEntrySpec, action: string) {
 	print_error("Missing required arguments for '%s %s'", spec.cli_name, action)
 	fmt.println()
@@ -247,15 +247,6 @@ print_cli_usage_error :: proc(spec: ^ConfigEntrySpec, action: string) {
 		fmt.printfln("Example:")
 		fmt.printfln("  wayu %s get %s", spec.cli_name, spec.field_placeholders[0])
 	}
-
-	fmt.println()
-	fmt.printfln(
-		"%sHint:%s For interactive mode, use: %swayu --tui%s",
-		get_muted(),
-		RESET,
-		get_primary(),
-		RESET,
-	)
 }
 
 // Actions the path/alias/const handlers leave to the shared code: HELP,
@@ -507,219 +498,8 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 		get_muted(),
 		RESET,
 	)
-	fmt.printfln("  %s• Use --tui for interactive mode%s", get_muted(), RESET)
 
 	fmt.println()
-}
-EntryPath :: struct {
-	path: string,
-	name: string, // optional [paths] key (`name=path` form); "" derives one
-}
-
-EntryAlias :: struct {
-	name:    string,
-	command: string,
-}
-
-EntryConst :: struct {
-	name:  string,
-	value: string,
-}
-
-Entry :: union {
-	EntryPath,
-	EntryAlias,
-	EntryConst,
-}
-
-// What entry_add / entry_remove did, so callers can tell a real change from
-// an update, a no-op or a --dry-run preview.
-EntryOutcome :: enum {
-	FAILED, // nothing written; the error string says why
-	ADDED, // new entry written
-	UPDATED, // existing alias/constant replaced
-	UNCHANGED, // PATH already present: nothing to do
-	REMOVED, // entry removed
-	DRY_RUN, // --dry-run: would change, nothing written
-}
-
-// Add an entry to the store. Both CLI and TUI use this for mutations from
-// outside the spec-driven dispatchers.
-//
-// Mirrors the CLI: the same validation (PATH: path_add_check, i.e. the path
-// must resolve and exist, like `wayu path add`), the same pre/post hooks
-// (post only after a real change) and wayu.dry_run (nothing written, hooks
-// skipped). Error strings are heap-owned (caller deletes when non-empty).
-entry_add :: proc(entry: Entry) -> (EntryOutcome, string) {
-	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
-	if msg, bad := hook_config_error(); bad {
-		return .FAILED, strings.clone(msg)
-	}
-	if msg, bad := entries_unreadable_error(); bad {
-		return .FAILED, strings.clone(msg)
-	}
-	switch e in entry {
-	case EntryPath:
-		expanded, check_err, code := path_add_check(e.path)
-		defer delete(expanded)
-		if code != EXIT_SUCCESS {
-			return .FAILED, check_err
-		}
-		if path_add_would_change(e.path, e.name) {
-			hook_pre_path_add(expanded)
-		}
-		#partial switch path_add_result(e.path, e.name) {
-		case .OK:
-			if wayu.dry_run {
-				return .DRY_RUN, ""
-			}
-			regenerate_init_core_silently()
-			hook_post_path_add(expanded)
-			return .ADDED, ""
-		case .NOOP:
-			return .UNCHANGED, ""
-		case .IO_ERROR:
-			return .FAILED, strings.clone("I/O error: failed to write the PATH entry")
-		case:
-			// The writer reported the reason (bad/taken name) via print_error.
-			if msg := take_print_capture(); len(msg) > 0 {
-				return .FAILED, msg
-			}
-			return .FAILED, strings.clone("failed to write the PATH entry")
-		}
-	case EntryAlias:
-		return entry_add_with_hooks(
-			&ALIAS_SPEC,
-			ConfigEntry{type = .ALIAS, name = e.name, value = e.command},
-		)
-	case EntryConst:
-		return entry_add_with_hooks(
-			&CONSTANTS_SPEC,
-			ConfigEntry{type = .CONSTANT, name = e.name, value = e.value},
-		)
-	}
-	return .FAILED, strings.clone("unknown entry type")
-}
-
-@(private = "file")
-entry_add_with_hooks :: proc(
-	spec: ^ConfigEntrySpec,
-	entry: ConfigEntry,
-) -> (
-	EntryOutcome,
-	string,
-) {
-	existed := entry_exists_in_store(spec, entry.name)
-	if spec.hook_pre_add != nil && entry_add_is_valid(spec, entry) do spec.hook_pre_add(entry.name, entry.value)
-	ok, err := spec.toml_add(entry)
-	if !ok {
-		return .FAILED, err
-	}
-	if wayu.dry_run {
-		return .DRY_RUN, err
-	}
-	if spec.hook_post_add != nil do spec.hook_post_add(entry.name, entry.value)
-	return .UPDATED if existed else .ADDED, err
-}
-
-// Remove an entry by identity (dir or key for EntryPath, name for
-// the others). The non-identity fields on the variant are ignored. Same hook
-// / dry-run semantics as entry_add.
-entry_remove :: proc(entry: Entry) -> (EntryOutcome, string) {
-	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
-	if msg, bad := hook_config_error(); bad {
-		return .FAILED, strings.clone(msg)
-	}
-	if msg, bad := entries_unreadable_error(); bad {
-		return .FAILED, strings.clone(msg)
-	}
-	switch e in entry {
-	case EntryPath:
-		// Hooks get the stored directory, also when the target is a key (as the CLI).
-		hook_path, found := path_entry_lookup(e.path)
-		defer delete(hook_path)
-		if found {
-			hook_pre_path_remove(hook_path)
-		}
-		#partial switch path_remove_result(e.path) {
-		case .OK:
-			if wayu.dry_run {
-				return .DRY_RUN, ""
-			}
-			regenerate_init_core_silently()
-			hook_post_path_remove(hook_path)
-			return .REMOVED, ""
-		case .IO_ERROR:
-			return .FAILED, strings.clone("I/O error: failed to remove the PATH entry")
-		case:
-			if msg := take_print_capture(); len(msg) > 0 {
-				return .FAILED, msg
-			}
-			return .FAILED, strings.clone("failed to remove the PATH entry")
-		}
-	case EntryAlias:
-		return entry_remove_with_hooks(&ALIAS_SPEC, e.name)
-	case EntryConst:
-		return entry_remove_with_hooks(&CONSTANTS_SPEC, e.name)
-	}
-	return .FAILED, strings.clone("unknown entry type")
-}
-
-// Change the directory of the PATH entry `target` (key or path) to
-// `raw_path` in place (TUI edit): same checks as entry_add (path_add_check),
-// runs the remove hooks for the old directory and the add hooks for the new.
-entry_replace_path :: proc(target, raw_path: string) -> (EntryOutcome, string) {
-	if msg, bad := hook_config_error(); bad {
-		return .FAILED, strings.clone(msg)
-	}
-	if msg, bad := entries_unreadable_error(); bad {
-		return .FAILED, strings.clone(msg)
-	}
-	expanded, check_err, code := path_add_check(raw_path)
-	defer delete(expanded)
-	if code != EXIT_SUCCESS {
-		return .FAILED, check_err
-	}
-	old_path, found := path_entry_lookup(target)
-	defer delete(old_path)
-	if found && old_path != expanded {
-		hook_pre_path_remove(old_path)
-		hook_pre_path_add(expanded)
-	}
-	#partial switch path_replace_result(target, raw_path) {
-	case .OK:
-		if wayu.dry_run {
-			return .DRY_RUN, ""
-		}
-		regenerate_init_core_silently()
-		hook_post_path_remove(old_path)
-		hook_post_path_add(expanded)
-		return .UPDATED, ""
-	case .NOOP:
-		return .UNCHANGED, ""
-	case .IO_ERROR:
-		return .FAILED, strings.clone("I/O error: failed to write the PATH entry")
-	case:
-		if msg := take_print_capture(); len(msg) > 0 {
-			return .FAILED, msg
-		}
-		return .FAILED, strings.clone("failed to update the PATH entry")
-	}
-}
-
-@(private = "file")
-entry_remove_with_hooks :: proc(spec: ^ConfigEntrySpec, name: string) -> (EntryOutcome, string) {
-	value, found := entry_store_value(spec, name)
-	if spec.hook_pre_remove != nil && found do spec.hook_pre_remove(name, value)
-	ok, err := spec.toml_remove(name)
-	if !ok {
-		return .FAILED, err
-	}
-	if wayu.dry_run {
-		return .DRY_RUN, err
-	}
-	if spec.hook_post_remove != nil do spec.hook_post_remove(name, value)
-	return .REMOVED, err
 }
 // Basenames that almost never carry meaning on their own. When we see one,
 // we prefix with the parent directory to keep keys self-describing.
@@ -912,16 +692,4 @@ parse_path_arg :: proc(arg: string) -> (name, path: string, explicit: bool) {
 		}
 	}
 	return lhs, rhs, true
-}
-
-// Reason (temp allocator) not to edit the entries now: entries.json can't be
-// read or is malformed (the TUI shows it instead of exiting). The writers
-// would otherwise fail deep inside.
-entries_unreadable_error :: proc() -> (msg: string, bad: bool) {
-	store, err, ok := entries_read()
-	if !ok {
-		return err, true
-	}
-	entries_store_destroy(&store)
-	return "", false
 }

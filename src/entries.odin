@@ -1,7 +1,7 @@
 // entries.odin - the entry store: <data>/entries.json
 //
 // PATH entries, aliases and environment constants are managed by wayu
-// commands (`wayu path|alias|const add/rm`, the TUI, templates) and live in
+// commands (`wayu path|alias|const add/rm`, templates) and live in
 // the data dir, not in the hand-edited wayu.toml:
 //
 //   {
@@ -671,7 +671,7 @@ entries_read :: proc() -> (store: EntryStore, err: string, ok: bool) {
 }
 
 // entries_read for commands: on failure print the reason and exit
-// EXIT_CONFIG (wayu_exit restores the terminal when the TUI is up).
+// EXIT_CONFIG.
 entries_load :: proc() -> EntryStore {
 	store, err, ok := entries_read()
 	if !ok {
@@ -930,8 +930,6 @@ print_entries_dry_run :: proc(
 	existed := false,
 ) {
 	// Only the changed names, values masked if secret-looking (OKAMI-208).
-	// The TUI sets print_quiet; writing here would draw over its screen.
-	if print_quiet do return
 	print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 	fmt.println()
 	fmt.printfln(

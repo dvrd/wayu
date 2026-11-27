@@ -5,8 +5,9 @@
 // are in other files to avoid redeclaration errors.
 
 package wayu
-@(require) import "core:log"
-import "core:strings" // used by debug() under ODIN_DEBUG only
+@(require) import "core:fmt"
+import "core:strings"
+@(require) import "core:sys/posix"
 // ============================================================================
 // TOML CONFIGURATION SYSTEM
 // ============================================================================
@@ -60,10 +61,15 @@ EXIT_CONFIG :: 78 // Configuration error
 // `wayu secrets run`: CMD could not be executed (shell convention).
 EXIT_EXEC_NOT_RUNNABLE :: 126 // found but not executable
 EXIT_EXEC_NOT_FOUND :: 127 // not found on PATH
-// Debug logging that only activates when built with -define:DEBUG=true
+// Debug builds keep command streams quiet unless diagnostics are requested.
 debug :: proc(msg: string, args: ..any) {
 	when ODIN_DEBUG {
-		log.debugf(msg, ..args)
+		if string(posix.getenv("WAYU_DEBUG")) != "1" {
+			return
+		}
+
+		fmt.eprint("[DEBUG] --- ")
+		fmt.eprintfln(msg, ..args)
 	}
 }
 

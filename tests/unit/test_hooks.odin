@@ -9,7 +9,7 @@ import "core:testing"
 // Verifies the plugin-install hook wrappers actually fire the configured
 // shell command and substitute the {name} placeholder. Regression guard for
 // the wiring of hook_pre_plugin_install / hook_post_plugin_install into the
-// `wayu plugin add` flow (CLI + TUI).
+// `wayu plugin add` flow.
 @(test)
 test_plugin_install_hooks_fire :: proc(t: ^testing.T) {
 	tmp := test_tmp("wayu_test_hooks_plugin")

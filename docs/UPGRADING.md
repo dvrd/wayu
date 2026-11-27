@@ -6,6 +6,53 @@ section after its version and publishes it as the GitHub release's
 `BREAKING CHANGE:` footers. 4.4.3 and 4.4.4 shipped behavior changes as patch
 releases, so they are listed here too.
 
+## Unreleased
+
+- Set `WAYU_DEBUG=1` to enable diagnostic logging in a debug build. Diagnostics go to stderr so redirected command output can be consumed by scripts.
+
+- Native scripts use `.wy`. Run them with `wayu <file.wy> [args...]`. For direct execution with `./file.wy`, add `#!/usr/bin/env wayu` and grant execute permission.
+
+- The native shell now supports variables, command substitution, functions, loops, conditionals, and command lookup. Login shells read `login.wayu` in the Wayu config directory.
+
+- `wayu warp <words...>` jumps to the highest-scoring matching directory.
+  Initialized interactive Zsh, Bash, and Fish sessions now record directory visits in the same history as the native shell.
+  Use `wayu warp edit` to preview directories, adjust rank, or forget entries. `wayu warp search`
+  prints the selected path for use in pipelines.
+
+- The native shell now includes a built-in `z` directory jump. Wayu remembers visited
+  directories across sessions. Keyword jumps now use Wayu’s own recency-weighted ranks and
+  require the final keyword to match the destination directory. Previous Wayu
+  visit counts are read automatically. Destinations known only to zoxide can
+  be learned by visiting them once with `cd`.
+
+- In the native shell, Tab now uses installed Fish completion definitions for
+  external command arguments and flags, including Wayu-managed `.fish` files.
+
+- Interactive sessions and `wayu -c` now load aliases from `alias-sources.conf`.
+  Managed aliases take precedence when names overlap.
+
+- The optional minimal-prompt toggle defaults to Ctrl+G, freeing Ctrl+P for
+  cycling autosuggestions. An explicit `[prompt.interactive] toggle_key` still takes precedence.
+
+- Launch the native shell with bare `wayu`. Update terminal profiles that pass
+  the old `shell` subcommand to launch the executable directly. `wayu -c` evaluates a
+  command string in the same executor. Interactive sessions leave a blank line
+  between commands and the next prompt. They use your enabled
+  `[prompt]` configuration, including the Git right prompt. The native editor also honors
+  `[settings] highlight` and `highlight_styles`. Autosuggestions include existing
+  shell history, configured Atuin history, and command names. The native editor
+  binds Ctrl+L to clear the screen while preserving the current edit and
+  reads the new `[autosuggest]` table. Set `enabled = true` and
+  `accept_keybind = "ctrl+y"` for the native editor and zsh. Existing
+  autosuggestion settings continue to work.
+
+- With built-in zsh autosuggestions enabled, Ctrl-N and Ctrl-P cycle through
+  matching history suggestions in emacs and vi insert mode. At an empty
+  prompt either key starts with the newest history entry. For a first word
+  with no longer history match, the keys cycle matching command names.
+- When Atuin is loaded in zsh, built-in suggestions and cycling include its
+  full history via synchronous prefix search.
+
 ## 8.0.0
 
 **Failure campaign and candidate acceptance**
@@ -503,8 +550,7 @@ releases, so they are listed here too.
   (exit 64; `wayu completions --generate` never worked): use
   `wayu completions generate`.
 - Flags and words that meant nothing exit 64 instead of being ignored:
-  `--full` / `-f` / `--source` outside `path|alias|const list` (and
-  `--tui`), `--test` / `--snapshot` without `-c=`, `doctor --profile` with
+  `--full` / `-f` / `--source` outside `path|alias|const list` (and the former management interface), `--test` / `--snapshot` without `-c=`, `doctor --profile` with
   `--json` or `--fix`, two `export` modes (`export --eval --check`), and an
   extra word after an action that takes none (`path list x`,
   `secrets lock x`, `toml validate x`, `plugin list x`, ...).

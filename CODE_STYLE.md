@@ -7,31 +7,28 @@
 | Category | Convention | Example |
 |----------|-----------|---------|
 | Functions | `snake_case` | `create_backup`, `handle_path_command` |
-| Structs | `PascalCase` | `ConfigEntry`, `BackupInfo`, `TUIState` |
+| Structs | `PascalCase` | `ConfigEntry`, `BackupInfo` |
 | Enum types | `PascalCase` (optional suffix) | `ShellType`, `ConfigEntryType`, `Alignment`, `BorderStyle` |
-| Enum values (domain) | `SCREAMING_SNAKE` | `PATH`, `ALIAS`, `MAIN_MENU` |
+| Enum values (domain) | `SCREAMING_SNAKE` | `PATH`, `ALIAS`, `CONSTANTS` |
 | Enum values (UI) | `PascalCase` | `Left`, `Center`, `Normal`, `Rounded` |
-| Constants (`::`) | `SCREAMING_SNAKE_CASE` | `EXIT_SUCCESS`, `VERSION`, `TUI_PRIMARY` |
+| Constants (`::`) | `SCREAMING_SNAKE_CASE` | `EXIT_SUCCESS`, `VERSION` |
 | Global mutables | `SCREAMING_SNAKE_CASE` | `DRY_RUN`, `HOME`, `WAYU_CONFIG` |
 | Private globals | `_` prefix | `_GLOBALS_INITIALIZED` |
 | Local variables | `snake_case` | `backup_dir`, `shell_env`, `read_ok` |
 | Struct fields | `snake_case` | `original_file`, `error_message` |
 | Files | `snake_case.odin` | `config_entry.odin`, `exit_codes.odin` |
-| Packages | `lowercase` / `snake_case` | `wayu`, `wayu_tui`, `test_wayu` |
+| Packages | `lowercase` / `snake_case` | `wayu`, `test_wayu` |
 | Test functions | `test_<what>_<scenario>` | `test_create_backup_existing_file` |
 
 ### Function naming patterns
 
 - `verb_noun`: `create_backup`, `detect_shell`, `parse_args`
-- TUI functions: `tui_` prefix: `tui_state_init`, `tui_render`
 - Module-scoped: `module_verb_noun`: `table_add_row`, `style_foreground`
 - Handlers: `handle_<command>_command`: `handle_path_command`
 
 ## File Organization
 
 - **One module concept per file** — `path.odin` for PATH, `backup.odin` for backups
-- **TUI files in subdirectory** drop the `tui_` prefix: `tui/state.odin` not `tui/tui_state.odin`
-- **Bridge file** in main package keeps prefix: `tui_bridge_impl.odin`
 - **Test files**: `test_<module>.odin` in `tests/unit/`
 
 ### Logical groupings in `src/`
@@ -44,7 +41,6 @@ Input/Valid (3):    validation, input, special_chars
 UI/Style (8):       style, theme, colors, layout, table, progress, spinner, form
 Interactive (2):    fuzzy, comp_testing
 Cross-cutting (2):  errors, debug
-TUI Bridge (1):     tui_bridge_impl
 ```
 
 ## Import Style
@@ -58,14 +54,12 @@ import "core:strings"
 import "core:slice"
 import "core:log"
 import "core:mem"
-import tui "tui"
 ```
 
 - All `core:` imports are **unaliased** — `import "core:fmt"` not `import fmt "core:fmt"`
-- Only local packages get aliases: `import tui "tui"`
 - Import order: `fmt`, `os`, `strings`, then specialized (`slice`, `log`, `mem`, `time`)
 - **No blank-line grouping** — flat block of imports
-- Import only what's needed — TUI files use minimal imports
+- Import only what the module uses
 
 ## Memory Management Patterns
 
@@ -213,23 +207,20 @@ write_ok := safe_write_file(config_file, transmute([]byte)new_content)
 if !write_ok { os.exit(EXIT_IOERR) }
 ```
 
-### CLI usage errors include TUI hint
+### CLI usage errors
 
 ```odin
 print_error("Missing required arguments for 'path add'")
 fmt.printfln("Usage: wayu path add <path>")
 fmt.printfln("Example:")
 fmt.printfln("  wayu path add /usr/local/bin")
-fmt.printfln("%sHint:%s For interactive mode, use: %swayu --tui%s",
-    get_muted(), RESET, get_primary(), RESET)
 ```
 
-Structure: **ERROR → Usage → Example → Hint to TUI**
+Structure: **ERROR → Usage → Example**
 
-### CLI vs TUI error handling split
+### CLI error handling
 
 - **CLI**: Fails immediately. `create_backup_cli()` → error + abort
-- **TUI**: Can prompt user. `create_backup_tui()` → warning + "Continue anyway?"
 - **Destructive CLI ops**: Require `--yes` flag. Without it, show what would happen + exact flag to add.
 
 ## Code Patterns
@@ -295,7 +286,6 @@ color := get_primary()   // Returns TrueColor, ANSI256, or ANSI based on termina
 print_success("Done!")   // Uses get_success() internally
 ```
 
-**Note:** The TUI package (`src/tui/colors.odin`) maintains its own parallel color system with constants like `TUI_PRIMARY`, `TUI_SECONDARY`, etc. — separate from the main package's adaptive color getters. This is by design since the TUI always runs in a capable terminal.
 
 ### Table rendering
 
@@ -354,24 +344,25 @@ test_create_backup_existing_file :: proc(t: ^testing.T) {
 - Test data in per-process `/tmp/wayu-test-*-<pid>` paths (tests run concurrently across worktrees)
 - Cleanup with `defer os.remove()` or `defer delete()`
 
-### Integration tests (Ruby)
+### Integration tests (Odin)
 
-Invoke compiled binary and check stdout/stderr/exit codes:
+Use the shared CLI fixture for a fresh HOME and the binary under test. Pass arguments separately so spaces and shell metacharacters reach the CLI intact.
 
-```ruby
-# tests/integration/test_path.rb
-def test_add_path
-  output = `#{WAYU_BIN} path add /tmp/test-path 2>&1`
-  assert_match(/added successfully/, output)
-  assert_equal(0, $?.exitstatus)
-end
+```odin
+@(test)
+path_help :: proc(t: ^testing.T) {
+    cli := new_cli(t)
+    defer os.remove_all(cli.home)
+    output := checked_cli(t, cli, "path", "help")
+    testing.expect(t, strings.contains(output, "EXAMPLES"))
+}
 ```
 
 ### Golden file testing
 
 ```bash
 ./bin/wayu -c=header --snapshot width=40 height=3 title=PATH count=10  # regenerate one golden
-ruby tests/integration/test_golden.rb                                  # compare every golden
+./build_it integration integration.golden                                  # compare every golden
 ```
 
 Component rendering tested via `wayu -c=<component>` CLI flag.
@@ -393,8 +384,6 @@ Component rendering tested via `wayu -c=<component>` CLI flag.
 ### Don't
 
 - Don't use `fmt.aprintf()` without a corresponding `delete()` or `defer delete()`
-- Don't call `os.exit()` from TUI code — set `state.running = false` instead (exception: pre-loop init failures in `tui/main.odin` where the TUI can't start)
-- Don't import the main package from TUI — use the bridge pattern
 - Don't add interactive prompts to CLI code — CLI is fully non-interactive (exception: `wayu init` has one stdin prompt, bypassable with `--yes`)
 - Don't use raw ANSI escape codes — use the style/color system (known debt: `table.odin` has inline ANSI codes)
 - Don't forget `strings.clone()` on builder output: `strings.clone(strings.to_string(builder))`

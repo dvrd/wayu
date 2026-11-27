@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Regenerate src/rune_width_table.odin from the `wcwidth` package.
 
-The TUI's cell renderer must agree with the terminal on how many columns a
+The terminal cell renderer must agree with the terminal on how many columns a
 rune takes, or the diff renderer's cursor model drifts and leaves stale
-glyphs behind. Terminals (and pyte, which the TUI tests use) follow the
+glyphs behind. Terminals follow the
 wcwidth tables (Unicode EastAsianWidth + Emoji_Presentation for width 2,
 combining marks / format characters for width 0), so wayu uses the same data.
 
-Usage (needs `pip install wcwidth`, already a pyte dependency):
+Usage (needs `pip install wcwidth`):
     python3 tests/tui/gen_rune_width.py > src/rune_width_table.odin
 """
 
