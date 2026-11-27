@@ -6,7 +6,7 @@ section after its version and publishes it as the GitHub release's
 `BREAKING CHANGE:` footers. 4.4.3 and 4.4.4 shipped behavior changes as patch
 releases, so they are listed here too.
 
-## Unreleased
+## 9.0.0
 
 - Set `WAYU_DEBUG=1` to enable diagnostic logging in a debug build. Diagnostics go to stderr so redirected command output can be consumed by scripts.
 

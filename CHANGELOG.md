@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Behavior changes per release: [docs/UPGRADING.md](docs/UPGRADING.md).
 
+## [9.0.0] - 2026-11-27
+
+### ⚠ Upgrade notes
+
+- **suggest**: With native autosuggestions enabled, Ctrl+N and Ctrl+P cycle prefix matches and Atuin lookups run synchronously when its zsh widget is loaded.
+- **shell**: Wayu shell is now a CLI command. It opens the native editor and executor, or evaluates a command string with wayu shell run.
+- **shell**: The native shell now reads prompt and suggestion settings, loads directory aliases, and provides directory jumps. The default minimal-prompt toggle is Ctrl+G.
+- **shell**: Run wayu to start the shell and wayu -c to evaluate a command. The shell subcommand and --tui dashboard option have been removed.
+- **shell**: The native shell now interprets variables, command substitutions, functions, loops, and conditionals. Login shells read login.wayu from the Wayu config directory.
+- **shell**: A .wy file operand now runs as a native script and receives the remaining arguments. Use an executable file with #!/usr/bin/env wayu for direct invocation.
+- **shell**: Debug builds send diagnostic messages to stderr so stdout contains command results.
+- **debug**: Set WAYU_DEBUG=1 when using a debug build to enable diagnostic messages on stderr.
+
+### Added
+
+- **shell**: Add an opt-in native Odin shell beta
+- **shell**: Integrate the native prompt, editing, and directory history
+- **shell**: Launch Wayu directly and add Warp directory navigation
+- **shell**: Add native shell scripting and login startup
+- **shell**: Run native .wy script files
+
+### Fixed
+
+- **suggest**: Cycle through shell and Atuin history in zsh
+- Pass native shell lint and use runnable CLI examples
+- **shell**: Keep debug diagnostics off stdout and normalize test environments
+- **debug**: Enable diagnostic output explicitly
 ## [8.0.0] - 2026-11-12
 
 ### ⚠ Upgrade notes
@@ -1436,6 +1463,7 @@ Major version bump to 2.0.0 due to multi-shell architecture changes.
 ### Changed
 
 - Clean up code and improve error handling
+[9.0.0]: https://github.com/dvrd/wayu/releases/tag/v9.0.0
 [8.0.0]: https://github.com/dvrd/wayu/releases/tag/v8.0.0
 [7.0.0]: https://github.com/dvrd/wayu/releases/tag/v7.0.0
 [6.0.0]: https://github.com/dvrd/wayu/releases/tag/v6.0.0

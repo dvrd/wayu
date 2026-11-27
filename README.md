@@ -1,6 +1,6 @@
 # wayu
 
-**v8.0.0** · A native shell and shell configuration manager written in [Odin](https://odin-lang.org/). Manages PATH entries, aliases, environment variables, completions, and backups across Bash, Zsh, and Fish.
+**v9.0.0** · A native shell and shell configuration manager written in [Odin](https://odin-lang.org/). Manages PATH entries, aliases, environment variables, completions, and backups across Bash, Zsh, and Fish.
 
 ![wayu demo: path, alias and run-only secret added, constants listed with the secret masked, a Python script created and run with the secret, and doctor](docs/demo/demo.gif)
 
