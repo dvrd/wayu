@@ -18,12 +18,13 @@ Native_Process :: struct {
 	signal: posix.Signal,
 }
 Native_Job :: struct {
-	id:        int,
-	group:     posix.pid_t,
-	members:   [dynamic]Native_Process,
-	name:      string,
-	modes:     posix.termios,
-	has_modes: bool,
+	id:                   int,
+	group:                posix.pid_t,
+	shared_capture_group: bool,
+	members:              [dynamic]Native_Process,
+	name:                 string,
+	modes:                posix.termios,
+	has_modes:            bool,
 }
 
 native_job_destroy :: proc(job: ^Native_Job) {
@@ -51,6 +52,36 @@ native_job_update :: proc(job: ^Native_Job, block: bool, interruptible := false)
 		if !block {
 			flags += {.NOHANG}
 		}
+		// Background jobs inside a substitution share its cancellation group. A
+		// group-wide wait could consume the status of a different job.
+		if job.shared_capture_group {
+			for &member in job.members {
+				if member.state != .Running {
+					continue
+				}
+
+				status: c.int
+				pid := posix.waitpid(member.pid, &status, flags)
+				if pid < 0 && posix.errno() == .EINTR {
+					continue
+				}
+
+				if pid == member.pid {
+					native_process_status(&member, status)
+				}
+
+				if block && pid < 0 {
+					return
+				}
+			}
+
+			if !block {
+				return
+			}
+
+			continue
+		}
+
 		status: c.int
 		pid := posix.waitpid(-job.group, &status, flags)
 		if pid < 0 && posix.errno() == .EINTR {
@@ -71,20 +102,22 @@ native_job_update :: proc(job: ^Native_Job, block: bool, interruptible := false)
 }
 
 native_process_status :: proc(m: ^Native_Process, status: c.int) {
-	if posix.WIFSTOPPED(status) {
-		m.state = .Stopped
-		m.status = 128 + int(posix.WSTOPSIG(status))
+	// The pinned Linux WIFSIGNALED predicate also accepts wait status zero.
+	// Decode an ordinary exit first, including an explicit exit 128 + signal.
+	if posix.WIFEXITED(status) {
+		m.state = .Done
+		m.signal = nil
+		m.status = int(posix.WEXITSTATUS(status))
 	} else if posix.WIFCONTINUED(status) {
 		m.state = .Running
 		m.status = 0
+	} else if posix.WIFSTOPPED(status) {
+		m.state = .Stopped
+		m.status = 128 + int(posix.WSTOPSIG(status))
 	} else {
 		m.state = .Done
-		if posix.WIFSIGNALED(status) {
-			m.signal = posix.WTERMSIG(status)
-			m.status = 128 + int(m.signal)
-		} else {
-			m.status = int(posix.WEXITSTATUS(status))
-		}
+		m.signal = posix.WTERMSIG(status)
+		m.status = 128 + int(m.signal)
 	}
 }
 

@@ -3,17 +3,72 @@ package wayu
 import "core:c"
 import "core:encoding/json"
 import "core:fmt"
+import "core:mem/virtual"
 import "core:os"
 import "core:strings"
 import "core:sys/posix"
 import "core:unicode/utf8"
 
 Native_History :: struct {
-	path:           string,
-	commands:       [dynamic]string,
-	shell_commands: []string,
-	offset:         i64,
-	inode:          u64,
+	path:                              string,
+	commands:                          [dynamic]string,
+	shell_commands:                    []string,
+	offset:                            i64,
+	inode:                             u64,
+	byte_limit, entry_limit, retained: int,
+}
+
+native_history_retain :: proc(h: ^Native_History, cmd: string) {
+	if cmd == "" || (h.byte_limit > 0 && len(cmd) > h.byte_limit) {
+		return
+	}
+
+	for len(h.commands) > 0 &&
+	    ((h.entry_limit > 0 && len(h.commands) >= h.entry_limit) ||
+			    (h.byte_limit > 0 && h.retained > h.byte_limit - len(cmd))) {
+		h.retained -= len(h.commands[0])
+		delete(h.commands[0])
+		ordered_remove(&h.commands, 0)
+	}
+
+	append(&h.commands, strings.clone(cmd))
+	h.retained += len(cmd)
+}
+
+native_history_encoded_limit :: proc(bytes: int) -> int {
+	// JSON permits six ASCII bytes per escaped source byte, plus the two quotes.
+	if bytes <= 0 || bytes > (max(int) - 2) / 6 {
+		return max(int)
+	}
+
+	return 6 * bytes + 2
+}
+
+// A lock covers the entire offset check and the subsequent reads or append.
+native_history_open :: proc(path: string) -> posix.FD {
+	fd := posix.open(
+		strings.clone_to_cstring(path, context.temp_allocator),
+		{.RDWR, .CREAT, .NOFOLLOW, .CLOEXEC, .NONBLOCK},
+		transmute(posix.mode_t)posix._mode_t(0o600),
+	)
+	if fd < 0 {
+		return -1
+	}
+
+	st: posix.stat_t
+	if posix.fstat(fd, &st) != .OK || !posix.S_ISREG(st.st_mode) || st.st_uid != posix.geteuid() {
+		posix.close(fd)
+		return -1
+	}
+
+	for posix.lockf(fd, .LOCK, 0) != .OK {
+		if posix.errno() != .EINTR {
+			posix.close(fd)
+			return -1
+		}
+	}
+
+	return fd
 }
 
 // Keep each command, including embedded newlines, on one physical record.
@@ -26,37 +81,43 @@ native_history_sync :: proc(h: ^Native_History, record: string = "") -> bool {
 		}
 		h.path = fmt.aprintf("%s/history.jsonl", wayu.data)
 	}
-	fd := posix.open(
-		strings.clone_to_cstring(h.path, context.temp_allocator),
-		{.RDWR, .CREAT, .NOFOLLOW, .CLOEXEC, .NONBLOCK},
-		transmute(posix.mode_t)posix._mode_t(0o600),
-	)
+	fd := native_history_open(h.path)
 	if fd < 0 {
 		return false
 	}
 	defer posix.close(fd)
+
+	return native_history_sync_fd(h, fd, record)
+}
+
+native_history_sync_fd :: proc(h: ^Native_History, fd: posix.FD, record: string) -> bool {
 	st: posix.stat_t
-	if posix.fstat(fd, &st) != .OK || !posix.S_ISREG(st.st_mode) || st.st_uid != posix.geteuid() {
-		return false
-	}
-	for posix.lockf(fd, .LOCK, 0) != .OK {
-		if posix.errno() != .EINTR {
-			return false
-		}
-	}
 	if posix.fstat(fd, &st) != .OK {
 		return false
 	}
 	if h.inode != u64(st.st_ino) || h.offset > i64(st.st_size) {
 		for cmd in h.commands {delete(cmd)}
 		clear(&h.commands)
+		h.retained = 0
 		h.offset = 0
 		h.inode = u64(st.st_ino)
 	}
 	if posix.lseek(fd, auto_cast h.offset, .SET) < 0 {
 		return false
 	}
-	partial := strings.builder_make(context.temp_allocator)
+	partial := strings.builder_make(context.allocator)
+	defer strings.builder_destroy(&partial)
+
+	scratch: virtual.Arena
+	if virtual.arena_init_growing(&scratch) != nil {
+		return false
+	}
+	defer virtual.arena_destroy(&scratch)
+
+	context.temp_allocator = virtual.arena_allocator(&scratch)
+
+	raw_length: i64
+	encoded_limit := native_history_encoded_limit(h.byte_limit)
 	block: [8192]u8
 	for {
 		n := posix.read(fd, &block[0], len(block))
@@ -71,17 +132,28 @@ native_history_sync :: proc(h: ^Native_History, record: string = "") -> bool {
 		}
 		for ch in block[:n] {
 			if ch != '\n' {
-				strings.write_byte(&partial, ch)
+				raw_length += 1
+				if raw_length <= i64(encoded_limit) {
+					strings.write_byte(&partial, ch)
+				}
+
 				continue
 			}
 			data := strings.to_string(partial)
 			name: string
-			if json.unmarshal(transmute([]u8)data, &name, allocator = context.temp_allocator) ==
+			if raw_length <= i64(encoded_limit) &&
+			   json.unmarshal(
+				   transmute([]u8)data,
+				   &name,
+				   allocator = virtual.arena_allocator(&scratch),
+			   ) ==
 				   nil &&
 			   name != "" {
-				append(&h.commands, strings.clone(name))
+				native_history_retain(h, name)
 			}
-			h.offset += i64(len(data) + 1)
+			h.offset += raw_length + 1
+			raw_length = 0
+			virtual.arena_free_all(&scratch)
 			strings.builder_reset(&partial)
 		}
 	}
@@ -109,13 +181,153 @@ native_history_sync :: proc(h: ^Native_History, record: string = "") -> bool {
 		remaining = remaining[n:]
 	}
 	h.offset += i64(len(line))
-	append(&h.commands, strings.clone(record))
+	native_history_retain(h, record)
 	return true
+}
+
+// Offsets identify physical JSONL records. Walking an old page reads one block at a time
+// and materializes only the candidate currently being decoded. The current editable line
+// has a distinct lifetime from the history window.
+native_history_page :: proc(
+	h: ^Native_History,
+	from: i64,
+	backwards: bool,
+	query := "",
+) -> (
+	cmd: string,
+	start, end: i64,
+	found: bool,
+) {
+	fd := native_history_open(h.path)
+	if fd < 0 {
+		return
+	}
+	defer posix.close(fd)
+
+	st: posix.stat_t
+	if posix.fstat(fd, &st) != .OK {
+		return
+	}
+
+	pos := from
+	if h.inode != u64(st.st_ino) || h.offset != i64(st.st_size) {
+		restart :=
+			h.inode != u64(st.st_ino) ||
+			h.offset > i64(st.st_size) ||
+			from == h.offset && backwards
+		if !native_history_sync_fd(h, fd, "") {
+			return
+		}
+
+		if restart {
+			pos = h.offset if backwards else 0
+		}
+	}
+
+	pos = clamp(pos, i64(0), h.offset)
+	scratch: virtual.Arena
+	if virtual.arena_init_growing(&scratch) != nil {
+		return
+	}
+	defer virtual.arena_destroy(&scratch)
+
+	result_allocator := context.temp_allocator
+	context.temp_allocator = virtual.arena_allocator(&scratch)
+	block: [8192]u8
+	for (backwards && pos > 0) || (!backwards && pos < h.offset) {
+		start, end = pos, pos
+		if backwards {
+			end = pos
+			seek := pos - 1
+			scan: for seek > 0 {
+				base := max(i64(0), seek - len(block))
+				n := int(seek - base)
+				if posix.pread(fd, &block[0], auto_cast n, auto_cast base) != n {
+					return
+				}
+
+				#reverse for ch, j in block[:n] {
+					if ch == '\n' {
+						start = base + i64(j) + 1
+						break scan
+					}
+				}
+
+				seek = base
+				start = seek
+			}
+
+			if pos == 1 {
+				start = 0
+			}
+
+			pos = start
+		} else {
+			seek := pos
+			forward_scan: for seek < h.offset {
+				n := int(min(i64(len(block)), h.offset - seek))
+				if posix.pread(fd, &block[0], auto_cast n, auto_cast seek) != n {
+					return
+				}
+
+				for ch, j in block[:n] {
+					if ch == '\n' {
+						end = seek + i64(j) + 1
+						break forward_scan
+					}
+				}
+
+				seek += i64(n)
+			}
+
+			if end <= start {
+				return
+			}
+
+			pos = end
+		}
+
+		n := int(end - start - 1)
+		if n <= 0 {
+			continue
+		}
+
+		virtual.arena_free_all(&scratch)
+		alloc := virtual.arena_allocator(&scratch)
+		data := make([]u8, n, alloc)
+		count := 0
+		for count < n {
+			got := posix.pread(
+				fd,
+				&data[count],
+				auto_cast (n - count),
+				auto_cast (start + i64(count)),
+			)
+			if got < 0 && posix.errno() == .EINTR {
+				continue
+			}
+
+			if got <= 0 {
+				return
+			}
+
+			count += int(got)
+		}
+
+		parsed: string
+		if json.unmarshal(data, &parsed, allocator = alloc) == nil &&
+		   parsed != "" &&
+		   strings.contains(parsed, query) {
+			return strings.clone(parsed, result_allocator), start, end, true
+		}
+	}
+
+	return
 }
 
 // Shell history is a read-only suggestion source. Recall and recording retain
 // their native session semantics and never rewrite the launching shell's file.
-native_read_shell_history :: proc() -> []string {
+native_read_shell_history :: proc(byte_limit, entry_limit: int) -> []string {
 	path := os.get_env("HISTFILE", context.temp_allocator)
 	switch wayu.shell_ext {
 	case "zsh", "bash":
@@ -142,96 +354,155 @@ native_read_shell_history :: proc() -> []string {
 		return nil
 	}
 
-	data, err := os.read_entire_file_from_path(path, context.temp_allocator)
-	if err != nil {
+	fd := posix.open(strings.clone_to_cstring(path, context.temp_allocator), {.NONBLOCK, .CLOEXEC})
+	if fd < 0 {
+		return nil
+	}
+	defer posix.close(fd)
+
+	st: posix.stat_t
+	if posix.fstat(fd, &st) != .OK || !posix.S_ISREG(st.st_mode) {
 		return nil
 	}
 
-	lines := strings.split(string(data), "\n", context.temp_allocator)
-	commands := make([dynamic]string)
-	for i := 0; i < len(lines); i += 1 {
-		cmd := lines[i]
-		switch wayu.shell_ext {
-		case "zsh":
-			if strings.has_prefix(cmd, ": ") {
-				meta, sep, body := strings.partition(cmd[2:], ";")
-				start, colon, duration := strings.partition(meta, ":")
-				if sep != "" && colon != "" && all_digits(start) && all_digits(duration) {
-					cmd = body
-				}
-			}
+	reader := Foreign_History_Reader {
+		history = {byte_limit = byte_limit, entry_limit = entry_limit},
+		record = strings.builder_make(context.allocator),
+	}
+	defer strings.builder_destroy(&reader.record)
 
-			if strings.has_suffix(cmd, "\\") {
-				b := strings.builder_make(context.temp_allocator)
-				for strings.has_suffix(cmd, "\\") && i + 1 < len(lines) {
-					strings.write_string(&b, cmd[:len(cmd) - 1])
-					strings.write_byte(&b, '\n')
-					i += 1
-					cmd = lines[i]
-				}
+	line := strings.builder_make(context.allocator)
+	defer strings.builder_destroy(&line)
 
-				strings.write_string(&b, cmd)
-				cmd = strings.to_string(b)
-			}
-			if !utf8.valid_string(cmd) && strings.index_byte(cmd, 0x83) >= 0 {
-				b := strings.builder_make(context.temp_allocator)
-				for j := 0; j < len(cmd); j += 1 {
-					ch := cmd[j]
-					if ch == 0x83 && j + 1 < len(cmd) {
-						j += 1
-						ch = cmd[j] ~ 0x20
-					}
-
-					strings.write_byte(&b, ch)
-				}
-
-				cmd = strings.to_string(b)
-			}
-
-		case "bash":
-			if len(cmd) > 1 && cmd[0] == '#' && all_digits(cmd[1:]) {
-				first := i + 1
-				for i + 1 < len(lines) {
-					next := lines[i + 1]
-					if len(next) > 1 && next[0] == '#' && all_digits(next[1:]) {
-						break
-					}
-
-					i += 1
-				}
-
-				end := i + 1
-				if end == len(lines) && end > first && lines[end - 1] == "" {
-					end -= 1
-				}
-
-				cmd = strings.join(lines[first:end], "\n", context.temp_allocator)
-			}
-		case "fish":
-			if !strings.has_prefix(cmd, "- cmd: ") {
-				continue
-			}
-
-			cmd = cmd[7:]
-			b := strings.builder_make(context.temp_allocator)
-			for j := 0; j < len(cmd); j += 1 {
-				if cmd[j] == '\\' &&
-				   j + 1 < len(cmd) &&
-				   (cmd[j + 1] == 'n' || cmd[j + 1] == '\\') {
-					j += 1
-					strings.write_byte(&b, '\n' if cmd[j] == 'n' else '\\')
-				} else {
-					strings.write_byte(&b, cmd[j])
-				}
-			}
-
-			cmd = strings.to_string(b)
+	block: [8192]u8
+	limit := native_history_encoded_limit(byte_limit)
+	long := false
+	for {
+		n := posix.read(fd, &block[0], len(block))
+		if n < 0 && posix.errno() == .EINTR {
+			continue
 		}
 
-		if cmd != "" && cmd[0] != ' ' && !strings.contains(cmd, "\x00") {
-			append(&commands, strings.clone(cmd))
+		if n <= 0 {
+			break
+		}
+
+		for ch in block[:n] {
+			if ch == '\n' {
+				foreign_history_line(&reader, strings.to_string(line), long)
+				strings.builder_reset(&line)
+				long = false
+			} else if len(line.buf) < limit {
+				strings.write_byte(&line, ch)
+			} else {
+				long = true
+				// Keep the last byte for zsh's physical-line continuation.
+				line.buf[len(line.buf) - 1] = ch
+			}
 		}
 	}
+	if len(line.buf) > 0 || long {
+		foreign_history_line(&reader, strings.to_string(line), long)
+	}
 
-	return commands[:]
+	foreign_history_flush(&reader)
+	return reader.history.commands[:]
+}
+
+Foreign_History_Reader :: struct {
+	history:                                     Native_History,
+	record:                                      strings.Builder,
+	discarded, continued, timestamped, has_line: bool,
+}
+
+foreign_history_append :: proc(r: ^Foreign_History_Reader, value: string) {
+	if r.history.byte_limit > 0 && len(value) > r.history.byte_limit - len(r.record.buf) {
+		r.discarded = true
+	}
+
+	if !r.discarded {
+		strings.write_string(&r.record, value)
+	}
+}
+
+foreign_history_flush :: proc(r: ^Foreign_History_Reader) {
+	cmd := strings.to_string(r.record)
+	if !r.discarded && cmd != "" && cmd[0] != ' ' && !strings.contains(cmd, "\x00") {
+		native_history_retain(&r.history, cmd)
+	}
+
+	strings.builder_reset(&r.record)
+	r.discarded, r.has_line, r.continued = false, false, false
+}
+
+foreign_history_line :: proc(r: ^Foreign_History_Reader, line: string, long: bool) {
+	cmd := line
+	switch wayu.shell_ext {
+	case "bash":
+		if len(cmd) > 1 && cmd[0] == '#' && all_digits(cmd[1:]) && !long {
+			foreign_history_flush(r)
+			r.timestamped = true
+			return
+		}
+
+		if r.has_line {
+			foreign_history_append(r, "\n")
+		}
+
+		r.discarded = r.discarded || long
+		foreign_history_append(r, cmd)
+		r.has_line = true
+		if !r.timestamped {
+			foreign_history_flush(r)
+		}
+	case "fish":
+		if !strings.has_prefix(cmd, "- cmd: ") {
+			return
+		}
+
+		r.discarded = long
+		for j := 7; j < len(cmd); j += 1 {
+			if cmd[j] == '\\' && j + 1 < len(cmd) && (cmd[j + 1] == 'n' || cmd[j + 1] == '\\') {
+				j += 1
+				foreign_history_append(r, "\n" if cmd[j] == 'n' else "\\")
+			} else {
+				foreign_history_append(r, cmd[j:j + 1])
+			}
+		}
+
+		foreign_history_flush(r)
+	case "zsh":
+		if !r.continued && strings.has_prefix(cmd, ": ") {
+			meta, sep, body := strings.partition(cmd[2:], ";")
+			start, colon, duration := strings.partition(meta, ":")
+			if sep != "" && colon != "" && all_digits(start) && all_digits(duration) {
+				cmd = body
+			}
+		}
+
+		r.discarded = r.discarded || long
+		r.continued = strings.has_suffix(cmd, "\\")
+		if r.continued {
+			cmd = cmd[:len(cmd) - 1]
+		}
+
+		if !utf8.valid_string(cmd) && strings.index_byte(cmd, 0x83) >= 0 {
+			for j := 0; j < len(cmd); j += 1 {
+				ch := cmd[j]
+				if ch == 0x83 && j + 1 < len(cmd) {
+					j += 1; ch = cmd[j] ~ 0x20
+				}
+
+				foreign_history_append(r, string([]u8{ch}))
+			}
+		} else {
+			foreign_history_append(r, cmd)
+		}
+
+		if r.continued {
+			foreign_history_append(r, "\n")
+		} else {
+			foreign_history_flush(r)
+		}
+	}
 }

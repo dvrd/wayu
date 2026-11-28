@@ -1427,6 +1427,7 @@ belong to their respective interpreters. Use native functions to change the curr
 <code class="nw">export editor</code> to pass it to children or <code class="nw">EDITOR=vim git commit</code> for one command.
 <code class="nw">${editor:-vi}</code> supplies a default when the variable is unset or empty.
 <code>branch=$(git branch --show-current)</code> captures stdout and trims trailing newlines. Double-quote a substitution to keep its output in one argument.
+Set <code class="nw">[settings] capture_bytes</code> in <code class="nw">wayu.toml</code> to cap each substitution, including nested ones. An overflow discards the expansion and returns 65. Use <code class="nw">||</code> to recover. A streaming pipeline can pass any amount of data.
 Use <code class="nw">type name</code>, <code class="nw">where name</code>, or <code class="nw">command -v name</code> to look up a command.</p>
 <p>Login sessions read <code class="nw">login.wayu</code> from the Wayu config directory before interactive
 <code class="nw">config.wayu</code>. Start one with <code class="nw">wayu -l</code>, <code class="nw">wayu --login</code>, or <code class="nw">wayu -lc &#39;echo hello&#39;</code>. Arguments after the command string set <code class="nw">$0</code>, <code class="nw">$1</code>, and the remaining positional parameters.</p>
@@ -1599,7 +1600,7 @@ values as <code class="nw">********</code> unless <code class="nw">--reveal</cod
 <tr>
 <td>74</td>
 <td><code class="nw">EXIT_IOERR</code></td>
-<td>Read/write failure, failed git operation</td>
+<td>Read/write failure, including a saved change whose required host runtime could not be refreshed, or failed git operation</td>
 </tr>
 <tr>
 <td>77</td>

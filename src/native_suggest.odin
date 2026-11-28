@@ -85,7 +85,7 @@ native_atuin_matches :: proc(q: ^Native_Suggest_Query, prefix: string) -> []stri
 
 	q^ = {
 		loaded = true,
-		prefix = prefix,
+		prefix = strings.clone(prefix, context.temp_allocator),
 	}
 	if script_find_on_path("atuin") == "" {
 		return nil
@@ -153,7 +153,8 @@ native_command_matches :: proc(
 		results[:],
 		proc(a, b: string) -> bool {return len(a) < len(b) || (len(a) == len(b) && a < b)},
 	)
-	q^ = {true, prefix, results[:]}
+	q^ = {true, strings.clone(prefix, context.temp_allocator), results[:]}
+
 	return q.results
 }
 
@@ -175,7 +176,9 @@ native_suggestions :: proc(
 
 	e.has_matches = true
 	e.all_matches = all
-	seen := make(map[string]bool, context.temp_allocator)
+	seen := make(map[string]bool)
+	defer delete(seen)
+
 	add :: proc(e: ^Native_Editor, seen: ^map[string]bool, cmd: string) -> bool {
 		if len(cmd) <= len(e.line) || !strings.has_prefix(cmd, e.line) || cmd in seen^ {
 			return false

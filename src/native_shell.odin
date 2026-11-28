@@ -25,50 +25,53 @@ native_stop_list :: proc(s: ^Native_Session) -> bool {
 }
 
 Native_Session :: struct {
-	unhandled:           bool,
-	tested_status:       bool,
-	quiet_failure:       bool,
-	expansion_failure:   int,
-	deferred:            [dynamic]Native_Deferred,
-	locals:              map[string]string,
-	definitions:         map[string]Native_Definition,
-	location:            Native_Location,
-	shell_name:          string,
-	loop_depth:          int,
-	loop_action:         enum {
+	undo_bytes, capture_bytes, history_bytes, history_entries: int,
+	capture_group:                                             posix.pid_t,
+	capture_notice:                                            posix.FD,
+	unhandled:                                                 bool,
+	tested_status:                                             bool,
+	quiet_failure:                                             bool,
+	expansion_failure:                                         int,
+	deferred:                                                  [dynamic]Native_Deferred,
+	locals:                                                    map[string]string,
+	definitions:                                               map[string]Native_Definition,
+	location:                                                  Native_Location,
+	shell_name:                                                string,
+	loop_depth:                                                int,
+	loop_action:                                               enum {
 		None,
 		Break,
 		Continue,
 	},
-	positional:          []string,
-	returning:           bool,
-	function_depth:      int,
-	sub_status:          int,
-	jump_echo:           bool,
-	jump_cmd:            string,
-	jump_hook:           string,
-	functions:           map[string]Native_Function,
-	vi_register:         string,
-	source_depth:        int,
-	aliases:             map[string][dynamic]ShellStatement,
-	vi_mode:             bool,
-	prompt:              PromptConfigFull,
-	prompt_options:      InteractiveConfig,
-	prompt_cache:        Native_Prompt_Cache,
-	highlight:           ^Native_Highlight_Styles,
-	suggest:             Native_Suggest_Config,
-	minimal_prompt:      bool,
-	status:              int,
-	exiting:             bool,
-	terminal:            bool,
-	modes:               posix.termios,
-	jobs:                [dynamic]Native_Job,
-	next_job:            int,
-	last_background_pid: posix.pid_t,
-	completed_jobs:      [dynamic]Native_Job_Result,
-	failed_stage:        int,
-	pipeline_child:      bool,
-	failure_sigpipe:     bool,
+	positional:                                                []string,
+	returning:                                                 bool,
+	function_depth:                                            int,
+	sub_status:                                                int,
+	jump_echo:                                                 bool,
+	jump_cmd:                                                  string,
+	jump_hook:                                                 string,
+	functions:                                                 map[string]Native_Function,
+	vi_register:                                               string,
+	source_depth:                                              int,
+	aliases:                                                   map[string][dynamic]ShellStatement,
+	vi_mode:                                                   bool,
+	prompt:                                                    PromptConfigFull,
+	prompt_options:                                            InteractiveConfig,
+	prompt_cache:                                              Native_Prompt_Cache,
+	highlight:                                                 ^Native_Highlight_Styles,
+	suggest:                                                   Native_Suggest_Config,
+	minimal_prompt:                                            bool,
+	status:                                                    int,
+	exiting:                                                   bool,
+	terminal:                                                  bool,
+	modes:                                                     posix.termios,
+	jobs:                                                      [dynamic]Native_Job,
+	next_job:                                                  int,
+	last_background_pid:                                       posix.pid_t,
+	completed_jobs:                                            [dynamic]Native_Job_Result,
+	failed_stage:                                              int,
+	pipeline_child:                                            bool,
+	failure_sigpipe:                                           bool,
 }
 Native_Redirect :: struct {
 	target: posix.FD,
@@ -201,6 +204,7 @@ native_expand :: proc(
 	bool,
 ) {
 	b := strings.builder_make(context.temp_allocator)
+	saw_capture := false
 	for i := 0; i < len(w.text); i += 1 {
 		ch := w.text[i]
 		if ch == '`' && w.active[i] {
@@ -276,7 +280,26 @@ native_expand :: proc(
 					continue
 				}
 
-				value, ok := native_capture(s, w.text[start + 1:end - 1])
+				source := w.text[start + 1:end - 1]
+				if NATIVE_METRICS {
+					saw_capture = true
+				}
+
+				// Assignments and quoted words can collect straight into the expansion buffer.
+				if !pattern && (splits == nil || !w.active[start]) {
+					if !native_capture(s, source, &b) {
+						return "", false
+					}
+
+					i = end - 1
+					continue
+				}
+
+				capture := strings.builder_make(context.allocator)
+				defer strings.builder_destroy(&capture)
+
+				ok := native_capture(s, source, &capture)
+				value := strings.to_string(capture)
 				if !ok {
 					return "", false
 				}
@@ -340,6 +363,12 @@ native_expand :: proc(
 				strings.write_byte(&b, '\\')
 			}
 			strings.write_byte(&b, ch)
+		}
+	}
+
+	if NATIVE_METRICS {
+		if saw_capture {
+			fmt.eprintfln("wayu-expansion bytes=%d capacity=%d", len(b.buf), cap(b.buf))
 		}
 	}
 	return strings.to_string(b), true
@@ -904,7 +933,8 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 		}
 		if grouped {
 			if job.group == 0 {
-				job.group = pid
+				job.shared_capture_group = s.capture_group != 0
+				job.group = s.capture_group if job.shared_capture_group else pid
 			}
 			// Children wait on gate until the parent assigns the whole pipeline
 			// to its group and hands over the terminal.
@@ -1130,9 +1160,13 @@ run_native_shell :: proc(
 			s.status = native_source(&s, startup)
 		}
 	}
-	history: Native_History
+	history := Native_History {
+		byte_limit  = s.history_bytes,
+		entry_limit = s.history_entries,
+	}
+
 	if s.terminal && s.suggest.enabled {
-		history.shell_commands = native_read_shell_history()
+		history.shell_commands = native_read_shell_history(s.history_bytes, s.history_entries)
 	}
 	stdin_line := 1
 	for first_prompt := true; !s.exiting && (interactive || !s.unhandled); first_prompt = false {

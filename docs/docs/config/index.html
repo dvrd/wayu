@@ -438,16 +438,65 @@ top-level <code class="nw">shell = &quot;...&quot;</code> string is not read (<c
 <td><code class="nw">false</code></td>
 <td>When an open shell notices that a startup file changed (prompt hook) and it has lines <code class="nw">wayu optimize</code> can move, move them right away (backups first) and print what moved, instead of printing the <code>wayu: ~/.zshrc changed: N lines can be optimized</code> notice.</td>
 </tr>
+<tr>
+<td><code class="nw">capture_bytes</code></td>
+<td>nonnegative integer</td>
+<td><code class="nw">0</code></td>
+<td>Maximum raw stdout bytes for one native command substitution. Counting includes trailing newlines. Overflow stops the enclosing command with status 65.</td>
+</tr>
+<tr>
+<td><code class="nw">undo_bytes</code></td>
+<td>nonnegative integer</td>
+<td><code class="nw">0</code></td>
+<td>Bytes retained for edit records and their text in the current native prompt. Oldest edits expire first. A larger single edit takes effect and clears undo history.</td>
+</tr>
+<tr>
+<td><code class="nw">history_bytes</code></td>
+<td>nonnegative integer</td>
+<td><code class="nw">0</code></td>
+<td>Maximum retained command-text bytes in each of the native and launching-shell suggestion histories. Native records stay on disk and remain available through Up/Down and Ctrl+R.</td>
+</tr>
+<tr>
+<td><code class="nw">history_entries</code></td>
+<td>nonnegative integer</td>
+<td><code class="nw">0</code></td>
+<td>Maximum retained records in each history source. When both history limits are set, both apply.</td>
+</tr>
+<tr>
+<td><code class="nw">compinit_guard</code></td>
+<td>boolean</td>
+<td><code class="nw">true</code></td>
+<td>zsh only. After wayu&#39;s <code class="nw">compinit</code>, <code class="nw">compinit</code> is a function that only registers the completions (<code class="nw">#compdef</code> / <code class="nw">#autoload</code> files) of <code class="nw">fpath</code> dirs added since; its flags (<code class="nw">-C</code>, <code class="nw">-i</code>, <code class="nw">-u</code>, <code class="nw">-d &lt;dump&gt;</code>, ...) are accepted and ignored. An installer&#39;s <code>autoload -Uz compinit &amp;&amp; compinit</code> in <code class="nw">.zshrc</code> then costs a glob of the new dirs instead of a second full completion setup (audit, dump check/rewrite), and its dirs&#39; completions work even with <code class="nw">-C</code>. The same registration runs once at the first prompt, for dirs added to <code class="nw">fpath</code> without a <code class="nw">compinit</code> call. <code class="nw">false</code>: later <code class="nw">compinit</code> calls are zsh&#39;s own.</td>
+</tr>
+<tr>
+<td><code class="nw">defer_plugins</code></td>
+<td>boolean</td>
+<td><code class="nw">false</code></td>
+<td>zsh only. Load the plugins (<code class="nw">plugins.zsh</code>, <code class="nw">plugins/config.zsh</code>) after the first prompt is drawn (through zsh-defer) instead of during startup. They then load after <code class="nw">tools.zsh</code> / <code class="nw">extra.zsh</code>: code there that needs a plugin widget should run through <code class="nw">zsh-defer</code>.</td>
+</tr>
+<tr>
+<td><code class="nw">highlight</code></td>
+<td>boolean</td>
+<td><code class="nw">false</code></td>
+<td>Interactive zsh and the native shell. Built-in syntax highlighting of the command line, in place of the zsh-syntax-highlighting / fast-syntax-highlighting plugins: see <a href="#syntax-highlighting">Syntax highlighting</a>. A non-boolean value is an error.</td>
+</tr>
+<tr>
+<td><code class="nw">highlight_styles</code></td>
+<td>table of strings</td>
+<td>see <a href="#syntax-highlighting">styles</a></td>
+<td>Per-style <code class="nw">region_highlight</code> specs for zsh and the native shell, as an inline table (<code>highlight_styles = { command = &quot;fg=blue&quot;, comment = &quot;fg=244&quot; }</code>) or a <code class="nw">[settings.highlight_styles]</code> table. <code class="nw">&quot;none&quot;</code>: not highlighted. A value that isn&#39;t a one-line string of at most 64 bytes is an error; an unknown style name is a warning (ignored).</td>
+</tr>
+<tr>
+<td><code class="nw">lazy_compinit</code></td>
+<td>boolean</td>
+<td><code class="nw">false</code></td>
+<td>zsh only. No <code class="nw">compinit</code> at startup: the completion widgets (Tab, <code class="nw">^D</code> list, ...) set up completion on first use and then complete. <code class="nw">compdef</code> calls made before that are queued and replayed. <code class="nw">$_comps</code> and completion functions don&#39;t exist until then.</td>
+</tr>
 </tbody>
 </table></div>
-<p>| <code class="nw">compinit_guard</code> | boolean | <code class="nw">true</code> | zsh only. After wayu&#39;s <code class="nw">compinit</code>, <code class="nw">compinit</code> is a function that only registers the completions (<code class="nw">#compdef</code> / <code class="nw">#autoload</code> files) of <code class="nw">fpath</code> dirs added since; its flags (<code class="nw">-C</code>, <code class="nw">-i</code>, <code class="nw">-u</code>, <code class="nw">-d &lt;dump&gt;</code>, ...) are accepted and ignored. An installer&#39;s <code>autoload -Uz compinit &amp;&amp; compinit</code> in <code class="nw">.zshrc</code> then costs a glob of the new dirs instead of a second full completion setup (audit, dump check/rewrite), and its dirs&#39; completions work even with <code class="nw">-C</code>. The same registration runs once at the first prompt, for dirs added to <code class="nw">fpath</code> without a <code class="nw">compinit</code> call. <code class="nw">false</code>: later <code class="nw">compinit</code> calls are zsh&#39;s own. |
-| <code class="nw">defer_plugins</code> | boolean | <code class="nw">false</code> | zsh only. Load the plugins (<code class="nw">plugins.zsh</code>, <code class="nw">plugins/config.zsh</code>) after the first prompt is drawn (through zsh-defer) instead of during startup. They then load after <code class="nw">tools.zsh</code> / <code class="nw">extra.zsh</code>: code there that needs a plugin widget should run through <code class="nw">zsh-defer</code>. |
-| <code class="nw">highlight</code> | boolean | <code class="nw">false</code> | Interactive zsh and the native shell. Built-in syntax highlighting of the command line, in place of the zsh-syntax-highlighting / fast-syntax-highlighting plugins: see <a href="#syntax-highlighting">Syntax highlighting</a>. A non-boolean value is an error. |
-| <code class="nw">highlight_styles</code> | table of strings | see <a href="#syntax-highlighting">styles</a> | Per-style <code class="nw">region_highlight</code> specs for zsh and the native shell, as an inline table (<code>highlight_styles = { command = &quot;fg=blue&quot;, comment = &quot;fg=244&quot; }</code>) or a <code class="nw">[settings.highlight_styles]</code> table. <code class="nw">&quot;none&quot;</code>: not highlighted. A value that isn&#39;t a one-line string of at most 64 bytes is an error; an unknown style name is a warning (ignored). |
-| <code class="nw">lazy_compinit</code> | boolean | <code class="nw">false</code> | zsh only. No <code class="nw">compinit</code> at startup: the completion widgets (Tab, <code class="nw">^D</code> list, ...) set up completion on first use and then complete. <code class="nw">compdef</code> calls made before that are queued and replayed. <code class="nw">$_comps</code> and completion functions don&#39;t exist until then. |</p>
 <p>The plugin bindings are written to <code class="nw">&lt;data&gt;/plugins/config.zsh</code>, which
 <code class="nw">core.zsh</code> sources after the plugins; they apply only when the
-<code class="nw">autosuggest-accept</code> widget exists. No other <code class="nw">[settings]</code> key is read.</p>
+<code class="nw">autosuggest-accept</code> widget exists. For each native resource limit, <code class="nw">0</code> means unlimited. Changes apply to new Wayu processes.</p>
 <h3 id="autosuggestions">Autosuggestions<a class="anchor" href="#autosuggestions" aria-label="Link to this section">#</a></h3>
 <div class="code"><pre><code class="language-toml">[autosuggest]
 enabled = true

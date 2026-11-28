@@ -1,6 +1,7 @@
 package wayu
 
 import "core:fmt"
+import "core:mem/virtual"
 import "core:strings"
 import "core:sys/posix"
 import "core:unicode/utf8"
@@ -9,28 +10,141 @@ Native_Edit :: struct {
 	line:   string,
 	cursor: int,
 }
+Native_Edit_Change :: struct {
+	previous, next:                  ^Native_Edit_Change,
+	at, before_cursor, after_cursor: int,
+	removed, inserted:               string,
+}
+
 Native_Editor :: struct {
-	using edit:   Native_Edit,
-	undo, redo:   [dynamic]Native_Edit,
-	matches:      [dynamic]string,
-	match:        int,
-	has_matches:  bool,
-	sources:      Native_Suggest_Sources,
-	hint_style:   string,
-	all_matches:  bool,
-	vi:           bool,
-	pending_byte: int,
-	highlight:    Native_Highlight,
-	operator:     string,
-	row:          int,
+	using edit:                 Native_Edit,
+	buffer:                     [dynamic]u8,
+	first, last, applied:       ^Native_Edit_Change,
+	retained_bytes, undo_limit: int,
+	matches:                    [dynamic]string,
+	match:                      int,
+	has_matches:                bool,
+	sources:                    Native_Suggest_Sources,
+	hint_style:                 string,
+	all_matches:                bool,
+	vi:                         bool,
+	pending_byte:               int,
+	highlight:                  Native_Highlight,
+	operator:                   string,
+	row:                        int,
+}
+
+native_edit_drop :: proc(e: ^Native_Editor, change: ^Native_Edit_Change) {
+	if change.previous == nil {
+		e.first = change.next
+	} else {
+		change.previous.next = change.next
+	}
+
+	if change.next == nil {
+		e.last = change.previous
+	} else {
+		change.next.previous = change.previous
+	}
+
+	if e.applied == change {
+		e.applied = change.previous
+	}
+
+	e.retained_bytes -= size_of(Native_Edit_Change) + len(change.removed) + len(change.inserted)
+	delete(change.removed)
+	delete(change.inserted)
+	free(change)
+}
+
+native_edit_destroy :: proc(e: ^Native_Editor) {
+	for e.last != nil {native_edit_drop(e, e.last)}
+
+	delete(e.buffer)
+}
+
+native_edit_apply :: proc(e: ^Native_Editor, start, end: int, text: string, cursor: int) {
+	old_len := len(e.buffer)
+	n := old_len - (end - start) + len(text)
+	if n > old_len {
+		resize(&e.buffer, n)
+	}
+
+	copy(e.buffer[start + len(text):n], e.buffer[end:old_len])
+	copy(e.buffer[start:start + len(text)], transmute([]u8)text)
+	resize(&e.buffer, n)
+	e.line = string(e.buffer[:])
+	e.cursor = cursor
+	e.has_matches = false
 }
 
 native_edit_replace :: proc(e: ^Native_Editor, start, end: int, text: string) {
-	append(&e.undo, e.edit)
-	clear(&e.redo)
-	e.line = strings.concatenate({e.line[:start], text, e.line[end:]}, context.temp_allocator)
-	e.cursor = start + len(text)
-	e.has_matches = false
+	for e.last != e.applied {native_edit_drop(e, e.last)}
+
+	bytes := size_of(Native_Edit_Change) + end - start + len(text)
+	for e.first != nil && e.undo_limit > 0 && bytes > e.undo_limit - e.retained_bytes {
+		native_edit_drop(e, e.first)
+	}
+
+	if e.undo_limit > 0 && bytes > e.undo_limit {
+		// This edit cannot have an undo record. Forget earlier edits whose offsets assumed it.
+		native_edit_apply(e, start, end, text, start + len(text))
+		return
+	}
+
+	change := new(Native_Edit_Change)
+	change^ = {
+		previous      = e.last,
+		at            = start,
+		removed       = strings.clone(e.line[start:end]),
+		inserted      = strings.clone(text),
+		before_cursor = e.cursor,
+		after_cursor  = start + len(text),
+	}
+
+	if e.last != nil {
+		e.last.next = change
+	} else {
+		e.first = change
+	}
+
+	e.last, e.applied = change, change
+	e.retained_bytes += bytes
+	native_edit_apply(e, start, end, change.inserted, change.after_cursor)
+}
+
+native_edit_undo :: proc(e: ^Native_Editor) {
+	change := e.applied
+	if change == nil {
+		return
+	}
+
+	change.after_cursor = e.cursor
+	native_edit_apply(
+		e,
+		change.at,
+		change.at + len(change.inserted),
+		change.removed,
+		change.before_cursor,
+	)
+	e.applied = change.previous
+}
+
+native_edit_redo :: proc(e: ^Native_Editor) {
+	change := e.first if e.applied == nil else e.applied.next
+	if change == nil {
+		return
+	}
+
+	change.before_cursor = e.cursor
+	native_edit_apply(
+		e,
+		change.at,
+		change.at + len(change.removed),
+		change.inserted,
+		change.after_cursor,
+	)
+	e.applied = change
 }
 
 native_back :: proc(e: Native_Edit) -> int {
@@ -46,6 +160,20 @@ native_forward :: proc(e: Native_Edit) -> int {
 	}
 	_, width := utf8.decode_rune_in_string(e.line[e.cursor:])
 	return e.cursor + max(width, 1)
+}
+
+native_editor_redraw :: proc(
+	draw: ^virtual.Arena,
+	e: ^Native_Editor,
+	s: ^Native_Session,
+	prompt, hint, right: string,
+) {
+	virtual.arena_free_all(draw)
+	context.temp_allocator = virtual.arena_allocator(draw)
+	e.highlight = native_highlight_init(s)
+	native_highlight_line(&e.highlight, s, e.line)
+	native_display(e, prompt, hint, right)
+	e.highlight = {}
 }
 
 native_display :: proc(e: ^Native_Editor, prompt, hint: string, right := "") {
@@ -259,12 +387,18 @@ native_edit_line :: proc(s: ^Native_Session, h: ^Native_History) -> (string, boo
 	}
 	e := Native_Editor {
 		pending_byte = -1,
-		undo         = make([dynamic]Native_Edit, context.temp_allocator),
-		redo         = make([dynamic]Native_Edit, context.temp_allocator),
+		undo_limit   = s.undo_bytes,
 		matches      = make([dynamic]string, context.temp_allocator),
 	}
+	defer native_edit_destroy(&e)
+
+	draw: virtual.Arena
+	if virtual.arena_init_growing(&draw) != nil {
+		return "", false
+	}
+	defer virtual.arena_destroy(&draw)
+
 	e.hint_style = s.suggest.style
-	e.highlight = native_highlight_init(s)
 	values := native_prompt_values(s)
 	if native_prompt_cache_matches(&s.prompt_cache, values) {
 		values.pending = s.prompt_cache.pending
@@ -275,7 +409,7 @@ native_edit_line :: proc(s: ^Native_Session, h: ^Native_History) -> (string, boo
 	defer native_prompt_worker_close(&worker, true)
 	prompt, normal_prompt, right: string
 	refresh_prompt := true
-	history_pos := len(h.commands)
+	history_pos, history_end := h.offset, h.offset
 	draft := ""
 	completion: Native_Completion
 	for {
@@ -293,8 +427,7 @@ native_edit_line :: proc(s: ^Native_Session, h: ^Native_History) -> (string, boo
 			refresh_prompt = false
 		}
 		shown := normal_prompt if e.vi else prompt
-		native_highlight_line(&e.highlight, s, e.line)
-		native_display(&e, shown, hint, right)
+		native_editor_redraw(&draw, &e, s, shown, hint, right)
 		if start_worker {
 			worker = native_prompt_worker_start(s, values)
 			start_worker = false
@@ -390,9 +523,9 @@ native_edit_line :: proc(s: ^Native_Session, h: ^Native_History) -> (string, boo
 				continue
 			}
 			e.cursor = len(e.line)
-			native_display(&e, shown, "", right)
+			native_editor_redraw(&draw, &e, s, shown, "", right)
 			fmt.eprint("\r\n")
-			return e.line, true
+			return strings.clone(e.line, context.temp_allocator), true
 		case "\x0e", "\x10":
 			had := e.has_matches && len(e.matches) > 0
 			if e.vi || e.cursor != len(e.line) || !s.suggest.enabled {
@@ -404,12 +537,25 @@ native_edit_line :: proc(s: ^Native_Session, h: ^Native_History) -> (string, boo
 				e.match = (e.match + (1 if key == "\x0e" else n - 1)) % n
 			}
 		case "\x1b[A", "\x1b[B":
-			if history_pos == len(h.commands) {
-				draft = e.line
+			e.has_matches = false
+			if key == "\x1b[A" {
+				if history_pos == h.offset {
+					draft = strings.clone(e.line, context.temp_allocator)
+				}
+
+				if v, start, end, ok := native_history_page(h, history_pos, true); ok {
+					history_pos, history_end = start, end
+					native_edit_replace(&e, 0, len(e.line), v)
+				}
+			} else if history_pos < h.offset {
+				if v, start, end, ok := native_history_page(h, history_end, false); ok {
+					history_pos, history_end = start, end
+					native_edit_replace(&e, 0, len(e.line), v)
+				} else {
+					history_pos, history_end = h.offset, h.offset
+					native_edit_replace(&e, 0, len(e.line), draft)
+				}
 			}
-			history_pos = clamp(history_pos + (-1 if key == "\x1b[A" else 1), 0, len(h.commands))
-			v := draft if history_pos == len(h.commands) else h.commands[history_pos]
-			native_edit_replace(&e, 0, len(e.line), v)
 		case "\x1b[D", "\x02":
 			e.cursor = native_back(e.edit)
 		case "\x1b[C", "\x06":
@@ -431,18 +577,13 @@ native_edit_line :: proc(s: ^Native_Session, h: ^Native_History) -> (string, boo
 		case "\x0b":
 			native_edit_replace(&e, e.cursor, len(e.line), "")
 		case "\x1f":
-			if len(e.undo) > 0 {
-				append(&e.redo, e.edit)
-				e.edit = pop(&e.undo)
-				e.has_matches = false
-			}
+			native_edit_undo(&e)
 		case "\x12":
 			if !e.vi {
 				native_history_search(&e, h)
-			} else if len(e.redo) > 0 {
-				append(&e.undo, e.edit)
-				e.edit = pop(&e.redo)
 				e.has_matches = false
+			} else {
+				native_edit_redo(&e)
 			}
 		case "\x1b[200~":
 			b := strings.builder_make(context.temp_allocator)
@@ -505,11 +646,7 @@ native_edit_line :: proc(s: ^Native_Session, h: ^Native_History) -> (string, boo
 						native_edit_replace(&e, e.cursor, end, "")
 					}
 				case "u":
-					if len(e.undo) > 0 {
-						append(&e.redo, e.edit)
-						e.edit = pop(&e.undo)
-						e.has_matches = false
-					}
+					native_edit_undo(&e)
 				}
 			} else if key[0] >= 0x20 && key[0] != 0x7f {
 				native_edit_replace(&e, e.cursor, e.cursor, key)
@@ -521,19 +658,22 @@ native_edit_line :: proc(s: ^Native_Session, h: ^Native_History) -> (string, boo
 // Ctrl-R previews literal substring matches. Enter returns the selection to
 // the editable line so that accepting a search never executes a command.
 native_history_search :: proc(e: ^Native_Editor, h: ^Native_History) {
-	query := ""
-	index := len(h.commands)
-	hit := ""
+	query_buf := strings.builder_make(context.allocator)
+	defer strings.builder_destroy(&query_buf)
+
+	frame: virtual.Arena
+	if virtual.arena_init_growing(&frame) != nil {
+		return
+	}
+	defer virtual.arena_destroy(&frame)
+
+	context.temp_allocator = virtual.arena_allocator(&frame)
+	index := h.offset
 	for {
-		for index -= 1; index >= 0; index -= 1 {
-			if strings.contains(h.commands[index], query) {
-				hit = h.commands[index]
-				break
-			}
-		}
-		if index < 0 {
-			hit = ""
-		}
+		virtual.arena_free_all(&frame)
+		query := strings.to_string(query_buf)
+		hit, start, _, ok := native_history_page(h, index, true, query)
+		index = start if ok else 0
 		preview := Native_Editor {
 			row = e.row,
 		}
@@ -552,16 +692,16 @@ native_history_search :: proc(e: ^Native_Editor, h: ^Native_History) {
 			return
 		case "\x12":
 			if index <= 0 {
-				index = len(h.commands)
+				index = h.offset
 			}
 		case "\x7f", "\x08":
-			query = query[:native_back({query, len(query)})]
-			index = len(h.commands)
+			resize(&query_buf.buf, native_back({query, len(query)}))
+			index = h.offset
 		case:
 			if key[0] >= 0x20 && key[0] != 0x7f {
-				query = fmt.tprintf("%s%s", query, key)
+				strings.write_string(&query_buf, key)
 			}
-			index = len(h.commands)
+			index = h.offset
 		}
 	}
 }

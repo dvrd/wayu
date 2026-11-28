@@ -815,6 +815,7 @@ A standalone assignment such as `editor=vim` sets a shell variable. Use
 `export editor` to pass it to children or `EDITOR=vim git commit` for one command.
 `${editor:-vi}` supplies a default when the variable is unset or empty.
 `branch=$(git branch --show-current)` captures stdout and trims trailing newlines. Double-quote a substitution to keep its output in one argument.
+Set `[settings] capture_bytes` in `wayu.toml` to cap each substitution, including nested ones. An overflow discards the expansion and returns 65. Use `||` to recover. A streaming pipeline can pass any amount of data.
 Use `type name`, `where name`, or `command -v name` to look up a command.
 
 Login sessions read `login.wayu` from the Wayu config directory before interactive
@@ -934,7 +935,7 @@ BSD `sysexits.h` values (`EXIT_*` in `src/interfaces.odin`):
 | 69 | `EXIT_UNAVAILABLE` | A required tool is not installed (`script new`: the language's interpreter or compiler) |
 | 71 | `EXIT_OSERR` | Could not set up the terminal |
 | 73 | `EXIT_CANTCREAT` | Cannot create an output file or directory |
-| 74 | `EXIT_IOERR` | Read/write failure, failed git operation |
+| 74 | `EXIT_IOERR` | Read/write failure, including a saved change whose required host runtime could not be refreshed, or failed git operation |
 | 77 | `EXIT_NOPERM` | Permission denied |
 | 78 | `EXIT_CONFIG` | Configuration problem: not initialized, invalid `hooks.conf`, `entries.json` or `plugins.json` (`build`), relative `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR`, `doctor` found an error, `export check` found no current turbo file |
 | 126 | `EXIT_EXEC_NOT_RUNNABLE` | Native shell or `secrets run`: the command was found but cannot be executed |

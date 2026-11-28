@@ -4,7 +4,28 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
+NATIVE_LIMIT_KEYS :: []string{"capture_bytes", "undo_bytes", "history_bytes", "history_entries"}
+
+native_resource_limits :: proc(s: ^Native_Session) {
+	content, ok := get_cached_toml_content()
+	if !ok {
+		return
+	}
+
+	doc, _ := toml_doc_parse_alloc(content, context.temp_allocator)
+	limits := [?]^int{&s.capture_bytes, &s.undo_bytes, &s.history_bytes, &s.history_entries}
+
+	assert(len(limits) == len(NATIVE_LIMIT_KEYS))
+	for key, i in NATIVE_LIMIT_KEYS {
+		v := get_toml_value(&doc, fmt.tprintf("settings.%s", key))
+		if v != nil && v.type == .INTEGER && v.int_val >= 0 {
+			limits[i]^ = v.int_val
+		}
+	}
+}
+
 native_configure :: proc(s: ^Native_Session) {
+	native_resource_limits(s)
 	store := entries_load()
 	defer entries_store_destroy(&store)
 	for entry in store.env {

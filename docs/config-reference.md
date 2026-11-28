@@ -233,7 +233,10 @@ top-level `shell = "..."` string is not read (`toml validate` rejects it).
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `auto_optimize` | boolean | `false` | When an open shell notices that a startup file changed (prompt hook) and it has lines `wayu optimize` can move, move them right away (backups first) and print what moved, instead of printing the `wayu: ~/.zshrc changed: N lines can be optimized` notice. |
-
+| `capture_bytes` | nonnegative integer | `0` | Maximum raw stdout bytes for one native command substitution. Counting includes trailing newlines. Overflow stops the enclosing command with status 65. |
+| `undo_bytes` | nonnegative integer | `0` | Bytes retained for edit records and their text in the current native prompt. Oldest edits expire first. A larger single edit takes effect and clears undo history. |
+| `history_bytes` | nonnegative integer | `0` | Maximum retained command-text bytes in each of the native and launching-shell suggestion histories. Native records stay on disk and remain available through Up/Down and Ctrl+R. |
+| `history_entries` | nonnegative integer | `0` | Maximum retained records in each history source. When both history limits are set, both apply. |
 | `compinit_guard` | boolean | `true` | zsh only. After wayu's `compinit`, `compinit` is a function that only registers the completions (`#compdef` / `#autoload` files) of `fpath` dirs added since; its flags (`-C`, `-i`, `-u`, `-d <dump>`, ...) are accepted and ignored. An installer's `autoload -Uz compinit && compinit` in `.zshrc` then costs a glob of the new dirs instead of a second full completion setup (audit, dump check/rewrite), and its dirs' completions work even with `-C`. The same registration runs once at the first prompt, for dirs added to `fpath` without a `compinit` call. `false`: later `compinit` calls are zsh's own. |
 | `defer_plugins` | boolean | `false` | zsh only. Load the plugins (`plugins.zsh`, `plugins/config.zsh`) after the first prompt is drawn (through zsh-defer) instead of during startup. They then load after `tools.zsh` / `extra.zsh`: code there that needs a plugin widget should run through `zsh-defer`. |
 | `highlight` | boolean | `false` | Interactive zsh and the native shell. Built-in syntax highlighting of the command line, in place of the zsh-syntax-highlighting / fast-syntax-highlighting plugins: see [Syntax highlighting](#syntax-highlighting). A non-boolean value is an error. |
@@ -242,7 +245,7 @@ top-level `shell = "..."` string is not read (`toml validate` rejects it).
 
 The plugin bindings are written to `<data>/plugins/config.zsh`, which
 `core.zsh` sources after the plugins; they apply only when the
-`autosuggest-accept` widget exists. No other `[settings]` key is read.
+`autosuggest-accept` widget exists. For each native resource limit, `0` means unlimited. Changes apply to new Wayu processes.
 
 ### Autosuggestions
 

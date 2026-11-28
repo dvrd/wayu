@@ -621,3 +621,56 @@ warp_search_pipe :: proc(t: ^testing.T) {
 	testing.expect_value(t, out, "")
 	testing.expect_value(t, status, 1)
 }
+
+@(test)
+native_editor_undo_paste :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+
+	fd, pid := start_native_pty(t, cli)
+	defer {
+		posix.close(fd)
+		posix.kill(pid, .SIGKILL)
+		status: c.int
+		for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
+	}
+
+	expect_text(t, fd, "wayu> ")
+	send(t, fd, "echo ok\x1b[200~界undo\x1b[201~\x1f\r")
+	expect_text(t, fd, "\x1b[?2004lok\r\n")
+}
+
+@(test)
+native_history_paging :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+
+	cfg := fmt.tprintf("%s/.config/wayu", cli.home)
+	data := fmt.tprintf("%s/.local/share/wayu", cli.home)
+	os.make_directory_all(cfg)
+	os.make_directory_all(data)
+	write_fixture(
+		t,
+		fmt.tprintf("%s/wayu.toml", cfg),
+		"[settings]\nhistory_bytes=12\nhistory_entries=1\n",
+	)
+	write_fixture(
+		t,
+		fmt.tprintf("%s/history.jsonl", data),
+		"\"echo earlier than window\"\n\"echo later\"\n",
+	)
+	fd, pid := start_native_pty(t, cli)
+	defer {
+		posix.close(fd)
+		posix.kill(pid, .SIGKILL)
+		status: c.int
+		for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
+	}
+
+	expect_text(t, fd, "wayu> ")
+	send(t, fd, "\x1b[A\x1b[A\r")
+	expect_text(t, fd, "\x1b[?2004learlier than window\r\n")
+	expect_text(t, fd, "wayu> ")
+	send(t, fd, "\x12earlier\r again\r")
+	expect_text(t, fd, "\x1b[?2004learlier than window again\r\n")
+}

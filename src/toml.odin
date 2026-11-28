@@ -371,6 +371,10 @@ toml_key_known :: proc(p: []string) -> bool {
 	case "autosuggest":
 		return len(p) == 2 && in_set(p[1], {"enabled", "accept_keybind", "style"})
 	case "settings":
+		if len(p) == 2 && slice.contains(NATIVE_LIMIT_KEYS, p[1]) {
+			return true
+		}
+
 		if len(p) == 3 && p[1] == "highlight_styles" {
 			return highlight_style_index(p[2]) >= 0
 		}
@@ -542,6 +546,20 @@ toml_schema_issues :: proc(doc: ^TomlDoc) -> [dynamic]TomlSchemaIssue {
 				TomlSchemaIssue{line, fmt.tprintf("unknown key %s (ignored)", dotted(p)), false},
 			)
 			continue
+		}
+
+		if len(p) == 2 &&
+		   p[0] == "settings" &&
+		   slice.contains(NATIVE_LIMIT_KEYS, p[1]) &&
+		   (e.value.type != .INTEGER || e.value.int_val < 0) {
+			append(
+				&issues,
+				TomlSchemaIssue {
+					line,
+					fmt.tprintf("%s must be a non-negative integer", dotted(p)),
+					true,
+				},
+			)
 		}
 		if len(p) == 2 && p[0] == "autosuggest" {
 			msg := ""

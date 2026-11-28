@@ -8,6 +8,13 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+- Native Wayu now returns the child's actual exit status on Linux, including zero for success. Scripts that worked around status 128 after successful commands can remove that workaround.
+- New optional `[settings]` keys bound command substitution output, undo storage, and recent history. All four default to unlimited. History limits retain older native commands on disk for recall. See [the configuration reference](config-reference.md#settings).
+
+- Host runtime generation now reports exit 74 if a required file cannot be refreshed by
+  `wayu build`, `wayu init`, or a configuration mutation. A saved change remains in the store.
+  Correct the path named on stderr, then run `wayu build`. Other selected shells are still refreshed.
+
 - Source installation runs host-shell setup only for Bash, Zsh, and Fish. With Wayu, another login shell, or no login shell set, the installed native shell is ready to run directly.
 
 - **Breaking:** Native scripts now stop at an unhandled nonzero status. A failed
