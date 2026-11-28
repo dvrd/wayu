@@ -102,3 +102,44 @@ test_watch_debounce_monotonic :: proc(t: ^testing.T) {
 	again, _ := wayu.watch_debounce_take(&state, time.tick_add(second, time.Hour), 500)
 	testing.expect(t, !again)
 }
+
+// File times come from the wall clock. A write stamped earlier than the last
+// one seen (a backward clock correction, a file restored with its old time)
+// is a change like any other, and so is a jump forward.
+@(test)
+test_watch_detects_changes_across_wall_clock_steps :: proc(t: ^testing.T) {
+	dir := test_tmp("hot_reload_clock")
+	os.remove_all(dir)
+	os.make_directory_all(dir)
+	defer os.remove_all(dir)
+
+	path := test_tmp("hot_reload_clock/entries.json")
+	_ = os.write_entire_file(path, transmute([]byte)string("{}\n"))
+
+	wayu.hot_reload_init([]string{path}, nil)
+	defer wayu.hot_reload_reset()
+
+	first := wayu.check_file_changes()
+	testing.expectf(t, len(first) == 0, "first poll only records: %v", first)
+	free_changed(first)
+
+	now := time.now()
+	for step in ([]time.Duration{-time.Hour, 2 * time.Hour}) {
+		stamp := time.time_add(now, step)
+		_ = os.write_entire_file(path, transmute([]byte)string("{\"version\":1}\n"))
+		testing.expect(t, os.change_times(path, stamp, stamp) == nil)
+		stepped := wayu.check_file_changes()
+		testing.expectf(
+			t,
+			changed_has(stepped, path) && len(stepped) == 1,
+			"%v: %v",
+			step,
+			stepped,
+		)
+		free_changed(stepped)
+
+		quiet := wayu.check_file_changes()
+		testing.expectf(t, len(quiet) == 0, "no change after %v: %v", step, quiet)
+		free_changed(quiet)
+	}
+}

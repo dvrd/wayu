@@ -459,7 +459,9 @@ check_file_changes :: proc() -> []string {
 			}
 			continue
 		}
-		if !seen || time.diff(last_mod, file_info.modification_time) > 0 {
+		// Any other time is a change, also an earlier one: the wall clock was
+		// corrected backward, or the file was restored with its old time.
+		if !seen || file_info.modification_time != last_mod {
 			g_watcher.last_modified[path] = file_info.modification_time
 			// New since the first poll, or modified.
 			if seen || g_watcher.primed {
