@@ -36,11 +36,11 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-15]
     steps:
-    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
     - uses: ./.github/actions/setup-odin
-    - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+    - uses: ruby/setup-ruby@78c62f2208e480ce3d5ae4dfd9b9e181acf48b63 # v1.344.0
       with:
         ruby-version: '3.3'
     - name: Install shells (Linux)
@@ -80,13 +80,13 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Setup Odin
       uses: ./.github/actions/setup-odin
 
     - name: Setup Ruby
-      uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+      uses: ruby/setup-ruby@78c62f2208e480ce3d5ae4dfd9b9e181acf48b63 # v1.344.0
       with:
         ruby-version: '3.3'
 
@@ -131,7 +131,7 @@ jobs:
 
     - name: Upload unit-test stdout on failure
       if: failure()
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: unit-tests-stdout-${{ matrix.os }}
         path: bin/unit-tests.stdout.log
@@ -153,7 +153,7 @@ jobs:
 
     - name: Keep test and review evidence
       if: always()
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: test-evidence-${{ matrix.os }}
         path: evidence/
@@ -169,13 +169,13 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Setup Odin
       uses: ./.github/actions/setup-odin
 
     - name: Setup Ruby
-      uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+      uses: ruby/setup-ruby@78c62f2208e480ce3d5ae4dfd9b9e181acf48b63 # v1.344.0
       with:
         ruby-version: '3.3'
 
@@ -204,7 +204,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Setup Odin
       uses: ./.github/actions/setup-odin
@@ -220,7 +220,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Setup Odin
       uses: ./.github/actions/setup-odin
@@ -300,7 +300,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
 
