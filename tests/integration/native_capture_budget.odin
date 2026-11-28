@@ -31,6 +31,11 @@ native_capture_budget :: proc(t: ^testing.T) {
 		}
 	}
 
+	// The trailing newline counts toward the limit before expansion would trim it.
+	path := fmt.tprintf("%s/trailing", cli.home)
+	write_fixture(t, path, fmt.tprintf("%s\n", strings.repeat("x", 8192, context.temp_allocator)))
+	expect_exit(t, cli, 65, "-c", fmt.tprintf("v=$(cat '%s')", path))
+
 	expect_exit(t, cli, 65, "-c", "echo \"$(yes)\"")
 	expect_exit(t, cli, 65, "-c", "v=$(echo \"$(yes)\")")
 	expect_exit(t, cli, 0, "-c", "yes | head -c 20000 > /dev/null")

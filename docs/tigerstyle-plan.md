@@ -103,3 +103,17 @@ gets its own applicable CLI/config reference and Unreleased entry, a breaking Co
 as required, and regenerated docs in the same pull request. Run the unit and integration suites, docs
 freshness check, and the existing startup budget for generated shell changes. A phase is complete after
 green CI on `develop`. [Task dependencies and verification commands](tigerstyle-tasks.yaml)
+
+## Linux AMD64 rebuild pilot
+
+The verifier rebuilds a named tag with its checksum-pinned Odin release. It compares both the executable and the gzip archive against the published release. A payload mismatch or a packaging-only mismatch fails the job. The manual workflow retains ELF section and build-ID diagnostics. The self-test exercises both types of mismatch. [Verifier](../tests/release/rebuild_linux.sh) · [Read-only workflow](../.github/workflows/rebuild-release.yml)
+
+The v9.0.0 pilot used commit `ce3cc51b9947b5fb8af8ed38b9ff29b508a34b66`, Odin `dev-2026-11a`, Clang 18.1.3, GNU ld 2.42, GNU tar 1.35 and gzip 1.12 in fresh Ubuntu 24.04 AMD64 containers under emulation.
+
+| Build | Executable SHA-256 | Archive SHA-256 |
+|---|---|---|
+| Published v9.0.0 | `d7fb742a481107e0ecbf030cf1cbe45ab247bb3653cf5e489da593c60602fee2` | `d19de711a3ad263c0f0017240c5e91fea57b954e4346a246e364ffd325b828e2` |
+| Temporary checkout and compiler paths | `b558029a20f85d312d1947b01889bcf0180ec86f7b14607ccaa320f2ccec6848` | `ab430c69f431d827f03df8505620dd764d12d915fe3e1ff2623ef5f88d7fba36` |
+| Published checkout and compiler paths, Ubuntu GCC 13 startup objects | `751dad7b77590bd17ec2e6672223c054a8f67484c186b0dfa0cef3154d19690a` | `aa0d8fcecc7816e05019016a2d9bd9db94049d42c4eddb6a9cd01335508fcb00` |
+
+At the original paths, the executable's 157 absolute Odin paths and the hashes of `.text`, `.rodata` and `.data` matched. The ELF `.comment` identified GCC 13.3.0 in the rebuild and GCC 14.2.0 in the published binary. The GNU build IDs also differed. The job records the actual linker startup object and compares the full archive byte for byte.

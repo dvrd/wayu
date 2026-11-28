@@ -1,0 +1,49 @@
+name: Rebuild published Linux archive
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published vX.Y.Z tag to verify
+        required: true
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate tag and select the release compiler
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git show "refs/tags/$TAG:.github/odin-release" > .github/odin-release
+          git show "refs/tags/$TAG:.github/odin-release.sha256" > .github/odin-release.sha256
+      - uses: ./.github/actions/setup-odin
+      - name: Preserve verifier and check out the published source
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          cp tests/release/rebuild_linux.sh "$RUNNER_TEMP/rebuild_linux.sh"
+          git restore .github/odin-release .github/odin-release.sha256
+          git checkout --detach "refs/tags/$TAG"
+      - name: Compare independent build with published bytes
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          "$RUNNER_TEMP/rebuild_linux.sh" --self-test
+          WAYU_REBUILD_CHECKOUT="$GITHUB_WORKSPACE" WAYU_REBUILD_EVIDENCE="$RUNNER_TEMP/rebuild-evidence" \
+            "$RUNNER_TEMP/rebuild_linux.sh" "$TAG" | tee "$RUNNER_TEMP/rebuild.txt"
+      - name: Preserve comparison evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: linux-amd64-rebuild
+          path: |
+            ${{ runner.temp }}/rebuild.txt
+            ${{ runner.temp }}/rebuild-evidence/

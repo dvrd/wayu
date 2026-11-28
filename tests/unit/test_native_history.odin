@@ -61,4 +61,18 @@ test_history_window_limits :: proc(t: ^testing.T) {
 	latest, _, _, rotated := wayu.native_history_page(&h, h.offset, true)
 	testing.expect(t, rotated)
 	testing.expect_value(t, latest, "rotated")
+	// A second writer can finish a partial JSONL record before the next recall.
+	base :: string("\"rotated\"\n")
+	testing.expect(t, os.write_entire_file(path, base + "\"pen") == nil)
+	testing.expect(t, wayu.native_history_sync(&h))
+	testing.expect_value(t, h.offset, i64(len(base)))
+	testing.expect(t, os.write_entire_file(path, base + "\"pending\"\n") == nil)
+	concurrent, _, _, seen := wayu.native_history_page(&h, h.offset, true)
+	testing.expect(t, seen)
+	testing.expect_value(t, concurrent, "pending")
+	// Truncation in place also invalidates the old offsets.
+	testing.expect(t, os.write_entire_file(path, string("\"new\"\n")) == nil)
+	newest, _, _, truncated := wayu.native_history_page(&h, h.offset, true)
+	testing.expect(t, truncated)
+	testing.expect_value(t, newest, "new")
 }
