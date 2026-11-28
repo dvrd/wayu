@@ -14,6 +14,13 @@ class EntryModel
              'SHELL' => '/bin/bash', 'PATH' => ENV.fetch('PATH'), 'NO_COLOR' => '1', 'LC_ALL' => 'C' }
     %w[ASAN_OPTIONS LSAN_OPTIONS UBSAN_OPTIONS].each { |key| @env[key] = ENV[key] if ENV[key] }
     @trace = []
+    @names = { 'aliases' => [], 'env' => [] }
+  end
+
+  # Every name an operation touched is checked in the host shells, so a name
+  # that was removed, only previewed or never committed must be absent.
+  def mention(kind, name)
+    @names[kind] << name unless @names[kind].include?(name)
   end
 
   def command(*args)
@@ -30,6 +37,7 @@ class EntryModel
     args = [kind == 'env' ? 'const' : 'alias', action, name, value].compact
     args.unshift('--dry-run') if dry
     @trace << args
+    mention(kind, name)
     command(*args)
     unless dry
       action == 'add' ? @expected[kind][name] = value : @expected[kind].delete(name)
@@ -60,15 +68,31 @@ class EntryModel
     end
   end
 
+  # One name as a fresh host shell sees it: [status, stdout, stderr]. Status 1
+  # means the shell loaded its runtime and does not have the name.
+  def probe(shell, kind, name)
+    args = shell == 'bash' ? ['--noprofile', '--norc'] : ['-f']
+    lookup = kind == 'env' ? %q{printenv "$2"} : %q{alias "$2"}
+    out, err, status = Open3.capture3(@env, shell, *args, '-c',
+      %Q{source "$1" || exit 97; #{lookup}}, shell, "#{@data}/init.#{shell}", name, unsetenv_others: true)
+    raise "#{shell} could not load its runtime: #{err}" if status.exitstatus == 97
+    [status, out, err]
+  end
+
   def verify_shells
     %w[bash zsh].each do |shell|
-      args = shell == 'bash' ? ['--noprofile', '--norc'] : ['-f']
-      @expected.each do |kind, values|
-        values.each do |name, value|
-          probe = kind == 'env' ? %q{printenv "$2"} : %q{alias "$2"}
-          out, err, status = Open3.capture3(@env, shell, *args, '-c',
-            %Q{source "$1" && #{probe}}, shell, "#{@data}/init.#{shell}", name, unsetenv_others: true)
-          raise "#{shell} #{name}: #{out} #{err}" unless status.success? && out.include?(value)
+      @names.each do |kind, names|
+        names.each do |name|
+          status, out, err = probe(shell, kind, name)
+          value = @expected[kind][name]
+          ok = if value.nil?
+                 status.exitstatus == 1
+               elsif kind == 'env'
+                 status.success? && out == "#{value}\n"
+               else
+                 status.success? && ["alias #{name}='#{value}'", "#{name}='#{value}'", "#{name}=#{value}"].include?(out.strip)
+               end
+          raise "#{shell} #{name}: expected #{value.inspect}, got #{status.exitstatus} #{out.inspect} #{err}" unless ok
         end
       end
     end

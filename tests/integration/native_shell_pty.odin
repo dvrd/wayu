@@ -674,3 +674,90 @@ native_history_paging :: proc(t: ^testing.T) {
 	send(t, fd, "\x12earlier\r again\r")
 	expect_text(t, fd, "\x1b[?2004learlier than window again\r\n")
 }
+
+// Two open sessions share history.jsonl: each recalls what the other ran, the
+// file holds every record once per submission, and a rotated file is picked
+// up without restarting either session.
+@(test)
+native_history_sessions :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+
+	a, a_pid := start_native_pty(t, cli)
+	defer {
+		posix.close(a)
+		posix.kill(a_pid, .SIGKILL)
+		status: c.int
+		for posix.waitpid(a_pid, &status, {}) < 0 && posix.errno() == .EINTR {}
+	}
+
+	b, b_pid := start_native_pty(t, cli)
+	defer {
+		posix.close(b)
+		posix.kill(b_pid, .SIGKILL)
+		status: c.int
+		for posix.waitpid(b_pid, &status, {}) < 0 && posix.errno() == .EINTR {}
+	}
+
+	expect_text(t, a, "wayu> ")
+	expect_text(t, b, "wayu> ")
+	send(t, a, "echo from-a\r")
+	expect_text(t, a, "\x1b[?2004lfrom-a\r\n")
+	expect_text(t, a, "wayu> ")
+	send(t, b, "echo from-b\r")
+	expect_text(t, b, "\x1b[?2004lfrom-b\r\n")
+	expect_text(t, b, "wayu> ")
+
+	send(t, a, "\x1b[A\r")
+	expect_text(t, a, "\x1b[?2004lfrom-b\r\n")
+	expect_text(t, a, "wayu> ")
+	send(t, b, "\x12from-a\r\r")
+	expect_text(t, b, "\x1b[?2004lfrom-a\r\n")
+	expect_text(t, b, "wayu> ")
+
+	history := fmt.tprintf("%s/.local/share/wayu/history.jsonl", cli.home)
+	testing.expect_value(
+		t,
+		read_fixture(t, history),
+		"\"echo from-a\"\n\"echo from-b\"\n\"echo from-b\"\n\"echo from-a\"\n",
+	)
+
+	// Both sessions append at the same time: each record stays one whole line.
+	burst :: 10
+	for i in 0 ..< burst {
+		send(t, a, fmt.tprintf("echo a-%d\r", i))
+		send(t, b, fmt.tprintf("echo b-%d\r", i))
+	}
+
+	expect_text(t, a, fmt.tprintf("\x1b[?2004la-%d\r\n", burst - 1))
+	expect_text(t, a, "wayu> ")
+	expect_text(t, b, fmt.tprintf("\x1b[?2004lb-%d\r\n", burst - 1))
+	expect_text(t, b, "wayu> ")
+	records := make(map[string]int, context.temp_allocator)
+	lines := strings.split_lines(
+		strings.trim_right(read_fixture(t, history), "\n"),
+		context.temp_allocator,
+	)
+	for line in lines {records[line] += 1}
+
+	testing.expect_value(t, len(lines), 4 + 2 * burst)
+	for i in 0 ..< burst {
+		testing.expect_value(t, records[fmt.tprintf("\"echo a-%d\"", i)], 1)
+		testing.expect_value(t, records[fmt.tprintf("\"echo b-%d\"", i)], 1)
+	}
+
+	rotated := fmt.tprintf("%s/.local/share/wayu/history.rotated", cli.home)
+	write_fixture(t, rotated, "\"echo rotated\"\n")
+	testing.expect_value(t, os.rename(rotated, history), nil)
+	send(t, a, "\x1b[A\r")
+	expect_text(t, a, "\x1b[?2004lrotated\r\n")
+	expect_text(t, a, "wayu> ")
+	send(t, b, "echo after-rotation\r")
+	expect_text(t, b, "\x1b[?2004lafter-rotation\r\n")
+	expect_text(t, b, "wayu> ")
+	testing.expect_value(
+		t,
+		read_fixture(t, history),
+		"\"echo rotated\"\n\"echo rotated\"\n\"echo after-rotation\"\n",
+	)
+}
