@@ -1,6 +1,8 @@
 name: Failure campaign and candidate trial
 
 on:
+  schedule:
+    - cron: '23 5 * * 1'
   workflow_call:
   workflow_dispatch:
     inputs:
@@ -25,6 +27,7 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         persist-credentials: false
+        ref: ${{ github.event_name == 'schedule' && 'develop' || github.sha }}
     - uses: ./.github/actions/setup-odin
     - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
       with:
@@ -46,7 +49,7 @@ jobs:
       shell: bash
       env:
         WAYU_BIN: bin/wayu
-        SEEDS: ${{ inputs.seeds || '17' }}
+        SEEDS: ${{ inputs.seeds || (github.event_name == 'schedule' && '17 29 43 97') || '17' }}
       run: |
         read -ra seeds <<< "$SEEDS"
         for seed in "${seeds[@]}"; do
@@ -54,13 +57,13 @@ jobs:
           ruby tests/integration/test_publication_recovery.rb --all-phases --seed "$seed" 2>&1 | tee "evidence/replay-$seed.txt"
         done
     - name: Filesystem and process failures (macOS)
-      if: runner.os == 'macOS'
+      if: runner.os == 'macOS' && github.event_name != 'schedule'
       shell: bash
       env:
         WAYU_BIN: bin/wayu
       run: ruby tests/scenarios/failure_campaign.scenario.test.rb | tee evidence/failure-campaign.txt
     - name: Real full filesystem and process failures (Linux)
-      if: runner.os == 'Linux'
+      if: runner.os == 'Linux' && github.event_name != 'schedule'
       shell: bash
       env:
         WAYU_BIN: bin/wayu
@@ -88,6 +91,7 @@ jobs:
         sudo chown "$(id -u):$(id -g)" "$mount_root"
         WAYU_FULL_DISK_ROOT="$mount_root" ruby tests/scenarios/failure_campaign.scenario.test.rb --require-enospc | tee evidence/failure-campaign.txt
     - name: Repeated fresh-shell candidate trial
+      if: github.event_name != 'schedule'
       shell: bash
       env:
         WAYU_BIN: bin/wayu
@@ -95,9 +99,11 @@ jobs:
         WAYU_TRIAL_REPORT: evidence/candidate-trial.json
       run: ruby tests/release/candidate_trial.rb | tee evidence/candidate-trial.txt
     - name: Fresh source install and shell trial
+      if: github.event_name != 'schedule'
       shell: bash
       run: tests/release/fresh_shells.sh | tee evidence/fresh-install.txt
     - name: Bash version trial
+      if: github.event_name != 'schedule'
       shell: bash
       run: sh tests/release/bash_trial.sh "$PWD/bin/wayu" | tee evidence/bash-trial.txt
     - name: Keep campaign evidence

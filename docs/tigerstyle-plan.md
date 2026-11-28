@@ -104,6 +104,10 @@ as required, and regenerated docs in the same pull request. Run the unit and int
 freshness check, and the existing startup budget for generated shell changes. A phase is complete after
 green CI on `develop`. [Task dependencies and verification commands](tigerstyle-tasks.yaml)
 
+## Recovery campaign cadence
+
+Pull requests run seed 17 across six rename boundaries. The extended campaign runs seeds 17, 29, 43 and 97 on both operating systems, with a separate 24-case trace for each platform. The replay workload took 14.44 seconds on the ARM64 Mac and 25.58 seconds on the ARM64 Linux VM, including four instrumented builds per platform. These measurements exclude runner setup. A manual dispatch accepts other seeds. The weekly schedule checks `develop` on Mondays at 05:23 UTC once the workflow reaches the default branch. [Campaign workflow](../.github/workflows/failure-campaign.yml)
+
 ## Linux AMD64 rebuild pilot
 
 The verifier rebuilds a named tag with its checksum-pinned Odin release. It compares both the executable and the gzip archive against the published release. A payload mismatch or a packaging-only mismatch fails the job. The manual workflow retains ELF section and build-ID diagnostics. The self-test exercises both types of mismatch. [Verifier](../tests/release/rebuild_linux.sh) · [Read-only workflow](../.github/workflows/rebuild-release.yml)
