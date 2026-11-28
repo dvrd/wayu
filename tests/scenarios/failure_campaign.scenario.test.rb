@@ -6,6 +6,7 @@ require 'fileutils'
 require 'json'
 require 'timeout'
 require 'digest'
+require_relative 'fixture'
 
 class FailureCampaign
   def initialize
@@ -31,27 +32,15 @@ class FailureCampaign
         yield env, data, home
       ensure
         FileUtils.chmod(0700, data) if File.directory?(data)
-        remove_fixture!(data) if data_parent
+        WayuFixture.remove(data) if data_parent
       end
     ensure
-      remove_fixture!(home)
+      WayuFixture.remove(home)
     end
     @passed << label
     puts "PASS failure campaign: #{label}"
   end
 
-  def remove_fixture!(path)
-    # An intentionally asynchronous zcompile can rename .tmp.zwc while
-    # FileUtils walks the fixture. Force handles vanished entries; verify
-    # the root really disappears and bound retries for newly created files.
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
-    loop do
-      FileUtils.rm_rf(path)
-      return unless File.exist?(path) || File.symlink?(path)
-      raise "fixture cleanup did not finish: #{path}" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
-      sleep 0.02
-    end
-  end
 
   def run!(env, *args)
     out, err, status = Open3.capture3(env, @binary, *args, unsetenv_others: true)

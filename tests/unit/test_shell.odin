@@ -1,6 +1,8 @@
 package test_wayu
 
 import wayu "../../src"
+import "core:fmt"
+import "core:os"
 import "core:strings"
 import "core:testing"
 
@@ -190,5 +192,13 @@ test_template_routing_all_shells :: proc(t: ^testing.T) {
 	)
 }
 
-// Note: detect_shell() and get_rc_file_path() are environment-dependent
-// and difficult to test without mocking. They would be tested in integration tests.
+@(test)
+test_bash_rc_path_ownership :: proc(t: ^testing.T) {
+	home := os.get_env("HOME", context.temp_allocator)
+	profile := fmt.tprintf("%s/.bash_profile", home)
+	expected := profile if os.exists(profile) else fmt.tprintf("%s/.bashrc", home)
+	path := wayu.get_rc_file_path(.BASH)
+	defer delete(path)
+
+	testing.expect_value(t, path, expected)
+}

@@ -10,6 +10,7 @@ binary = File.expand_path(ENV.fetch('WAYU_BIN', 'bin/wayu'))
 Dir.mktmpdir('wayu-native-oracle') do |home|
   env = { 'HOME' => home, 'WAYU_CONFIG_DIR' => "#{home}/config", 'WAYU_DATA_DIR' => "#{home}/data",
           'PATH' => '/usr/bin:/bin', 'SHELL' => '/bin/bash', 'LC_ALL' => 'C' }
+  %w[ASAN_OPTIONS LSAN_OPTIONS UBSAN_OPTIONS].each { |key| env[key] = ENV[key] if ENV[key] }
   examples = []
   10.times do
     a, b, c = Array.new(3) { random.rand(-20..20) }

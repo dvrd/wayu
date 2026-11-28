@@ -1,7 +1,6 @@
 require 'json'
 require 'open3'
-require 'tmpdir'
-require 'fileutils'
+require_relative 'fixture'
 require 'digest'
 
 class EntryModel
@@ -13,6 +12,7 @@ class EntryModel
     @data = File.join(home, 'data')
     @env = { 'HOME' => home, 'WAYU_CONFIG_DIR' => File.join(home, 'config'), 'WAYU_DATA_DIR' => @data,
              'SHELL' => '/bin/bash', 'PATH' => ENV.fetch('PATH'), 'NO_COLOR' => '1', 'LC_ALL' => 'C' }
+    %w[ASAN_OPTIONS LSAN_OPTIONS UBSAN_OPTIONS].each { |key| @env[key] = ENV[key] if ENV[key] }
     @trace = []
   end
 

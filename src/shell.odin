@@ -79,6 +79,8 @@ get_rc_file_path :: proc(shell: ShellType) -> string {
 		if os.exists(bash_profile) {
 			return bash_profile
 		}
+
+		delete(bash_profile)
 		return fmt.aprintf("%s/.bashrc", home)
 	case .ZSH:
 		// zsh reads its rc files from $ZDOTDIR when set.

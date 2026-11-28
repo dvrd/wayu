@@ -4,7 +4,7 @@ require 'optparse'
 
 seed = 17
 OptionParser.new { |p| p.on('--seed N', Integer) { |n| seed = n } }.parse!
-Dir.mktmpdir('wayu-model') do |dir|
+WayuFixture.with_directory('wayu-model') do |dir|
   model = EntryModel.new(dir, ENV.fetch('WAYU_BIN', 'bin/wayu'))
   begin
     model.setup

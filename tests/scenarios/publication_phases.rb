@@ -44,7 +44,7 @@ module PublicationPhases
 end
 
 if $PROGRAM_NAME == __FILE__
-  Dir.mktmpdir('wayu-phase-self') do |dir|
+  WayuFixture.with_directory('wayu-phase-self') do |dir|
     model = EntryModel.new(dir, ENV.fetch('WAYU_BIN', 'bin/wayu'))
     model.setup
     PublicationPhases.interrupt(PublicationPhases.build(dir), model, 'entries.json', 'before', 'test_build', terminate: false)
