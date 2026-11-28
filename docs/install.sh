@@ -243,7 +243,8 @@ main() {
 			say "  remove it or put $install_dir earlier in PATH."
 		fi
 	fi
-	say "  Run: wayu init"
+	say "  Run wayu to start the native shell."
+	say "  Optional shell integration: wayu init --shell bash, --shell zsh, or --shell fish."
 	say "  Docs: https://wayu.dvrd.io/docs/quickstart.html"
 }
 

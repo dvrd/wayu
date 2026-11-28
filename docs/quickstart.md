@@ -13,14 +13,12 @@ arm64):
 ```bash
 brew tap dvrd/wayu
 brew install wayu
-wayu init
 ```
 
 Or the install script, on the same platforms without Homebrew:
 
 ```bash
 curl -fsSL https://wayu.dvrd.io/install.sh | sh
-wayu init
 ```
 
 It downloads the release archive for your OS and CPU, checks its SHA-256
@@ -39,13 +37,16 @@ needs the
 
 ```bash
 git clone https://github.com/dvrd/wayu && cd wayu
-odin build build -out:build_it && ./build_it install   # installs to ~/.local/bin, runs wayu init
+odin build build -out:build_it && ./build_it install   # installs to ~/.local/bin
 ```
 
 Use one install method: while Homebrew manages wayu, `./build_it install`
 and the install script refuse to run.
 
 ## Set up your shell
+
+Run `wayu` to start the native shell. For host-shell integration, choose
+`wayu init --shell bash`, `wayu init --shell zsh`, or `wayu init --shell fish`.
 
 `wayu init` creates `~/.config/wayu/` (`wayu.toml` and the other files you
 edit) and `~/.local/share/wayu/` (your entries and the generated files), and

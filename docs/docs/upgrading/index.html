@@ -122,6 +122,8 @@ section after its version and publishes it as the GitHub release&#39;s
 releases, so they are listed here too.</p>
 <h2 id="unreleased">Unreleased<a class="anchor" href="#unreleased" aria-label="Link to this section">#</a></h2>
 <ul>
+<li><p>Source installation runs host-shell setup only for Bash, Zsh, and Fish. With Wayu, another login shell, or no login shell set, the installed native shell is ready to run directly.</p>
+</li>
 <li><p><strong>Breaking:</strong> Native scripts now stop at an unhandled nonzero status. A failed
 pipeline stage or command substitution can stop a script that previously
 continued. Use <code class="nw">if</code> or <code class="nw">||</code> for expected failures, including commands

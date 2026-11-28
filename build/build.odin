@@ -10,7 +10,7 @@
 //   test      — run unit tests
 //   check     — type-check only
 //   clean     — remove build artifacts
-//   install   — build + copy to $PREFIX/bin (default ~/.local/bin) + wayu init;
+//   install   — build + copy to $PREFIX/bin (default ~/.local/bin) + init for bash/zsh/fish;
 //               refuses while Homebrew manages wayu unless --force
 //   dev       — debug build + run with remaining args
 //   release   — test + commit + tag + atomic push of main and the tag
@@ -625,7 +625,7 @@ wayu_on_path :: proc() -> string {
 
 // install [--force]: build, copy to install_dir() via temp file + rename
 // (never rewrite a signed binary in place: macOS kills it on next exec),
-// then `wayu init`. Refuses while Homebrew manages a wayu unless --force.
+// then initialize a supported host shell. Refuses while Homebrew manages a wayu unless --force.
 do_install :: proc() {
 	force := false
 	for i := 2; i < len(os.args); i += 1 {
@@ -660,13 +660,22 @@ do_install :: proc() {
 
 	do_build(install_to = install_path)
 
-	// Run the already-built binary instead of recompiling from source.
-	bld.log_info("Running %s init...", BINARY_NAME)
-	init_cmd := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&init_cmd, install_path, "init")
-	if !bld.cmd_run(&init_cmd) {
-		bld.log_error("Init failed")
-		os.exit(1)
+	login_shell := os.get_env("SHELL", context.temp_allocator)
+	if login_shell == "" {
+		login_shell = os.get_env("0", context.temp_allocator)
+	}
+
+	name := login_shell[strings.last_index_byte(login_shell, '/') + 1:]
+	if strings.equal_fold(name, "bash") ||
+	   strings.equal_fold(name, "zsh") ||
+	   strings.equal_fold(name, "fish") {
+		bld.log_info("Running %s init...", BINARY_NAME)
+		init_cmd := bld.cmd_create(context.temp_allocator)
+		bld.cmd_append(&init_cmd, install_path, "init")
+		if !bld.cmd_run(&init_cmd) {
+			bld.log_error("Installed %s, but shell initialization failed", install_path)
+			os.exit(1)
+		}
 	}
 
 	bld.log_info("Installed %s", install_path)
@@ -1128,7 +1137,7 @@ do_help :: proc() {
 	fmt.println("  check     Type-check only")
 	fmt.println("  clean     Remove build artifacts")
 	fmt.println(
-		"  install   Build + install to $PREFIX/bin (default ~/.local/bin) + wayu init [--force]",
+		"  install   Build + install to $PREFIX/bin (default ~/.local/bin) + init for bash/zsh/fish [--force]",
 	)
 	fmt.println("  dev       Debug build + run (extra args passed through)")
 	fmt.println("  release   Run tests, commit + tag, push to main (bump.yml publishes after CI)")

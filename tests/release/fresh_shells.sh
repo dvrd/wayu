@@ -8,6 +8,17 @@ git clone -q . $H/src && cp build_it $H/src/ &&
   (cd $H/src && env -i HOME=$H PATH=${$(command -v odin):h}:/usr/bin:/bin SHELL=/bin/zsh TERM=xterm NO_COLOR=1 ./build_it install >$H/install.log 2>&1) ||
   { print "install failed: $H/install.log"; exit 1 }
 ok() { if [[ $1 == 0 ]]; then print "  ok    $2"; else print "  FAIL  $2"; fails=$((fails+1)); fi }
+# Native shell installation needs no host rc files, even without SHELL.
+for login_shell in "$H/.local/bin/wayu" /bin/nu ""; do
+  native_home=$(mktemp -d "$H/native.XXXXXX")
+  (cd "$H/src" && env -i HOME="$native_home" SHELL="$login_shell" PATH="${$(command -v odin):h}:/usr/bin:/bin" ./build_it install </dev/null >"$native_home/install.log" 2>&1)
+  ok $? "install with SHELL=${login_shell:-unset}"
+  [[ ! -e "$native_home/.config/wayu" ]]
+  ok $? "no host configuration generated"
+  result=$(env -i HOME="$native_home" PATH=/usr/bin:/bin "$native_home/.local/bin/wayu" -c 'echo ready')
+  [[ $result == ready ]]
+  ok $? "installed native shell runs"
+done
 FISH=$(command -v fish)
 P="$H/.local/bin:${FISH:h}:/usr/bin:/bin"
 E=(env -i HOME=$H PATH=$P TERM=xterm-256color NO_COLOR=1)

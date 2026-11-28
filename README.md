@@ -32,7 +32,6 @@
 ```bash
 brew tap dvrd/wayu
 brew install wayu
-wayu init
 ```
 
 Prebuilt for macOS 15 Sequoia or later (Apple silicon and Intel) and Linux
@@ -54,7 +53,6 @@ On the same platforms, without Homebrew:
 
 ```bash
 curl -fsSL https://wayu.dvrd.io/install.sh | sh
-wayu init
 ```
 
 [`docs/install.sh`](docs/install.sh) (POSIX sh) downloads the release
@@ -73,13 +71,13 @@ and releases are built with (download it from
 warns when your `odin` is a different release.
 
 ```bash
-# Bootstrap the build system, then build, install and run `wayu init`
+# Bootstrap the build system, then build and install Wayu
 odin build build -out:build_it && ./build_it install
 ```
 
 `./build_it install` puts the binary in `$PREFIX/bin` (default
 `~/.local/bin`, which must be on your `PATH`), replacing it atomically, and
-warns when another `wayu` earlier on `PATH` shadows it.
+warns when another `wayu` earlier on `PATH` shadows it. It runs `wayu init` automatically for Bash, Zsh, and Fish login shells.
 
 The build and install targets reuse the local executable when its build inputs
 and contents match the last successful build. The first run after upgrading
@@ -96,6 +94,9 @@ upgrade the other. To switch from Homebrew to a source build or the script,
 `brew uninstall wayu` first; to switch back, delete `~/.local/bin/wayu`.
 
 ## Shell setup
+
+Run `wayu` to start the native shell. For host-shell integration, choose
+`wayu init --shell bash`, `wayu init --shell zsh`, or `wayu init --shell fish`.
 
 `wayu init` creates `~/.config/wayu/` (a `wayu.toml` scaffold and the other
 files you edit) and the data dir `~/.local/share/wayu/` (your PATH entries,
@@ -606,7 +607,7 @@ odin build build -out:build_it
 ./build_it check          # type-check only
 ./build_it dev path list  # debug build + run
 ./build_it clean          # remove build artifacts
-./build_it install        # build + install to ~/.local/bin ($PREFIX/bin) + wayu init
+./build_it install        # build + install to ~/.local/bin ($PREFIX/bin) + init for bash/zsh/fish
 ./build_it release [vX.Y.Z] # manual release override (version optional; see Releasing)
 ./build_it help           # show all targets
 

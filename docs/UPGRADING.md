@@ -8,6 +8,8 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+- Source installation runs host-shell setup only for Bash, Zsh, and Fish. With Wayu, another login shell, or no login shell set, the installed native shell is ready to run directly.
+
 - **Breaking:** Native scripts now stop at an unhandled nonzero status. A failed
   pipeline stage or command substitution can stop a script that previously
   continued. Use `if` or `||` for expected failures, including commands
