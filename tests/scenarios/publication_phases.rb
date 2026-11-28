@@ -1,4 +1,5 @@
 require 'timeout'
+require 'io/nonblock'
 require_relative 'entry_model'
 
 module PublicationPhases
@@ -11,6 +12,7 @@ module PublicationPhases
   def self.interrupt(binary, model, target, phase, name, instrumented: true, terminate: true)
     IO.pipe do |notice, notify|
       IO.pipe do |wait, resume|
+        wait.nonblock = true
         env = model.env.merge('WAYU_TEST_TARGET' => File.join(model.data, target), 'WAYU_TEST_PHASE' => phase)
         pid = Process.spawn(env, binary, 'alias', 'add', name, 'echo interrupted',
                             3 => notify, 4 => wait, out: File::NULL, unsetenv_others: true)
@@ -23,7 +25,7 @@ module PublicationPhases
           if instrumented && terminate
             Process.kill('KILL', pid)
           elsif instrumented
-            resume.write("\x01")
+            resume.write("\xa5")
             resume.flush
           end
           _, status = Timeout.timeout(15) { Process.wait2(pid) }

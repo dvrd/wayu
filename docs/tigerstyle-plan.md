@@ -115,5 +115,9 @@ The v9.0.0 pilot used commit `ce3cc51b9947b5fb8af8ed38b9ff29b508a34b66`, Odin `d
 | Published v9.0.0 | `d7fb742a481107e0ecbf030cf1cbe45ab247bb3653cf5e489da593c60602fee2` | `d19de711a3ad263c0f0017240c5e91fea57b954e4346a246e364ffd325b828e2` |
 | Temporary checkout and compiler paths | `b558029a20f85d312d1947b01889bcf0180ec86f7b14607ccaa320f2ccec6848` | `ab430c69f431d827f03df8505620dd764d12d915fe3e1ff2623ef5f88d7fba36` |
 | Published checkout and compiler paths, Ubuntu GCC 13 startup objects | `751dad7b77590bd17ec2e6672223c054a8f67484c186b0dfa0cef3154d19690a` | `aa0d8fcecc7816e05019016a2d9bd9db94049d42c4eddb6a9cd01335508fcb00` |
+| Published paths and Ubuntu GCC 14.2 startup objects | `d7fb742a481107e0ecbf030cf1cbe45ab247bb3653cf5e489da593c60602fee2` | `d19de711a3ad263c0f0017240c5e91fea57b954e4346a246e364ffd325b828e2` |
 
 At the original paths, the executable's 157 absolute Odin paths and the hashes of `.text`, `.rodata` and `.data` matched. The ELF `.comment` identified GCC 13.3.0 in the rebuild and GCC 14.2.0 in the published binary. The GNU build IDs also differed. The job records the actual linker startup object and compares the full archive byte for byte.
+
+
+The third build reproduced both published files byte for byte. To repeat it on a clean Ubuntu 24.04 AMD64 runner, check out v9.0.0 at `/home/runner/work/wayu/wayu`, install the tag's verified Odin at `/home/runner/work/_temp/odin`, and install `libgcc-14-dev=14.2.0-4ubuntu2~24.04.1`. Check that `clang -print-file-name=crtbeginS.o` selects the GCC 14 object. Run the verifier from the separate implementation checkout with `WAYU_REBUILD_CHECKOUT=/home/runner/work/wayu/wayu` and that Odin first on PATH. The published-tag checkout must match the requested commit. The verifier compares the downloaded release with freshly built bytes.

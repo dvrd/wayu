@@ -29,16 +29,34 @@ atomic_test_phase :: proc(target, phase: string) {
 		}
 
 		token: u8 = 1
-		for posix.write(3, &token, 1) < 0 {
+		for posix.write(3, &token, 1) != 1 {
 			if posix.errno() != .EINTR {
-				return
+				posix._exit(EXIT_IOERR)
 			}
 		}
 
-		for posix.read(4, &token, 1) < 0 {
-			if posix.errno() != .EINTR {
-				return
+		// Ruby can supply a nonblocking pipe on Linux. A readiness handshake must
+		// never cross the rename boundary on EAGAIN, EOF or a malformed reply.
+		gate := posix.pollfd {
+			fd     = 4,
+			events = {.IN},
+		}
+		for {
+			if posix.poll(&gate, 1, -1) < 0 {
+				if posix.errno() == .EINTR {
+					continue
+				}
+				posix._exit(EXIT_IOERR)
 			}
+
+			n := posix.read(4, &token, 1)
+			if n < 0 && (posix.errno() == .EINTR || posix.errno() == .EAGAIN) {
+				continue
+			}
+			if n != 1 || token != 0xa5 {
+				posix._exit(EXIT_IOERR)
+			}
+			break
 		}
 	}
 }
