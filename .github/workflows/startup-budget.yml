@@ -62,3 +62,20 @@ jobs:
       env:
         RUNS: '100'
       run: tests/benchmark/budget.sh
+
+    - name: Exercise the native prompt and verify resource accounting
+      run: |
+        python3 tests/benchmark/native_shell.py --binary ./bin/wayu --smoke
+        python3 tests/benchmark/native_shell.py --capture-accounting
+        python3 tests/benchmark/native_shell.py --check-report docs/evidence/native-resources.json
+
+    - name: Collect native distributions on manual runs
+      if: github.event_name == 'workflow_dispatch'
+      run: python3 tests/benchmark/native_shell.py --output native-resources.json
+
+    - name: Save native measurements
+      if: github.event_name == 'workflow_dispatch'
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: native-resources-${{ matrix.os }}
+        path: native-resources.json

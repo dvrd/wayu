@@ -103,7 +103,7 @@
           <li><a href="/docs/stability/" data-page="stability">Stability</a></li>
           <li><a href="/docs/upgrading/" data-page="upgrading">Upgrading</a></li>
           <li><a href="/docs/compatibility/" data-page="compatibility">Compatibility</a></li>
-          <li><a href="/docs/benchmarks/" data-page="benchmarks" aria-current="page">Benchmarks</a><ul class="toc-list side-toc"><li><a class="l2" href="#recorded-comparison" data-id="recorded-comparison">Recorded comparison</a></li><li><a class="l2" href="#reproduce" data-id="reproduce">Reproduce</a></li><li><a class="l2" href="#what-the-report-records" data-id="what-the-report-records">What the report records</a></li></ul></li>
+          <li><a href="/docs/benchmarks/" data-page="benchmarks" aria-current="page">Benchmarks</a><ul class="toc-list side-toc"><li><a class="l2" href="#recorded-comparison" data-id="recorded-comparison">Recorded comparison</a></li><li><a class="l2" href="#reproduce" data-id="reproduce">Reproduce</a></li><li><a class="l2" href="#what-the-report-records" data-id="what-the-report-records">What the report records</a></li><li><a class="l2" href="#native-shell-resources" data-id="native-shell-resources">Native shell resources</a></li></ul></li>
           <li><a href="/docs/validation/" data-page="validation">Validation</a></li>
           <li><a href="/docs/security-review/" data-page="security-review">Security review</a></li>
         </ul>
@@ -187,6 +187,85 @@ them with plain <code class="nw">zsh -c exit</code> results.</p>
 See the pinned revisions and workload in the script. Performance evidence is
 separate from <a href="/docs/compatibility/">compatibility checks</a> and from an independent
 security review.</p>
+<h2 id="native-shell-resources">Native shell resources<a class="anchor" href="#native-shell-resources" aria-label="Link to this section">#</a></h2>
+<p>Run <code>python3 tests/benchmark/native_shell.py --binary ./bin/wayu --smoke</code> to exercise the workloads. Omit <code class="nw">--smoke</code> and pass <code class="nw">--output run.json</code> for 32 samples per workload. Keep the pinned Odin compiler on PATH to record its version. The harness opens a real PTY in a fresh home, waits for the first completed redraw, types a key, pastes and undoes text, and checks the actual output of three commands in the same session. The history case starts with 4,096 JSONL records. Separate processes stream or capture 0, 1 and 4 MiB. The stream checks the byte count. The capture assigns the value, releases it and checks successful completion. The accounting build also verifies the assigned value&#39;s length and digest.</p>
+<p>The raw report includes two baseline and two candidate runs per platform, all on ARM64. Darwin ran on a Mac and Linux in a Podman VM on that Mac. Each sample records milliseconds and maximum RSS from <code class="nw">wait4</code>. PTY observations within a session share its process RSS. On Darwin, descendant activity can influence the reported maximum. RSS includes allocator and process overhead. Use the test-build byte counters to attribute allocations. The Linux baseline needed one correction to decode a normal child exit. The unmodified baseline returned 128 for a successful command and failed the benchmark&#39;s status check. <a href="https://github.com/dvrd/wayu/blob/main/docs/evidence/native-resources.json">Raw distributions</a></p>
+<p>Each pair below gives the median for the first and second run. The JSON includes every sample for computing percentiles.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Build</th>
+<th align="right">First prompt with history (ms)</th>
+<th align="right">Key to redraw (ms)</th>
+<th align="right">4 MiB capture RSS (MiB)</th>
+<th align="right">4 MiB stream RSS (MiB)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Darwin</td>
+<td>baseline</td>
+<td align="right">9.4 / 8.5</td>
+<td align="right">8.2 / 7.3</td>
+<td align="right">25.0 / 25.0</td>
+<td align="right">5.4 / 5.4</td>
+</tr>
+<tr>
+<td>Darwin</td>
+<td>candidate</td>
+<td align="right">9.1 / 8.7</td>
+<td align="right">7.9 / 8.0</td>
+<td align="right">21.1 / 21.1</td>
+<td align="right">5.4 / 5.4</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>baseline</td>
+<td align="right">5.7 / 5.9</td>
+<td align="right">3.8 / 3.8</td>
+<td align="right">22.9 / 22.9</td>
+<td align="right">22.5 / 22.6</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>candidate</td>
+<td align="right">5.6 / 5.1</td>
+<td align="right">3.7 / 3.5</td>
+<td align="right">22.5 / 22.5</td>
+<td align="right">22.5 / 22.5</td>
+</tr>
+</tbody>
+</table></div>
+<p>The Linux samples show a process RSS floor near 22.5 MiB even for streaming. The 0.4 MiB baseline-to-candidate difference there is close to that floor. On this Mac, the 4 MiB capture used about 4 MiB less peak RSS in both candidate runs.</p>
+<p>The native budgets are opt-in. Four MiB exercises a large substitution, but a shell script can legitimately require more. Peak RSS and latency in a VM also depend on other work on the host. The fixed CI gates check bytes, contents, statuses and editor behavior. Timing distributions are available on manual runs. The host Bash and Zsh startup thresholds still run on each change.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Owner</th>
+<th>What counts</th>
+<th>When storage is released</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Command substitution</td>
+<td>Raw stdout before trailing newline removal, per substitution and evaluator. Nested substitutions each have a limit. The expansion builder can reserve more than the raw payload.</td>
+<td>Assignment and quoted words receive bytes directly in their expansion buffer. A local owns one copy until replacement or <code class="nw">unset</code>. Expansion scratch belongs to the current submission. Overflow discards the expansion and cancels its process group.</td>
+</tr>
+<tr>
+<td>Undo and redo</td>
+<td>Each retained edit&#39;s record and the inserted and removed bytes. A 4,096-key line retains four times the edit bytes of a 1,024-key line. Cursor movement reuses the same record.</td>
+<td>A new edit releases redo. The byte limit evicts the oldest edits. An edit larger than the limit clears the ledger and still changes the line. Submission releases the ledger. Redraw scratch lasts for one frame.</td>
+</tr>
+<tr>
+<td>History</td>
+<td>Each source has its own byte and entry window. The byte count covers decoded text. A partial JSON record can require up to six encoded bytes per source byte plus quotes.</td>
+<td>Eviction releases the resident command. Native history stays on disk. Recall can temporarily allocate one larger record and the selected editable line. Foreign history supplies suggestions only.</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>python3 tests/benchmark/native_shell.py --capture-accounting</code> builds a separate instrumented executable and checks plain, quoted, nested and repeated substitutions. It reports raw bytes, final buffer capacity, the largest sum of old and new capacities during a moving resize, assignment copies and releases. <code>--check-report docs/evidence/native-resources.json</code> validates the sample counts and run metadata.</p>
         </div>
         <nav class="pager" aria-label="Previous and next page"><a class="prev" href="/docs/compatibility/"><span>Previous</span>Compatibility</a><a class="next" href="/docs/validation/"><span>Next</span>Validation</a></nav>
       </article>
@@ -195,7 +274,7 @@ security review.</p>
     <aside class="rail" id="rail" aria-label="On this page">
       <p class="side-label">On this page</p>
       <ul class="toc-list" id="toc">
-        <li><a class="l2" href="#recorded-comparison" data-id="recorded-comparison">Recorded comparison</a></li><li><a class="l2" href="#reproduce" data-id="reproduce">Reproduce</a></li><li><a class="l2" href="#what-the-report-records" data-id="what-the-report-records">What the report records</a></li>
+        <li><a class="l2" href="#recorded-comparison" data-id="recorded-comparison">Recorded comparison</a></li><li><a class="l2" href="#reproduce" data-id="reproduce">Reproduce</a></li><li><a class="l2" href="#what-the-report-records" data-id="what-the-report-records">What the report records</a></li><li><a class="l2" href="#native-shell-resources" data-id="native-shell-resources">Native shell resources</a></li>
       </ul>
     </aside>
   </div>
