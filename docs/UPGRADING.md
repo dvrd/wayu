@@ -14,6 +14,11 @@ releases, so they are listed here too.
 - Host runtime generation now reports exit 74 if a required file cannot be refreshed by
   `wayu build`, `wayu init`, or a configuration mutation. A saved change remains in the store.
   Correct the path named on stderr, then run `wayu build`. Other selected shells are still refreshed.
+  `wayu template apply` saves all its entries and refreshes once at the end. See
+  [the CLI reference](cli.md#when-a-runtime-file-cannot-be-refreshed).
+
+- `wayu watch` also regenerates when a watched file's modification time moves backward, for
+  example after a restore that keeps the file's old time.
 
 - Source installation runs host-shell setup only for Bash, Zsh, and Fish. With Wayu, another login shell, or no login shell set, the installed native shell is ready to run directly.
 

@@ -106,7 +106,7 @@ green CI on `develop`. [Task dependencies and verification commands](tigerstyle-
 
 ## Recovery campaign cadence
 
-Pull requests run seed 17 across six rename boundaries. The extended campaign runs seeds 17, 29, 43 and 97 on both operating systems, with a separate 24-case trace for each platform. The replay workload took 14.44 seconds on the ARM64 Mac and 25.58 seconds on the ARM64 Linux VM, including four instrumented builds per platform. These measurements exclude runner setup. A manual dispatch accepts other seeds. The weekly schedule checks `develop` on Mondays at 05:23 UTC once the workflow reaches the default branch. [Campaign workflow](../.github/workflows/failure-campaign.yml)
+Pull requests run seed 17 across six rename boundaries. The extended campaign runs seeds 17, 29, 43 and 97 on both operating systems, with a separate 24-case trace for each platform. The replay workload took 14.44 seconds on the ARM64 Mac and 25.58 seconds on the ARM64 Linux VM, including four instrumented builds per platform. These measurements exclude runner setup. A manual dispatch accepts other seeds. The weekly schedule runs on Mondays at 05:23 UTC from `develop`, the repository's default branch. [Campaign workflow](../.github/workflows/failure-campaign.yml)
 
 ## Linux AMD64 rebuild pilot
 
@@ -125,3 +125,10 @@ At the original paths, the executable's 157 absolute Odin paths and the hashes o
 
 
 The third build reproduced both published files byte for byte. To repeat it on a clean Ubuntu 24.04 AMD64 runner, check out v9.0.0 at `/home/runner/work/wayu/wayu`, install the tag's verified Odin at `/home/runner/work/_temp/odin`, and install `libgcc-14-dev=14.2.0-4ubuntu2~24.04.1`. Check that `clang -print-file-name=crtbeginS.o` selects the GCC 14 object. Run the verifier from the separate implementation checkout with `WAYU_REBUILD_CHECKOUT=/home/runner/work/wayu/wayu` and that Odin first on PATH. The published-tag checkout must match the requested commit. The verifier compares the downloaded release with freshly built bytes.
+
+## Status
+
+Every task in the [task list](tigerstyle-tasks.yaml) is implemented, and each `done_when` command passes on macOS ARM64 with the pinned Odin release. Two steps need a GitHub-hosted runner and are still open.
+
+- **Rebuild on a hosted runner.** The v9.0.0 pilot above ran in emulated containers. Dispatch `Rebuild published Linux archive` for `v9.0.0` with `gh workflow run rebuild-release.yml --ref develop -f tag=v9.0.0`, then compare its hashes with the table. Add further targets only after the two runs agree.
+- **Timing calibration.** A manual run of `Startup budget` uploads `native-resources-<os>` with 32 samples per workload from each runner. Native timing has no CI gate. Choose one only from repeated runs on the runner it would gate.

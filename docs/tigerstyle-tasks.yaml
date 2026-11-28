@@ -10,6 +10,8 @@ usage: >
   Group the publication tasks into one green, documented behavior change before merging to develop.
   Each behavior-changing PR also owns its upgrade note, applicable CLI/config reference and regenerated
   site files, even when these cross-cutting files are omitted from the primary edit sites below.
+  A task with status done is merged and its done_when command passes. A pending task names the
+  step that is left.
 delivery_gates:
   - ./build_it check
   - ./build_it test
@@ -19,6 +21,7 @@ delivery_gates:
 tasks:
   - id: pub-files
     round: 1
+    status: done
     title: Carry per-shell outcomes from required runtime file writers
     depends_on: []
     files: [src/init_generator.odin, src/turbo_export.odin, src/plugin_loader.odin, tests/unit/test_init_generator.odin]
@@ -26,10 +29,11 @@ tasks:
       Distinguish written, current, intentionally skipped and failed artifacts. Retain enough owned data
       for a diagnostic after per-shell scratch is reset. Cover managed init, core, PATH sync, active turbo
       and applicable plugin text. Preserve customized orchestrators and optional bytecode behavior.
-    done_when: ./build_it test test_wayu.test_publication_outcomes,test_wayu.test_custom_init_template_preserved
+    done_when: ./build_it test test_wayu.test_publication_outcomes,test_wayu.test_publication_states_per_artifact,test_wayu.test_custom_init_template_preserved
 
   - id: perf-baseline
     round: 1
+    status: done
     title: Establish a native-shell performance baseline
     depends_on: []
     files: [tests/benchmark/native_shell.py, docs/benchmarks.md, .github/workflows/startup-budget.yml]
@@ -43,6 +47,7 @@ tasks:
 
   - id: contributor-examples
     round: 1
+    status: done
     title: Align contributor examples with terminal and test-scratch ownership
     depends_on: []
     files: [CODE_STYLE.md]
@@ -55,16 +60,18 @@ tasks:
 
   - id: watch-clock
     round: 1
+    status: done
     title: Use monotonic elapsed time for the watcher debounce
     depends_on: []
     files: [src/hot_reload.odin, tests/unit/test_hot_reload.odin]
     acceptance: >
       Deterministically test just below and at the deadline, resetting on a second event, retaining pending
       secret invalidation and a forward/back wall-clock step. Keep the current 500 ms debounce.
-    done_when: ./build_it test test_wayu.test_watch_debounce_monotonic,test_wayu.test_watch_detects_created_and_deleted_files
+    done_when: ./build_it test test_wayu.test_watch_debounce_monotonic,test_wayu.test_watch_detects_changes_across_wall_clock_steps,test_wayu.test_watch_detects_created_and_deleted_files
 
   - id: pub-cli
     round: 2
+    status: done
     title: Define and reproduce the public entry and build contract
     depends_on: [pub-files]
     files: [src/main.odin, src/entries.odin, src/path.odin, src/constants.odin, tests/integration/test_publication.rb]
@@ -78,6 +85,7 @@ tasks:
 
   - id: crash-seam
     round: 2
+    status: done
     title: Synchronize a separate test build at the actual rename boundaries
     depends_on: [pub-files]
     files: [src/atomic_io.odin, tests/scenarios/publication_phases.rb]
@@ -89,6 +97,7 @@ tasks:
 
   - id: capture-account
     round: 2
+    status: done
     title: Attribute substitution allocations and eliminate avoidable copies
     depends_on: [perf-baseline]
     files: [src/native_bindings.odin, src/native_shell.odin, tests/unit/test_native_bindings.odin, tests/benchmark/native_shell.py]
@@ -103,6 +112,7 @@ tasks:
 
   - id: editor-storage
     round: 2
+    status: done
     title: Bound the cost of ordinary typing and redraw
     depends_on: [perf-baseline]
     files: [src/native_editor.odin, tests/unit/test_native_editor.odin, tests/integration/native_shell_pty.odin]
@@ -112,11 +122,12 @@ tasks:
       cursor positions, ordering, multiline input and single-step undo. Check linear retained edit bytes at
       1,024 and 4,096 insertions, one-step paste, redo invalidation, UTF-8 motion and clean terminal exit.
     done_when: >-
-      ./build_it test test_wayu.test_edit_storage_growth,test_wayu.test_editor_moves_across_utf8 &&
+      ./build_it test test_wayu.test_edit_storage_growth,test_wayu.test_edit_redo_is_released_by_a_new_edit,test_wayu.test_edit_undo_restores_multibyte_and_multiline_text,test_wayu.test_edit_undo_limit_evicts_oldest_edits,test_wayu.test_editor_moves_across_utf8 &&
       ./build_it integration integration.native_editor_undo_paste
 
   - id: history-reader
     round: 2
+    status: done
     title: Introduce streaming readers and an injectable recent-history window
     depends_on: [perf-baseline]
     files: [src/native_history.odin, tests/unit/test_native_history.odin]
@@ -126,10 +137,11 @@ tasks:
       handling and foreign shell multiline decoding. Handle an oversized record without removing it from
       disk. Keep existing visible recall until the paging consumer is ready.
     done_when: >-
-      ./build_it test test_wayu.test_history_window_limits,test_wayu.test_history_hides_space_prefixed_records
+      ./build_it test test_wayu.test_history_window_limits,test_wayu.test_history_append_replaces_partial_tail,test_wayu.test_history_oversized_record_stays_on_disk,test_wayu.test_history_two_sessions_share_one_file,test_wayu.test_foreign_history_decodes_each_shell_format,test_wayu.test_foreign_history_window_limits,test_wayu.test_history_hides_space_prefixed_records
 
   - id: pub-managers
     round: 3
+    status: done
     title: Surface publication results from config tools and the file watcher
     depends_on: [pub-cli, watch-clock]
     files: [src/config_command.odin, src/optimize.odin, src/templates.odin, src/doctor.odin, src/hot_reload.odin]
@@ -141,6 +153,7 @@ tasks:
 
   - id: pub-repairs
     round: 3
+    status: done
     title: Preserve completed work and recovery evidence in repair callers
     depends_on: [pub-cli]
     files: [src/backup.odin, src/secrets_store.odin, src/script.odin, src/plugin_restore.odin]
@@ -151,10 +164,12 @@ tasks:
       runtime with build and that the existing rekey cases pass.
     done_when: >-
       ./build_it && WAYU_BIN="$PWD/bin/wayu" ruby tests/integration/test_publication.rb --group repair &&
+      WAYU_BIN="$PWD/bin/wayu" ruby tests/integration/test_plugin_restore.rb &&
       WAYU_BIN="$PWD/bin/wayu" ruby tests/integration/test_secrets_store.rb
 
   - id: history-recall
     round: 3
+    status: done
     title: Preserve access to old commands outside the resident window
     depends_on: [history-reader, editor-storage]
     files: [src/native_history.odin, src/native_editor.odin, src/native_suggest.odin, tests/integration/native_shell_pty.odin]
@@ -163,10 +178,11 @@ tasks:
       Page old records across rotation and simultaneous sessions. Preserve suggestion-only external
       sources and ranking. Test retrieval of a record larger than the resident window and distinguish
       the selected line's storage from retained history.
-    done_when: ./build_it integration integration.native_history_paging,integration.native_autosuggestions
+    done_when: ./build_it integration integration.native_history_paging,integration.native_history_sessions,integration.native_autosuggestions
 
   - id: entry-model
     round: 3
+    status: done
     title: Check stored state against an independent ordered edit model
     depends_on: [pub-cli]
     files: [tests/scenarios/entry_model.rb, tests/integration/test_entry_model.rb]
@@ -179,6 +195,11 @@ tasks:
 
   - id: archive-pilot
     round: 3
+    status: pending
+    pending: >
+      Run the workflow for v9.0.0 on a GitHub-hosted runner (gh workflow run rebuild-release.yml
+      --ref develop -f tag=v9.0.0) and compare it with the emulated pilot in the roadmap. Add
+      further targets only after the two agree.
     title: Independently rebuild one published Linux AMD64 archive
     depends_on: []
     files: [tests/release/rebuild_linux.sh, .github/workflows/rebuild-release.yml]
@@ -192,6 +213,7 @@ tasks:
 
   - id: pub-contract
     round: 4
+    status: done
     title: Complete the public documentation and end-to-end release checks in the publication PR
     depends_on: [pub-cli, pub-managers, pub-repairs]
     files: [docs/cli.md, docs/UPGRADING.md, tests/integration/exit_codes.odin, tests/integration/test_init.rb, tests/integration/test_write_integrity.rb]
@@ -207,6 +229,7 @@ tasks:
 
   - id: budget-policy
     round: 4
+    status: done
     title: Select each budget's scope, default and exhaustion behavior from evidence
     depends_on: [capture-account, editor-storage, history-recall]
     files: [docs/benchmarks.md, docs/evidence/native-resources.json]
@@ -220,6 +243,7 @@ tasks:
 
   - id: native-oracle
     round: 4
+    status: done
     title: Model a small part of native shell semantics and pin job-record eviction
     depends_on: []
     files: [tests/integration/test_native_model.rb, tests/unit/test_native_jobs.odin, tests/integration/native_pipeline_failures.odin]
@@ -230,11 +254,12 @@ tasks:
       255/256/257 completed records independently of active job count. Print replayable reduced traces.
     done_when: >-
       ./build_it && WAYU_BIN="$PWD/bin/wayu" ruby tests/integration/test_native_model.rb --seed 17 &&
-      ./build_it test test_wayu.test_completed_job_eviction &&
+      ./build_it test test_wayu.test_completed_job_eviction,test_wayu.test_completed_job_eviction_keeps_newest_results &&
       WAYU_BIN="$PWD/bin/wayu" ./build_it integration integration.native_pipeline_failures
 
   - id: capture-limit
     round: 5
+    status: done
     title: Apply the chosen capture budget and preserve streaming pipelines
     depends_on: [budget-policy]
     files: [src/native_bindings.odin, src/native_shell.odin, src/native_config.odin, tests/integration/native_capture_budget.odin, docs/cli.md]
@@ -244,10 +269,11 @@ tasks:
       the read-buffer boundary, nested captures, interruption and a producer that writes indefinitely.
       Cancel/reap owned work safely, preserve unrelated jobs and allow the next command to run. No
       automatic replay of earlier pipeline stages. Include a larger streaming-pipeline control.
-    done_when: ./build_it integration integration.native_capture_budget,integration.native_pipeline_failures
+    done_when: ./build_it integration integration.native_capture_budget,integration.native_capture_default,integration.native_pipeline_failures
 
   - id: crash-replay
     round: 5
+    status: done
     title: Enumerate crash phases and verify recovery against the model
     depends_on: [crash-seam, entry-model, pub-contract]
     files: [tests/scenarios/publication_phases.rb, tests/scenarios/entry_model.rb, tests/integration/test_publication_recovery.rb, .github/workflows/failure-campaign.yml]
@@ -264,6 +290,7 @@ tasks:
 
   - id: retention-defaults
     round: 6
+    status: done
     title: Wire measured history and undo limits into normal interactive sessions
     depends_on: [history-recall, budget-policy, capture-limit]
     files: [src/native_config.odin, src/toml.odin, docs/config-reference.md, docs/UPGRADING.md, tests/integration/native_retention_budgets.odin]
@@ -274,5 +301,5 @@ tasks:
       a long-running session and a pre-existing history. A user-visible policy change ships with
       its docs and upgrade notes in the same PR. Re-run the native benchmark against the baseline.
     done_when: >-
-      ./build_it integration integration.native_retention_budgets,integration.native_history_paging &&
+      ./build_it integration integration.native_retention_budgets,integration.native_retention_defaults,integration.native_limit_validation,integration.native_history_paging &&
       ./build_it && python3 tests/benchmark/native_shell.py --binary ./bin/wayu --smoke && ./build_it docs --check

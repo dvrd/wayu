@@ -66,7 +66,7 @@ import "core:mem"
 ### Pattern 1: `defer delete()` for every allocation
 
 ```odin
-config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, PATH_FILE)
+config_file := toml_get_config_path() // <wayu.config>/wayu.toml
 defer delete(config_file)
 
 content, read_ok := safe_read_file(config_file)
@@ -181,6 +181,10 @@ wayu_exit(EXIT_DATAERR)  // 65
 ```
 
 Always: `print_error*()` then `wayu_exit(EXIT_*)` as two separate calls.
+`wayu_exit` restores the terminal before the process ends; a bare `os.exit`
+is rejected by `tests/unit/test_exit_paths.odin`. A forked child is the one
+exception: it leaves with `posix._exit(code)`, so it never runs the parent's
+terminal cleanup.
 
 | Code | Constant | When |
 |------|----------|------|
@@ -244,10 +248,10 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 ### Config file read-modify-write
 
 ```odin
-config_file := get_config_file_with_fallback(spec.file_name, DETECTED_SHELL)
-defer delete(config_file)
+extra_file := fmt.aprintf("%s/extra.%s", wayu.config, wayu.shell_ext)
+defer delete(extra_file)
 
-content, read_ok := safe_read_file(config_file)
+content, read_ok := safe_read_file(extra_file)
 if !read_ok { wayu_exit(EXIT_IOERR) }
 defer delete(content)
 
@@ -255,12 +259,13 @@ lines := strings.split(string(content), "\n", context.temp_allocator)
 
 // ... modify lines ...
 
-if !create_backup_cli(config_file) { wayu_exit(EXIT_IOERR) }
+// Back up first: no backup, no write.
+if !create_backup_cli(extra_file) { wayu_exit(EXIT_IOERR) }
 
 final_content := strings.join(lines, "\n")
 defer delete(final_content)
 
-write_ok := safe_write_file(config_file, transmute([]byte)final_content)
+write_ok := safe_write_file(extra_file, transmute([]byte)final_content)
 if !write_ok { wayu_exit(EXIT_IOERR) }
 ```
 
@@ -327,7 +332,7 @@ test_create_backup_existing_file :: proc(t: ^testing.T) {
     fake_file := test_tmp("backup-source")
     defer os.remove(fake_file)
 
-    os.write_entire_file(fake_file, transmute([]byte)"test content")
+    _ = os.write_entire_file(fake_file, transmute([]byte)string("test content"))
 
     // Act
     backup_path, ok := wayu.create_backup(fake_file)

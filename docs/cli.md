@@ -715,8 +715,9 @@ Use `wait %1` for job 1 or `wait "$!"` for the most recent background job.
 `$!` holds the PID of the final process in the pipeline. Either form waits for
 the whole pipeline and returns its pipeline status. With multiple
 operands, `wait` returns the status of the last operand. Wayu retains up to
-256 completed job statuses. A targeted wait consumes its status, and bare
-`wait` clears completed statuses. An unknown or already consumed job returns 127.
+256 completed job statuses and drops the oldest job's status first, so `$!`
+keeps its status. A targeted wait consumes its status, and bare `wait` clears
+completed statuses. An unknown, dropped or already consumed job returns 127.
 
 `read [-r] NAME` reads one line from standard input into a shell variable and
 preserves surrounding spaces. Use `read -r name <file` to preserve backslashes.
@@ -1018,6 +1019,39 @@ Also tested: `path`, `alias` and `const` exit `78` before `wayu init`;
 `wayu doctor` exits `78` and `wayu toml validate` `65` when wayu.toml does
 not parse; every command that reads entries.json exits `78` when it does not
 parse.
+
+### When a runtime file cannot be refreshed
+
+A command that changes stored configuration saves it first, then refreshes
+the generated files of every set-up shell. The required files are
+`core.<ext>`, `path_sync.<ext>`, a wayu-managed `init.<ext>`, an existing
+`turbo.<ext>`, zsh's `plugins/config.zsh` and, for `build` and `init`,
+`plugins.<ext>`. When one of them cannot be written:
+
+- The saved change is kept. The other set-up shells are still refreshed.
+- stderr names the shell and the file
+  (`wayu: could not refresh bash runtime file <path>`), then says the
+  changes were saved and to run `wayu build`. A zsh bytecode file that cannot
+  be removed is named on its own line.
+- The command prints no closing success line and exits `74`.
+
+This applies to `path`, `alias`, `const`, `template apply`, `optimize`,
+`config edit`, `completions fpath`, `script`, `backup restore` and
+`plugin restore`; `build`, `init` and `reload regenerate` exit `74` the same
+way. Correct the path, then run `wayu build`: it publishes the saved state,
+and running it again changes nothing. An invalid plugins.json still exits
+`78`, with any file failure of the same run on stderr.
+
+A failed write of `entries.json` is a different outcome: it also exits `74`,
+but saves nothing, leaves the runtime as it was and does not say "saved".
+`doctor --fix` lists an unfinished fix under "Manual fixes needed" and keeps
+its own exit status. `wayu watch` prints the diagnostic and keeps watching.
+`--dry-run` writes nothing, and a user-edited `init.<ext>` is never
+rewritten. Hooks run once, with the command that saved the change: its
+post-hook still runs, and the repairing `wayu build` runs no entry hook.
+
+Tested by `tests/integration/exit_codes.odin` and
+`tests/integration/test_publication.rb`.
 
 ## Environment variables
 
