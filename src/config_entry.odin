@@ -89,10 +89,14 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 			}
 			if spec.hook_pre_add != nil && entry_add_is_valid(spec, entry) do spec.hook_pre_add(entry.name, entry.value)
 			ok, err := spec.toml_add(entry)
+			if entry_change_saved(ok, err) && spec.hook_post_add != nil {
+				spec.hook_post_add(entry.name, entry.value)
+			}
+
 			if !ok {
 				exit_with_entry_error(err)
 			}
-			if spec.hook_post_add != nil do spec.hook_post_add(entry.name, entry.value)
+
 			return
 		case .REMOVE:
 			if len(args) == 0 {
@@ -102,10 +106,14 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 			value, found := entry_store_value(spec, args[0])
 			if spec.hook_pre_remove != nil && found do spec.hook_pre_remove(args[0], value)
 			ok, err := spec.toml_remove(args[0])
+			if entry_change_saved(ok, err) && spec.hook_post_remove != nil {
+				spec.hook_post_remove(args[0], value)
+			}
+
 			if !ok {
 				exit_with_entry_error(err)
 			}
-			if spec.hook_post_remove != nil do spec.hook_post_remove(args[0], value)
+
 			return
 		case .LIST:
 			spec.toml_list()
@@ -184,6 +192,14 @@ entry_store_value :: proc(spec: ^ConfigEntrySpec, name: string) -> (value: strin
 		value = "" if store.env[i].secret else store.env[i].value
 	}
 	return strings.clone(value, context.temp_allocator), true
+}
+
+// True when an add/remove changed the store: it succeeded, or it was saved
+// and only a runtime file could not be refreshed afterwards. A post-hook
+// follows the write in both cases. It runs once: `wayu build` repairs the
+// runtime files and never runs entry hooks.
+entry_change_saved :: proc(ok: bool, err: string) -> bool {
+	return ok || err == PUBLISH_SAVED_ERROR
 }
 
 // Print an add/remove failure and exit with the code matching its kind:

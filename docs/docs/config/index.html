@@ -1855,7 +1855,9 @@ and <code class="nw">WAYU_HOOK_VALUE</code> (empty when not meaningful).</p>
 </table></div>
 <p>Hooks run with <code class="nw">sh -c</code>, stdin on <code class="nw">/dev/null</code>; their exit status is ignored.
 A hook&#39;s stdout and stderr are shown. Pre-hooks run only when the operation will change something,
-post-hooks only after a successful write, and none under <code class="nw">--dry-run</code>. Hooks
+post-hooks only after the change was saved, and none under <code class="nw">--dry-run</code>. A post-hook also runs when
+the saved change then exits <code class="nw">74</code> because a runtime file could not be refreshed; the <code class="nw">wayu build</code>
+that repairs the runtime runs no entry hook, so each hook runs once per change. Hooks
 run outside wayu&#39;s config lock (pre-hooks before it is taken, post-hooks
 after it is released), so a hook may run <code class="nw">wayu</code> itself. A hook still running
 after 30 s is killed with its child processes (the CLI prints a warning

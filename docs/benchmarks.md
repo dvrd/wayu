@@ -99,7 +99,7 @@ Each pair below gives the median for the first and second run. The JSON includes
 
 The Linux samples show a process RSS floor near 22.5 MiB even for streaming. The 0.4 MiB baseline-to-candidate difference there is close to that floor. On this Mac, the 4 MiB capture used about 4 MiB less peak RSS in both candidate runs.
 
-The native budgets are opt-in. Four MiB exercises a large substitution, but a shell script can legitimately require more. Peak RSS and latency in a VM also depend on other work on the host. The fixed CI gates check bytes, contents, statuses and editor behavior. Timing distributions are available on manual runs. The host Bash and Zsh startup thresholds still run on each change.
+The native budgets are opt-in: the proposed default for `capture_bytes`, `undo_bytes`, `history_bytes` and `history_entries` is `0`, unlimited. Four MiB exercises a large substitution, but a shell script can legitimately require more, and no measured value is one that every existing command and edit stays under. Peak RSS and latency in a VM also depend on other work on the host. The fixed CI gates check bytes, contents, statuses and editor behavior. Timing distributions are available on manual runs. The host Bash and Zsh startup thresholds still run on each change.
 
 | Owner | What counts | When storage is released |
 |---|---|---|

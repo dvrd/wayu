@@ -25,13 +25,19 @@ read_alias_entries :: proc() -> []ConfigEntry {
 }
 
 toml_alias_add :: proc(entry: ConfigEntry) -> (bool, string) {
+	return alias_add(entry)
+}
+
+// `publish = false`: see entries_entry_upsert.
+alias_add :: proc(entry: ConfigEntry, publish := true) -> (bool, string) {
 	validation := validate_alias(entry.name, entry.value)
 	if !validation.valid {
 		err := strings.clone(validation.error_message)
 		delete(validation.error_message)
 		return false, err
 	}
-	return entries_entry_upsert(.ALIAS, entry.name, entry.value, "Alias")
+
+	return entries_entry_upsert(.ALIAS, entry.name, entry.value, "Alias", publish)
 }
 
 toml_alias_remove :: proc(name: string) -> (bool, string) {

@@ -1614,6 +1614,7 @@ const_add_secret :: proc(args: []string) {
 	}
 
 	hook_pre_constant_add(name, "") // hooks never see a secret value
+	published := false
 	{
 		config_lock_acquire_or_exit()
 		defer config_lock_release()
@@ -1632,13 +1633,10 @@ const_add_secret :: proc(args: []string) {
 			secrets_store_snapshot_restore(&snap)
 			exit_with_entry_error(strings.clone(merr))
 		}
-		if !regenerate_init_core_silently() {
-			print_error_simple("%s", PUBLISH_SAVED_ERROR)
-			wayu_exit(EXIT_IOERR)
-		}
-
+		published = regenerate_init_core_silently()
 		mode := " (run-only: wayu secrets run)" if run_only else ""
 		switch {
+		case !published:
 		case converted:
 			print_success("Constant converted to an encrypted secret%s: %s", mode, name)
 		case existed:
@@ -1647,7 +1645,14 @@ const_add_secret :: proc(args: []string) {
 			print_success("Secret added (encrypted)%s: %s", mode, name)
 		}
 	}
+
+	// The secret is saved either way, so its post-hook follows the write
+	// (outside the lock). A failed runtime refresh is reported last.
 	hook_post_constant_add(name, "")
+	if !published {
+		print_error_simple("%s", PUBLISH_SAVED_ERROR)
+		wayu_exit(EXIT_IOERR)
+	}
 }
 
 // Print a store/key error and exit: I/O → EXIT_IOERR, else EXIT_CONFIG.

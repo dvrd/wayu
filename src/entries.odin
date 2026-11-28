@@ -1042,10 +1042,21 @@ entries_kv_delete :: proc(kind: EntryKind, names: []string) -> StoreEditResult {
 }
 
 // Upsert one alias/constant under the config lock, then regenerate and
-// report. Shared by toml_alias_add + toml_constant_add. `noun` is the
+// report. Shared by alias_add + constant_add. `noun` is the
 // display word ("Alias"/"Constant"). Errors are heap-owned (see
 // exit_with_entry_error for the prefixes that pick the exit code).
-entries_entry_upsert :: proc(kind: EntryKind, name, value, noun: string) -> (bool, string) {
+//
+// `publish = false` saves the entry and leaves the runtime files alone: a
+// batch (template apply) refreshes them once after its last entry, so one
+// blocked runtime file is reported once and no saved entry is called skipped.
+entries_entry_upsert :: proc(
+	kind: EntryKind,
+	name, value, noun: string,
+	publish := true,
+) -> (
+	bool,
+	string,
+) {
 	if !config_lock_acquire() {
 		return false, strings.clone("I/O error: could not lock wayu config")
 	}
@@ -1063,7 +1074,7 @@ entries_entry_upsert :: proc(kind: EntryKind, name, value, noun: string) -> (boo
 		return true, ""
 	}
 
-	if !regenerate_init_core_silently() {
+	if publish && !regenerate_init_core_silently() {
 		return false, strings.clone(PUBLISH_SAVED_ERROR)
 	}
 

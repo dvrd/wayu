@@ -107,8 +107,11 @@ replace_zsh_source :: proc(path, content: string) -> bool {
 
 	defer config_lock_release()
 
-	if err := os.remove(fmt.tprintf("%s.zwc", path));
-	   err != nil && err != os.General_Error.Not_Exist {
+	// A digest that stays behind could shadow the new text, so the text is not
+	// replaced. Name the digest: the runtime file itself is not the obstruction.
+	zwc := fmt.tprintf("%s.zwc", path)
+	if err := os.remove(zwc); err != nil && err != os.General_Error.Not_Exist {
+		fmt.eprintfln("wayu: could not remove stale zsh bytecode %s", zwc)
 		return false
 	}
 
@@ -1187,7 +1190,8 @@ emit_path_apply_call_fish :: proc(b: ^strings.Builder, values: []string, sig: u6
 // Write $data/path_sync.<ext>: line 1 is the signature (FNV-1a of the raw
 // [paths] values, so an unchanged list never triggers a resync), line 2
 // applies the list (values expanded by the shell, see
-// path_value_shell_word). Returns the file path; the caller deletes it.
+// path_value_shell_word). Always rewritten: .Written, or .Failed when the
+// file cannot be replaced.
 write_path_sync_file :: proc() -> Publication_State {
 	values, sig := read_path_sync_values()
 	defer {

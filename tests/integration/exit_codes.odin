@@ -42,6 +42,30 @@ exit_codes :: proc(t: ^testing.T) {
 		testing.expectf(t, codes[expected], "missing exit code %d in docs/cli.md", expected)
 	}
 
+	// docs/cli.md "When a runtime file cannot be refreshed": the change is
+	// saved, the command exits 74 and build repairs the runtime.
+	core := fmt.tprintf("%s/.local/share/wayu/core.zsh", cli.home)
+	testing.expect_value(t, os.remove(core), nil)
+	testing.expect_value(t, os.make_directory(core), nil)
+	_, refresh_err, refresh_code := cli_streams(t, cli, "alias", "add", "exit_probe", "true")
+	testing.expect_value(t, refresh_code, 74)
+	testing.expectf(
+		t,
+		strings.contains(
+			refresh_err,
+			fmt.tprintf("wayu: could not refresh zsh runtime file %s", core),
+		) &&
+		strings.contains(refresh_err, "changes saved") &&
+		strings.contains(refresh_err, "wayu build"),
+		"unexpected diagnostic: %s",
+		refresh_err,
+	)
+	expect_exit(t, cli, 74, "build")
+	expect_exit(t, cli, 0, "alias", "get", "exit_probe")
+	testing.expect_value(t, os.remove(core), nil)
+	expect_exit(t, cli, 0, "build")
+	testing.expect(t, strings.contains(read_fixture(t, core), "exit_probe"))
+
 	config := fmt.tprintf("%s/.config/wayu/wayu.toml", cli.home)
 	data, read_err := os.read_entire_file_from_path(config, context.temp_allocator)
 	if read_err != nil {
