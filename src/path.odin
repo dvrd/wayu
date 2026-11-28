@@ -96,8 +96,12 @@ handle_path_command :: proc(action: Action, args: []string, portable := false) {
 		published := !changed || regenerate_init_core_silently()
 		config_lock_release()
 		if !published {
-			print_error_simple("%s", PUBLISH_SAVED_ERROR); wayu_exit(EXIT_IOERR)
+			// Saved: the post-hook follows the write (entry_change_saved).
+			hook_post_path_add(expanded)
+			print_error_simple("%s", PUBLISH_SAVED_ERROR)
+			wayu_exit(EXIT_IOERR)
 		}
+
 		exit_on_path_failure(res)
 		if !changed {
 			return
@@ -122,8 +126,11 @@ handle_path_command :: proc(action: Action, args: []string, portable := false) {
 		published := !changed || regenerate_init_core_silently()
 		config_lock_release()
 		if !published {
-			print_error_simple("%s", PUBLISH_SAVED_ERROR); wayu_exit(EXIT_IOERR)
+			hook_post_path_remove(hook_path)
+			print_error_simple("%s", PUBLISH_SAVED_ERROR)
+			wayu_exit(EXIT_IOERR)
 		}
+
 		exit_on_path_failure(res)
 		if !changed {
 			return

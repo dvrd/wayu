@@ -227,7 +227,8 @@ template_add_aliases :: proc(aliases: []struct {
 			name  = a.name,
 			value = a.command,
 		}
-		if ok, err := toml_alias_add(entry); !ok {
+		// Saved here, published once by template_finish.
+		if ok, err := alias_add(entry, publish = false); !ok {
 			print_warning("  skipped %s: %s", a.name, err)
 			delete(err)
 		}
@@ -261,7 +262,7 @@ template_add_constants :: proc(consts: []struct {
 			name  = c.name,
 			value = c.value,
 		}
-		if ok, err := toml_constant_add(entry); !ok {
+		if ok, err := constant_add(entry, publish = false); !ok {
 			print_warning("  skipped %s: %s", c.name, err)
 			delete(err)
 		}

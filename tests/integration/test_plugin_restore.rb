@@ -44,6 +44,7 @@ class PluginRestoreTest
       test_failure_rolls_back
       test_backup_failure_rolls_back
       test_existing_checkout
+      test_runtime_publication_failure
       test_destination_collision
       test_invalid_metadata
       test_unpinned_branch
@@ -178,6 +179,26 @@ class PluginRestoreTest
     File.write(checkout(home) + '/portable.zsh', '# local edit')
     command(home, 'plugin', 'restore')
     check('repeat restore keeps local checkout edits', File.read(checkout(home) + '/portable.zsh') == '# local edit')
+  end
+
+  # The checkout and its metadata are complete when the runtime refresh fails:
+  # they are kept, and a later build publishes them without another clone.
+  def test_runtime_publication_failure
+    home = fixture('publication')
+    core = data(home) + '/core.zsh'
+    FileUtils.rm_f(core)
+    Dir.mkdir(core)
+    out, st = Open3.capture2e(env(home), BIN, 'plugin', 'restore')
+    check('a blocked runtime file keeps the restored plugin and reports 74',
+          st.exitstatus == 74 && out.include?(core) && out.include?('changes saved') && out.include?('wayu build') &&
+          config(home)['plugins'][0]['installed_path'] == checkout(home) &&
+          git('-C', checkout(home), 'rev-parse', 'HEAD') == @sha, out)
+    Dir.rmdir(core)
+    command(home, 'build')
+    out = command(home, 'plugin', 'restore')
+    loaded, st = Open3.capture2e(env(home), 'zsh', '-f', '-i', '-c', "source '#{data(home)}/init.zsh'; echo $RESTORE_PLUGIN")
+    check('build repairs the runtime and a repeated restore keeps the checkout',
+          out.include?('Keeping existing checkout') && st.success? && loaded.include?('old'), out + loaded)
   end
 
   def test_backup_failure_rolls_back

@@ -113,6 +113,11 @@ parse_hex_codepoint :: proc(value: string, start, width: int) -> (rune, bool) {
 }
 
 toml_constant_add :: proc(entry: ConfigEntry) -> (bool, string) {
+	return constant_add(entry)
+}
+
+// `publish = false`: see entries_entry_upsert.
+constant_add :: proc(entry: ConfigEntry, publish := true) -> (bool, string) {
 	// A secret never silently becomes plaintext again.
 	is_secret, serr := secrets_store_has_name(entry.name)
 	if len(serr) > 0 {
@@ -135,7 +140,8 @@ toml_constant_add :: proc(entry: ConfigEntry) -> (bool, string) {
 		print_warning("%s", validation.warning)
 		delete(validation.warning)
 	}
-	return entries_entry_upsert(.ENV, entry.name, entry.value, "Constant")
+
+	return entries_entry_upsert(.ENV, entry.name, entry.value, "Constant", publish)
 }
 
 // Errors come back heap-owned.

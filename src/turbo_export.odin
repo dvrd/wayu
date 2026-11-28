@@ -182,8 +182,9 @@ build_turbo_content :: proc(mask_secrets := false) -> string {
 	return build_core_content(mask = mask_secrets)
 }
 
-// Write turbo.<ext> (always rewritten, so `export --check` sees a fresh
-// mtime), owner-only (embeds [env] values, OKAMI-206), zcompiled for zsh.
+// Write turbo.<ext>, owner-only (embeds [env] values, OKAMI-206), zcompiled
+// for zsh. Unchanged content is left in place (.Current): `export --check`
+// compares content, never the modification time.
 write_turbo_file :: proc(path, content: string) -> Publication_State {
 	state := write_init_file(path, content)
 	if state != .Failed {
