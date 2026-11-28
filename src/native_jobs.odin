@@ -205,20 +205,26 @@ Native_Job_Result :: struct {
 
 NATIVE_COMPLETED_JOB_LIMIT :: 256
 
+// Results are recorded oldest job first. When one pass completes more jobs
+// than the limit retains, the oldest results are the ones evicted and `$!`
+// keeps its status.
 native_jobs_reap :: proc(s: ^Native_Session) {
-	for i := len(s.jobs) - 1; i >= 0; i -= 1 {
+	for i := 0; i < len(s.jobs); {
 		job := &s.jobs[i]
 		native_job_update(job, false)
-		if native_job_done(job) {
-			last := job.members[len(job.members) - 1]
-			if len(s.completed_jobs) == NATIVE_COMPLETED_JOB_LIMIT {
-				ordered_remove(&s.completed_jobs, 0)
-			}
-
-			append(&s.completed_jobs, Native_Job_Result{job.id, last.pid, native_job_status(job)})
-			native_job_destroy(job)
-			ordered_remove(&s.jobs, i)
+		if !native_job_done(job) {
+			i += 1
+			continue
 		}
+
+		last := job.members[len(job.members) - 1]
+		if len(s.completed_jobs) == NATIVE_COMPLETED_JOB_LIMIT {
+			ordered_remove(&s.completed_jobs, 0)
+		}
+
+		append(&s.completed_jobs, Native_Job_Result{job.id, last.pid, native_job_status(job)})
+		native_job_destroy(job)
+		ordered_remove(&s.jobs, i)
 	}
 }
 
