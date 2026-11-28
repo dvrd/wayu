@@ -122,6 +122,15 @@ section after its version and publishes it as the GitHub release&#39;s
 releases, so they are listed here too.</p>
 <h2 id="unreleased">Unreleased<a class="anchor" href="#unreleased" aria-label="Link to this section">#</a></h2>
 <ul>
+<li><p><strong>Breaking:</strong> Native scripts now stop at an unhandled nonzero status. A failed
+pipeline stage or command substitution can stop a script that previously
+continued. Use <code class="nw">if</code> or <code class="nw">||</code> for expected failures, including commands
+followed by an unconditional <code class="nw">echo &quot;$?&quot;</code> in older scripts. Wayu reports
+unhandled failures on stderr and preserves their numeric exit status. Use
+<code class="nw">defer COMMAND</code> to run cleanup when the scope exits.</p>
+</li>
+<li><p>The native shell handles <code class="nw">read</code>, <code class="nw">umask</code>, and <code class="nw">wait</code> as builtins. Use <code class="nw">wait &quot;$!&quot;</code> or <code class="nw">wait %1</code> to collect a background job’s exit status. Arithmetic expansion (<code class="nw">$((...))</code>) supports integer calculations and numeric variables.</p>
+</li>
 <li><p>Set <code class="nw">WAYU_DEBUG=1</code> to enable diagnostic logging in a debug build. Diagnostics go to stderr so redirected command output can be consumed by scripts.</p>
 </li>
 <li><p>Native scripts use <code class="nw">.wy</code>. Run them with <code class="nw">wayu &lt;file.wy&gt; [args...]</code>. For direct execution with <code class="nw">./file.wy</code>, add <code class="nw">#!/usr/bin/env wayu</code> and grant execute permission.</p>

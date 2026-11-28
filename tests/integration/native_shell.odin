@@ -31,7 +31,7 @@ native_shell :: proc(t: ^testing.T) {
 		t,
 		cli,
 		"-c",
-		`cd "$HOME"; cd missing 2> error; printf restored >&2; cat error`,
+		`cd "$HOME"; cd missing 2> error || true; printf restored >&2; cat error`,
 	)
 	testing.expect_value(t, rc, 0)
 	testing.expect(t, strings.contains(stdout, "cd: cannot enter missing"))
@@ -306,8 +306,7 @@ if printenv name; then echo leaked; elif test "$name" = outer; then echo local; 
 export name
 printenv name
 show() { for item in "$@"; do echo "$item"; done; return 7; }
-show 'two words' three
-echo "$?"
+show 'two words' three || echo "$?"
 n=yes
 until test "$n" = no; do n=no; done
 while test "$n" = no; do n=done; done
@@ -367,7 +366,7 @@ exit 19`
 		t,
 		cli,
 		"-c",
-		`cd "$HOME"; "./a script.wy" 'x y' > result; exit "$?"`,
+		`cd "$HOME"; "./a script.wy" 'x y' > result || exit "$?"`,
 	)
 	testing.expect_value(t, status, 19)
 	testing.expect_value(t, err, "")
@@ -398,4 +397,116 @@ exit 19`
 	write_fixture(t, override, "#!/bin/sh\nprintf 'shebang won'\n")
 	testing.expect_value(t, os.chmod(override, {.Read_User, .Execute_User}), nil)
 	testing.expect_value(t, checked_cli(t, cli, "-c", "override.zsh"), "shebang won")
+}
+
+@(test)
+native_shell_reliability :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+
+	out := checked_cli(
+		t,
+		cli,
+		"-c",
+		`cd "$HOME"; printf 'a\\b\nlast' >input; read -r x <input; printf '<%s>\n' "$x"; printf tail >partial; read y <partial || echo "$? $y"`,
+	)
+	testing.expect_value(t, out, "<a\\b>\n1 tail\n")
+	out = checked_cli(
+		t,
+		cli,
+		"-c",
+		`cd "$HOME"; umask 077; umask 888 2>/dev/null || echo "$?"; umask; sh -c 'umask'; touch private; ls -l private`,
+	)
+	testing.expect(t, strings.has_prefix(out, "64\n0077\n"))
+	testing.expect(t, strings.contains(out, "-rw-------"))
+	out = checked_cli(
+		t,
+		cli,
+		"-c",
+		`cd "$HOME"; sh -c 'sleep 0.15; echo ready >done' & wait; cat done`,
+	)
+	testing.expect_value(t, out, "ready\n")
+	invalid_out, err, status := cli_streams(t, cli, "-c", `printf 'ran%s' "$((2/0))"`)
+	testing.expect(t, status != 0)
+	testing.expect_value(t, invalid_out, "")
+	testing.expect(t, strings.contains(err, "arithmetic expansion"))
+	testing.expect_value(
+		t,
+		checked_cli(t, cli, "-c", `echo '$((2+3))' "$(echo ok)"`),
+		"$((2+3)) ok\n",
+	)
+}
+
+
+@(test)
+native_shell_arithmetic_and_wait :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+
+	out := checked_cli(
+		t,
+		cli,
+		"-c",
+		`n=8; value=$((n * (2+3) - $n / 2)); echo "$value" "${missing:-$((5%3))}" "$(echo "$((2+3))")"`,
+	)
+	testing.expect_value(t, out, "36 2 5\n")
+
+	out = checked_cli(
+		t,
+		cli,
+		"-c",
+		`sh -c 'exit 12' & a=$!; sh -c 'sleep 0.1; exit 7' | sh -c 'cat; exit 19' & b=$!; wait "$b" || echo "$?"; jobs >/dev/null; wait "$a" || echo "$?"; wait %1 2>/dev/null || echo "$?"`,
+	)
+	testing.expect_value(t, out, "19\n12\n127\n")
+	out = checked_cli(
+		t,
+		cli,
+		"-c",
+		`sh -c 'exit 7' & sh -c 'exit 13' & wait %1 %2 || echo "$?"; wait nope 2>/dev/null || echo "$?"`,
+	)
+	testing.expect_value(t, out, "13\n64\n")
+}
+
+@(test)
+native_shell_unhandled_status :: proc(t: ^testing.T) {
+	cli := new_cli(t)
+	defer os.remove_all(cli.home)
+
+	for script in ([]string {
+			"sh -c 'exit 17'; echo skipped",
+			"f() { sh -c 'exit 17'; echo skipped; }; f; echo skipped",
+			"for i in a b; do sh -c 'exit 17'; echo skipped; done; echo skipped",
+			"while true; do sh -c 'exit 17'; echo skipped; done; echo skipped",
+			`echo "$(sh -c 'exit 17')"; echo skipped`,
+			`for i in $(sh -c 'exit 17'); do echo skipped; done; echo skipped`,
+			"false || sh -c 'exit 17'; echo skipped",
+		}) {
+		out, err, status := cli_streams(t, cli, "-c", script)
+		testing.expect_value(t, status, 17)
+		testing.expect_value(t, out, "")
+		testing.expectf(t, strings.contains(err, "17"), "%s: %s", script, err)
+	}
+
+	for script in ([]string {
+			"sh -c 'exit 17' || echo recovered",
+			"false && echo skipped; true || echo skipped; echo recovered",
+			"if false; then echo skipped; else echo recovered; fi",
+			"while false; do echo skipped; done; until true; do echo skipped; done; echo recovered",
+			"f() { false; echo skipped; }; if f; then echo skipped; else echo recovered; fi",
+			"for i in a b; do false; echo skipped; done || echo recovered",
+			`echo "$(false)" || echo recovered`,
+			`echo "$((1/0))" || echo recovered`,
+			`cat < "$HOME/no-such-file" || echo recovered`,
+		}) {
+		out, err, status := cli_streams(t, cli, "-c", script)
+		testing.expectf(
+			t,
+			status == 0 && out == "recovered\n" && err == "",
+			"%s: %d | %q | %q",
+			script,
+			status,
+			out,
+			err,
+		)
+	}
 }

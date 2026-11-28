@@ -1338,7 +1338,59 @@ them instead (with backups) and prints what it moved.</p>
 Commands support pipes, file redirection (including <code class="nw">2&gt;</code> and <code class="nw">2&gt;&amp;1</code>), sequencing, and
 conditional execution (<code class="nw">&amp;&amp;</code>, <code class="nw">||</code>). Use <code class="nw">cd</code>, <code class="nw">export</code>, and <code class="nw">unset</code> to change
 session state. Use <code class="nw">jobs</code>, <code class="nw">fg</code>, and <code class="nw">bg</code> to manage jobs started with <code class="nw">&amp;</code> or
-suspended in the foreground.</p>
+suspended in the foreground. Use <code class="nw">wait</code> without arguments to wait for all
+running background jobs in the current shell. It returns zero after they finish,
+regardless of their exit codes, and returns nonzero if a job remains stopped.
+Use <code class="nw">wait %1</code> for job 1 or <code class="nw">wait &quot;$!&quot;</code> for the most recent background job.
+<code class="nw">$!</code> holds the PID of the final process in the pipeline. Either form waits for
+the whole pipeline and returns its pipeline status. With multiple
+operands, <code class="nw">wait</code> returns the status of the last operand. Wayu retains up to
+256 completed job statuses. A targeted wait consumes its status, and bare
+<code class="nw">wait</code> clears completed statuses. An unknown or already consumed job returns 127.</p>
+<p><code class="nw">read [-r] NAME</code> reads one line from standard input into a shell variable and
+preserves surrounding spaces. Use <code class="nw">read -r name &lt;file</code> to preserve backslashes.
+Plain <code class="nw">read</code> handles backslash escapes and backslash-newline continuation. At
+end of file it assigns any remaining text and returns status 1.</p>
+<p><code class="nw">umask</code> prints the current file creation mask in octal. <code class="nw">umask 077</code> sets it
+for subsequent file creations and child processes.</p>
+<p>Arithmetic expansion evaluates signed 64-bit decimal integers. For example,
+<code class="nw">n=4; echo &quot;$((n * (2 + 3)))&quot;</code> prints <code class="nw">20</code>. Expressions support parentheses,
+unary signs, and <code class="nw">+</code>, <code class="nw">-</code>, <code class="nw">*</code>, <code class="nw">/</code>, and <code class="nw">%</code>. Division truncates toward zero.
+Use <code class="nw">name</code> or <code class="nw">$name</code> for a numeric variable. Empty or unset variables count
+as zero. Invalid operands, division by zero, and overflow produce an error
+and prevent the affected command from running.</p>
+<p><strong>Failures and cleanup.</strong> A nonzero exit status stops a native script, commands
+read from standard input, or the current submission at the prompt. The
+interactive shell stays open. Wayu writes the command name, location, and
+numeric status to the shell’s standard error. An external program’s own
+messages follow its redirections. Use <code class="nw">wayu ./task.wy 2&gt;&amp;1</code> to combine both
+streams. Exit codes can have program-specific meanings.</p>
+<p>Use <code class="nw">if</code> to test a result or <code class="nw">||</code> to recover. A loop condition and the left
+side of <code class="nw">&amp;&amp;</code> also test a status. A function with an unhandled failure stops
+at that point and returns its status to its caller. A failed command
+substitution stops the enclosing command before it runs.</p>
+<div class="code"><pre><code class="language-sh">download primary.url || download mirror.url
+if grep -q TODO notes.txt; then echo &quot;Found a TODO&quot;; fi
+</code></pre><button type="button" class="icon-btn copy-btn" aria-label="Copy sh code"><svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
+<p>A pipeline returns its rightmost failing stage’s status. If the only failure is
+an upstream process receiving SIGPIPE because its reader finished, the pipeline
+succeeds. For example, <code class="nw">build | tee build.log</code> exposes a failed build, and
+<code class="nw">yes | head -n 1</code> succeeds. Launching a background pipeline returns immediately.
+Use <code class="nw">wait &quot;$!&quot;</code> to collect its status.</p>
+<p>Use <code class="nw">defer</code> followed by a single foreground command to register cleanup.
+Wayu captures its arguments and redirection paths immediately, then runs the
+registered commands in reverse order when the function, sourced file,
+command substitution, or script exits. At the interactive prompt, top-level
+cleanup runs on shell exit. For a sequence of cleanup commands, define a
+function and defer the function call.</p>
+<div class="code"><pre><code class="language-sh">tmp=$(mktemp)
+defer rm -f &quot;$tmp&quot;
+build &gt; &quot;$tmp&quot;
+publish &quot;$tmp&quot;
+</code></pre><button type="button" class="icon-btn copy-btn" aria-label="Copy sh code"><svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
+<p>An unhandled failure, <code class="nw">return</code>, or <code class="nw">exit</code> runs pending cleanup. The original
+failure status takes priority. If the scope otherwise succeeded, the first
+cleanup failure supplies the status, and the remaining cleanups still run.</p>
 <p>Wayu scripts use the <code class="nw">.wy</code> extension. From any shell, pass the file to
 <code class="nw">wayu</code>. The script receives its path in <code class="nw">$0</code> and its arguments in <code class="nw">&quot;$@&quot;</code>.
 Inside Wayu, direct execution (for example <code class="nw">./build.wy</code> or <code class="nw">./deploy.zsh</code>)

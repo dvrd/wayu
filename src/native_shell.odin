@@ -21,11 +21,18 @@ native_stop_list :: proc(s: ^Native_Session) -> bool {
 		return true
 	}
 
-	return s.exiting || s.returning || s.loop_action != .None
+	return s.unhandled || s.exiting || s.returning || s.loop_action != .None
 }
 
 Native_Session :: struct {
-	locals, definitions: map[string]string,
+	unhandled:           bool,
+	tested_status:       bool,
+	quiet_failure:       bool,
+	expansion_failure:   int,
+	deferred:            [dynamic]Native_Deferred,
+	locals:              map[string]string,
+	definitions:         map[string]Native_Definition,
+	location:            Native_Location,
 	shell_name:          string,
 	loop_depth:          int,
 	loop_action:         enum {
@@ -57,6 +64,11 @@ Native_Session :: struct {
 	modes:               posix.termios,
 	jobs:                [dynamic]Native_Job,
 	next_job:            int,
+	last_background_pid: posix.pid_t,
+	completed_jobs:      [dynamic]Native_Job_Result,
+	failed_stage:        int,
+	pipeline_child:      bool,
+	failure_sigpipe:     bool,
 }
 Native_Redirect :: struct {
 	target: posix.FD,
@@ -64,6 +76,7 @@ Native_Redirect :: struct {
 	path:   ShellWord,
 }
 Native_Command :: struct {
+	line:      int,
 	words:     [dynamic]ShellWord,
 	redirects: [dynamic]Native_Redirect,
 }
@@ -112,6 +125,10 @@ native_parse :: proc(stmts: []ShellStatement) -> ([]Native_Pipeline, string) {
 		need_word := false
 		for i := 0; i < len(stmt.tokens); i += 1 {
 			t := stmt.tokens[i]
+			if cmd.line == 0 {
+				cmd.line = t.line
+			}
+
 			if t.kind == .Word {
 				if len(cmd.words) == 0 && native_reserved_word(t.word) {
 					return nil, fmt.tprintf("unsupported shell construct %s", t.word.text)
@@ -198,6 +215,15 @@ native_expand :: proc(
 				i += 1
 				continue
 			}
+			if w.text[start] == '!' && w.active[start] {
+				if s != nil && s.last_background_pid > 0 {
+					strings.write_string(&b, fmt.tprintf("%d", s.last_background_pid))
+				}
+
+				i += 1
+				continue
+			}
+
 			if strings.index_byte("#@0123456789", w.text[start]) >= 0 {
 				if s == nil {
 					return "", false
@@ -227,6 +253,29 @@ native_expand :: proc(
 				if end < 0 {
 					return "", false
 				}
+				if strings.has_prefix(w.text[start:], "((") {
+					if end - start < 4 || w.text[end - 2] != ')' {
+						if native_should_explain(s) {
+							fmt.eprintln("wayu: expected closing )) in arithmetic expansion")
+						}
+
+						return "", false
+					}
+
+					number, err := native_arithmetic(s, w.text[start + 2:end - 2])
+					if err != "" {
+						if native_should_explain(s) {
+							fmt.eprintfln("wayu: arithmetic expansion: %s", err)
+						}
+
+						return "", false
+					}
+
+					strings.write_string(&b, fmt.tprintf("%d", number))
+					i = end - 1
+					continue
+				}
+
 				value, ok := native_capture(s, w.text[start + 1:end - 1])
 				if !ok {
 					return "", false
@@ -387,10 +436,14 @@ native_glob_field :: proc(field: string, glob: bool, args: ^[dynamic]string) -> 
 }
 
 NATIVE_BUILTINS :: [?]string {
+	"defer",
 	"cd",
 	"export",
 	"unset",
 	"exit",
+	"read",
+	"umask",
+	"wait",
 	"jobs",
 	"fg",
 	"bg",
@@ -441,7 +494,7 @@ native_builtin :: proc(s: ^Native_Session, args: []string) -> int {
 		return native_jump(s, args)
 	}
 
-	if body, ok := s.definitions[args[0]]; ok {
+	if definition, ok := s.definitions[args[0]]; ok {
 		if s.function_depth >= 64 {
 			fmt.eprintln("wayu: function nesting too deep")
 			return 1
@@ -449,13 +502,20 @@ native_builtin :: proc(s: ^Native_Session, args: []string) -> int {
 		previous := s.positional
 		s.positional = args[1:]
 		s.function_depth += 1
-		native_eval(s, strings.clone(body, context.temp_allocator))
+		location := definition.location
+		location.path = strings.clone(location.path, context.temp_allocator)
+		mark := len(s.deferred)
+		native_eval_at(s, strings.clone(definition.body, context.temp_allocator), location)
+		native_run_deferred(s, mark)
 		s.function_depth -= 1
 		s.positional = previous
 		s.returning = false
 		return s.status
 	}
 	switch args[0] {
+	case "defer":
+		fmt.eprintln("defer requires a standalone foreground command")
+		return EXIT_USAGE
 	case "where", "type", "command":
 		return native_lookup(s, args)
 	case "break", "continue":
@@ -466,15 +526,23 @@ native_builtin :: proc(s: ^Native_Session, args: []string) -> int {
 		s.loop_action = .Break if args[0] == "break" else .Continue
 		return 0
 	case "return":
-		if s.function_depth == 0 || len(args) > 2 {
+		if s.function_depth == 0 {
+			fmt.eprintln("return can only end a function. Use exit to end a script.")
+			return EXIT_USAGE
+		}
+
+		if len(args) > 2 {
+			fmt.eprintln("return accepts at most one numeric exit status")
 			return EXIT_USAGE
 		}
 		code := s.status
 		if len(args) == 2 {
 			v, ok := strconv.parse_int(args[1])
 			if !ok {
+				fmt.eprintln("return expects a numeric exit status")
 				return EXIT_USAGE
 			}
+
 			code = v & 255
 		}
 		s.returning = true
@@ -485,11 +553,16 @@ native_builtin :: proc(s: ^Native_Session, args: []string) -> int {
 			return EXIT_USAGE
 		}
 		return native_source(s, args[1])
-	case "jobs", "fg", "bg":
+	case "read":
+		return native_read(s, args)
+	case "umask":
+		return native_umask(args)
+	case "jobs", "fg", "bg", "wait":
 		return native_jobs_command(s, args)
 	case "exit":
 		code := s.status
 		if len(args) > 2 {
+			fmt.eprintln("exit accepts at most one numeric exit status")
 			return EXIT_USAGE
 		}
 		if len(args) == 2 {
@@ -588,7 +661,10 @@ native_redirect :: proc(cmd: Native_Command, s: ^Native_Session) -> bool {
 		target := r.target
 		if r.op == "<&" || r.op == ">&" {
 			if len(path) != 1 || path[0] < '0' || path[0] > '2' {
-				fmt.eprintln("wayu: expected descriptor 0, 1, or 2")
+				if native_should_explain(s) {
+					fmt.eprintln("wayu: expected descriptor 0, 1, or 2")
+				}
+
 				return false
 			}
 			if posix.dup2(posix.FD(path[0] - '0'), target) < 0 {
@@ -608,7 +684,10 @@ native_redirect :: proc(cmd: Native_Command, s: ^Native_Session) -> bool {
 			fd = posix.open(file, flags, transmute(posix.mode_t)posix._mode_t(0o666))
 		}
 		if fd < 0 {
-			fmt.eprintfln("wayu: %s: %v", path, posix.errno())
+			if native_should_explain(s) {
+				fmt.eprintfln("wayu: cannot open %s: %s", path, posix.strerror(posix.errno()))
+			}
+
 			return false
 		}
 		if fd != target {
@@ -623,16 +702,19 @@ native_redirect :: proc(cmd: Native_Command, s: ^Native_Session) -> bool {
 }
 
 native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
+	s.failed_stage = 0
+	s.failure_sigpipe = false
+	s.expansion_failure = 0
 	grouped := s.terminal || p.background
 	job: Native_Job
 	gate: [2]posix.FD
 	if grouped && posix.pipe(&gate) != .OK {
 		return 1
 	}
-	pids := make([dynamic]posix.pid_t, context.temp_allocator)
 	previous := posix.FD(-1)
 	failed := false
 	for cmd, idx in p.commands {
+		s.failed_stage = idx
 		args := make([dynamic]string, context.temp_allocator)
 		argv := make([dynamic]cstring, context.temp_allocator)
 		prefix := 0
@@ -640,7 +722,10 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 		s.sub_status = 0
 		for w in cmd.words[prefix:] {
 			if !native_arguments(w, s, &args) {
-				fmt.eprintln("wayu: invalid word expansion")
+				if s.expansion_failure == 0 && native_should_explain(s) {
+					fmt.eprintln("wayu: invalid word expansion")
+				}
+
 				failed = true
 				break
 			}
@@ -679,6 +764,10 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 				posix.close(gate[0])
 				posix.close(gate[1])
 			}
+			if name == "defer" {
+				return native_register_defer(s, args[1:], cmd.redirects[:])
+			}
+
 			if len(cmd.redirects) == 0 {
 				return s.sub_status if only else native_builtin(s, args[:])
 			}
@@ -698,7 +787,7 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 				posix.close(err_fd)
 			}
 			if in_fd < 0 || out_fd < 0 || err_fd < 0 || !native_redirect(cmd, s) {
-				return 1
+				return max(s.expansion_failure, 1)
 			}
 			return s.sub_status if only else native_builtin(s, args[:])
 		}
@@ -745,7 +834,7 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 				posix.close(fds[1])
 			}
 			if !native_redirect(cmd, s) {
-				posix._exit(1)
+				posix._exit(c.int(max(s.expansion_failure, 1)))
 			}
 			if builtin {
 				if only {
@@ -755,13 +844,52 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 					fmt.eprintfln("%s: job control requires the foreground shell", name)
 					posix._exit(1)
 				}
+				s.jobs = nil
+				s.completed_jobs = nil
+				s.last_background_pid = 0
 				s.terminal = false
-				posix._exit(c.int(native_builtin(s, args[:])))
+				s.pipeline_child = true
+				rc := native_builtin(s, args[:])
+				if s.failure_sigpipe && rc == 128 + int(posix.Signal.SIGPIPE) {
+					// Preserve a producer's real signal through a native function stage.
+					posix.kill(posix.getpid(), .SIGPIPE)
+				}
+
+				posix._exit(c.int(rc))
 			}
 
 			posix.execvp(argv[0], raw_data(argv[:]))
 			err := posix.errno()
-			fmt.eprintfln("wayu: %s: %v", name, err)
+			if native_should_explain(s) {
+				#partial switch err {
+				case .ENOENT:
+					if strings.contains(launch[0], "/") {
+						fmt.eprintfln("wayu: cannot find %s or its interpreter", launch[0])
+					} else {
+						fmt.eprintfln(
+							"wayu: cannot find the command %s or its interpreter. Check the spelling and PATH.",
+							launch[0],
+						)
+					}
+
+				case .EACCES:
+					fmt.eprintfln("wayu: permission denied when running %s", launch[0])
+					if strings.contains(launch[0], "/") &&
+					   strings.has_suffix(launch[0], ".wy") &&
+					   os.is_file(launch[0]) &&
+					   posix.access(argv[0], {.R_OK}) == .OK &&
+					   posix.access(argv[0], {.X_OK}) != .OK {
+						fmt.eprintfln(
+							"To run this Wayu script, use: wayu %s",
+							shell_quote(launch[0], .ZSH),
+						)
+					}
+
+				case:
+					fmt.eprintfln("wayu: cannot run %s: %s", launch[0], posix.strerror(err))
+				}
+			}
+
 			posix._exit(EXIT_EXEC_NOT_FOUND if err == .ENOENT else EXIT_EXEC_NOT_RUNNABLE)
 		}
 		if more {
@@ -783,9 +911,9 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 			if posix.setpgid(pid, job.group) != .OK {
 				failed = true
 			}
-			append(&job.members, Native_Process{pid = pid})
 		}
-		append(&pids, pid)
+
+		append(&job.members, Native_Process{pid = pid})
 		if previous >= 0 {
 			posix.close(previous)
 		}
@@ -795,7 +923,7 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 		posix.close(previous)
 	}
 	if failed {
-		for pid in pids {posix.kill(pid, .SIGKILL)}
+		for member in job.members {posix.kill(member.pid, .SIGKILL)}
 	}
 	if grouped {
 		if !failed && !p.background && s.terminal && posix.tcsetpgrp(0, job.group) != .OK {
@@ -808,36 +936,55 @@ native_pipeline :: proc(s: ^Native_Session, p: Native_Pipeline) -> int {
 			job.name = strings.clone(p.commands[0].words[0].text)
 			rc := 0
 			if !p.background {
-				rc = native_job_wait(s, &job, false)
+				rc = native_job_wait(s, &job, false, &s.failed_stage)
 			}
 			if p.background || !native_job_done(&job) {
 				s.next_job += 1
 				job.id = s.next_job
 				append(&s.jobs, job)
+				if p.background {
+					s.last_background_pid = job.members[len(job.members) - 1].pid
+					// A recycled PID refers to this job. Its predecessor is still waitable by job ID.
+					for &result in s.completed_jobs {
+						if result.pid == s.last_background_pid {
+							result.pid = 0
+						}
+					}
+				}
+
 				if s.terminal {
-					fmt.eprintfln("[%d] %d", job.id, job.group)
+					fmt.eprintfln("[%d] %d", job.id, job.members[len(job.members) - 1].pid)
 				}
 			} else {
 				native_job_destroy(&job)
 			}
 			return rc
 		}
-		delete(job.members)
 	}
-	result := 1
-	for pid in pids {
+
+	defer delete(job.members)
+
+	for &member in job.members {
 		status: c.int
-		waited := posix.waitpid(pid, &status, {})
-		for waited < 0 && posix.errno() == .EINTR {waited = posix.waitpid(pid, &status, {})}
+		waited := posix.waitpid(member.pid, &status, {})
+		for waited < 0 && posix.errno() == .EINTR {
+			waited = posix.waitpid(member.pid, &status, {})
+		}
+
 		if waited < 0 {
-			result = 1
-		} else if posix.WIFEXITED(status) {
-			result = int(posix.WEXITSTATUS(status))
-		} else if posix.WIFSIGNALED(status) {
-			result = 128 + int(posix.WTERMSIG(status))
+			member.status = 1
+		} else {
+			native_process_status(&member, status)
 		}
 	}
-	return 1 if failed else result
+
+	if failed {
+		return max(1, s.expansion_failure)
+	}
+
+	rc := native_job_status(&job, &s.failed_stage)
+	s.failure_sigpipe = rc != 0 && job.members[s.failed_stage].signal == .SIGPIPE
+	return rc
 }
 
 native_continues :: proc(tokens: []ShellToken) -> bool {
@@ -870,14 +1017,39 @@ native_incomplete :: proc(source: string) -> bool {
 }
 
 native_eval :: proc(s: ^Native_Session, source: string) {
+	// A caller may test a function's status. Fail inside its body normally,
+	// then deliver that status to the caller without aborting its own list.
+	tested, quiet := s.tested_status, s.quiet_failure
+	s.quiet_failure = quiet || tested
+	s.tested_status = false
+	defer {
+		s.tested_status, s.quiet_failure = tested, quiet
+		if tested {
+			s.unhandled = false
+		}
+	}
+
+
 	stmts := shell_parse_statements(source, .POSIX, true)
 	defer shell_statements_destroy(&stmts)
 
 	parser := native_parser(s, source, stmts[:])
 	nodes := native_list(&parser)
 	if parser.err != "" || parser.i != len(parser.tokens) {
-		fmt.eprintfln("wayu: %s", parser.err if parser.err != "" else "unexpected block delimiter")
+		location := s.location
+		if parser.error_line > 0 {
+			location.line = parser.error_line
+		} else if len(parser.tokens) > 0 {
+			location.line = parser.tokens[min(parser.i, len(parser.tokens) - 1)].line
+		}
+
+		fmt.eprintfln(
+			"%s: %s",
+			native_location_label(location),
+			parser.err if parser.err != "" else "unexpected block delimiter",
+		)
 		s.status = 2
+		s.unhandled = true
 		return
 	}
 	native_run_list(s, nodes)
@@ -887,6 +1059,7 @@ run_native_shell :: proc(
 	command: Maybe(string) = nil,
 	login := false,
 	parameters: []string = nil,
+	source_name := "-c",
 ) {
 	s: Native_Session
 	s.shell_name = "wayu"
@@ -895,7 +1068,7 @@ run_native_shell :: proc(
 		s.positional = parameters[1:]
 	}
 	s.locals = make(map[string]string)
-	s.definitions = make(map[string]string)
+	s.definitions = make(map[string]Native_Definition)
 	s.aliases = make(map[string][dynamic]ShellStatement)
 	native_configure(&s)
 	native_jump_configure(&s)
@@ -905,12 +1078,17 @@ run_native_shell :: proc(
 		if os.exists(path) {
 			s.status = native_source(&s, path)
 			if s.exiting {
+				native_run_deferred(&s, 0)
 				wayu_exit(s.status)
 			}
 		}
 	}
 	if line, supplied := command.(string); supplied {
-		native_eval(&s, line)
+		if !s.unhandled {
+			native_eval_at(&s, line, {source_name, 1})
+		}
+
+		native_run_deferred(&s, 0)
 		wayu_exit(s.status)
 	}
 	prompt_arena: virtual.Arena
@@ -940,7 +1118,10 @@ run_native_shell :: proc(
 					.SIGTTOU,
 				}) {posix.signal(sig, auto_cast posix.SIG_IGN)}
 		}
-		posix.signal(.SIGINT, native_interrupt)
+		interrupt_action: posix.sigaction_t
+		interrupt_action.sa_handler = native_interrupt
+		posix.sigemptyset(&interrupt_action.sa_mask)
+		posix.sigaction(.SIGINT, &interrupt_action, nil)
 		posix.signal(.SIGQUIT, auto_cast posix.SIG_IGN)
 	}
 	if interactive {
@@ -953,7 +1134,9 @@ run_native_shell :: proc(
 	if s.terminal && s.suggest.enabled {
 		history.shell_commands = native_read_shell_history()
 	}
-	for first_prompt := true; !s.exiting; first_prompt = false {
+	stdin_line := 1
+	for first_prompt := true; !s.exiting && (interactive || !s.unhandled); first_prompt = false {
+		s.unhandled = false
 		native_jobs_reap(&s)
 		if interactive && !first_prompt {
 			fmt.eprintln()
@@ -974,7 +1157,7 @@ run_native_shell :: proc(
 			if len(line) > 0 {
 				_ = native_history_sync(&history, line)
 				intrinsics.volatile_store(&native_interrupted, false)
-				native_eval(&s, line)
+				native_eval_at(&s, line, {"", 1})
 			}
 			free_all(context.temp_allocator)
 			continue
@@ -983,6 +1166,7 @@ run_native_shell :: proc(
 			fmt.eprint("wayu> ")
 		}
 		b := strings.builder_make(context.temp_allocator)
+		start_line := stdin_line
 		eof := false
 		for {
 			ch: u8
@@ -995,6 +1179,7 @@ run_native_shell :: proc(
 				break
 			}
 			if ch == '\n' {
+				stdin_line += 1
 				if native_incomplete(strings.to_string(b)) {
 					strings.write_byte(&b, ch)
 					if interactive {
@@ -1006,11 +1191,84 @@ run_native_shell :: proc(
 			}
 			strings.write_byte(&b, ch)
 		}
-		native_eval(&s, strings.to_string(b))
+		native_eval_at(&s, strings.to_string(b), {"" if interactive else "stdin", start_line})
 		free_all(context.temp_allocator)
 		if eof {
 			break
 		}
 	}
+	native_run_deferred(&s, 0)
 	wayu_exit(s.status)
+}
+
+native_read :: proc(s: ^Native_Session, args: []string) -> int {
+	raw := len(args) == 3 && args[1] == "-r"
+	if (!raw && len(args) != 2) || !is_shell_var_name(args[len(args) - 1]) {
+		fmt.eprintln("usage: read [-r] NAME")
+		return EXIT_USAGE
+	}
+
+	line := strings.builder_make(context.temp_allocator)
+	escaped := false
+	for {
+		ch: u8
+		n := posix.read(0, &ch, 1)
+		if n < 0 {
+			if posix.errno() == .EINTR {
+				if intrinsics.volatile_load(&native_interrupted) {
+					return 130
+				}
+
+				continue
+			}
+
+			fmt.eprintfln("read: %v", posix.errno())
+			return 1
+		}
+
+		if n == 0 || (ch == '\n' && !escaped) {
+			native_assign(s, args[len(args) - 1], strings.to_string(line))
+			return 1 if n == 0 else 0
+		}
+
+		if !raw && !escaped && ch == '\\' {
+			escaped = true
+			continue
+		}
+
+		if ch != '\n' && ch != 0 {
+			strings.write_byte(&line, ch)
+		}
+
+		escaped = false
+	}
+}
+
+native_umask :: proc(args: []string) -> int {
+	if len(args) == 1 {
+		mask := posix.umask(transmute(posix.mode_t)posix._mode_t(0o777))
+		posix.umask(mask)
+		fmt.printfln("%04o", transmute(posix._mode_t)mask)
+		return 0
+	}
+
+	if len(args) == 2 && len(args[1]) > 0 && len(args[1]) <= 4 {
+		value: posix._mode_t
+		for digit in transmute([]u8)args[1] {
+			if digit < '0' || digit > '7' {
+				fmt.eprintln("umask: expected an octal mask from 0000 to 0777")
+				return EXIT_USAGE
+			}
+
+			value = value * 8 + posix._mode_t(digit - '0')
+		}
+
+		if value <= 0o777 {
+			posix.umask(transmute(posix.mode_t)value)
+			return 0
+		}
+	}
+
+	fmt.eprintln("usage: umask [0000-0777]")
+	return EXIT_USAGE
 }

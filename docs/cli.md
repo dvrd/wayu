@@ -708,7 +708,71 @@ Run `wayu` to start the native shell, or pipe commands to its standard input.
 Commands support pipes, file redirection (including `2>` and `2>&1`), sequencing, and
 conditional execution (`&&`, `||`). Use `cd`, `export`, and `unset` to change
 session state. Use `jobs`, `fg`, and `bg` to manage jobs started with `&` or
-suspended in the foreground.
+suspended in the foreground. Use `wait` without arguments to wait for all
+running background jobs in the current shell. It returns zero after they finish,
+regardless of their exit codes, and returns nonzero if a job remains stopped.
+Use `wait %1` for job 1 or `wait "$!"` for the most recent background job.
+`$!` holds the PID of the final process in the pipeline. Either form waits for
+the whole pipeline and returns its pipeline status. With multiple
+operands, `wait` returns the status of the last operand. Wayu retains up to
+256 completed job statuses. A targeted wait consumes its status, and bare
+`wait` clears completed statuses. An unknown or already consumed job returns 127.
+
+`read [-r] NAME` reads one line from standard input into a shell variable and
+preserves surrounding spaces. Use `read -r name <file` to preserve backslashes.
+Plain `read` handles backslash escapes and backslash-newline continuation. At
+end of file it assigns any remaining text and returns status 1.
+
+`umask` prints the current file creation mask in octal. `umask 077` sets it
+for subsequent file creations and child processes.
+
+Arithmetic expansion evaluates signed 64-bit decimal integers. For example,
+`n=4; echo "$((n * (2 + 3)))"` prints `20`. Expressions support parentheses,
+unary signs, and `+`, `-`, `*`, `/`, and `%`. Division truncates toward zero.
+Use `name` or `$name` for a numeric variable. Empty or unset variables count
+as zero. Invalid operands, division by zero, and overflow produce an error
+and prevent the affected command from running.
+
+**Failures and cleanup.** A nonzero exit status stops a native script, commands
+read from standard input, or the current submission at the prompt. The
+interactive shell stays open. Wayu writes the command name, location, and
+numeric status to the shell’s standard error. An external program’s own
+messages follow its redirections. Use `wayu ./task.wy 2>&1` to combine both
+streams. Exit codes can have program-specific meanings.
+
+Use `if` to test a result or `||` to recover. A loop condition and the left
+side of `&&` also test a status. A function with an unhandled failure stops
+at that point and returns its status to its caller. A failed command
+substitution stops the enclosing command before it runs.
+
+```sh
+download primary.url || download mirror.url
+if grep -q TODO notes.txt; then echo "Found a TODO"; fi
+```
+
+A pipeline returns its rightmost failing stage’s status. If the only failure is
+an upstream process receiving SIGPIPE because its reader finished, the pipeline
+succeeds. For example, `build | tee build.log` exposes a failed build, and
+`yes | head -n 1` succeeds. Launching a background pipeline returns immediately.
+Use `wait "$!"` to collect its status.
+
+Use `defer` followed by a single foreground command to register cleanup.
+Wayu captures its arguments and redirection paths immediately, then runs the
+registered commands in reverse order when the function, sourced file,
+command substitution, or script exits. At the interactive prompt, top-level
+cleanup runs on shell exit. For a sequence of cleanup commands, define a
+function and defer the function call.
+
+```sh
+tmp=$(mktemp)
+defer rm -f "$tmp"
+build > "$tmp"
+publish "$tmp"
+```
+
+An unhandled failure, `return`, or `exit` runs pending cleanup. The original
+failure status takes priority. If the scope otherwise succeeded, the first
+cleanup failure supplies the status, and the remaining cleanups still run.
 
 Wayu scripts use the `.wy` extension. From any shell, pass the file to
 `wayu`. The script receives its path in `$0` and its arguments in `"$@"`.

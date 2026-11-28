@@ -105,7 +105,12 @@ native_alias_tokens :: proc(
 			}
 			if found && literal && !active^[name] {
 				active^[name] = true
+				start := len(output^)
 				native_alias_tokens(s, alias[0].tokens[:], output, active, at_head, target)
+				for &expanded in output^[start:] {
+					expanded.line = t.line
+				}
+
 				delete_key(active, name)
 				continue
 			}
@@ -181,11 +186,14 @@ native_source :: proc(s: ^Native_Session, path: string) -> int {
 	}
 	data, err := os.read_entire_file_from_path(path, context.temp_allocator)
 	if err != nil {
-		fmt.eprintfln("source: %s: %v", path, err)
+		fmt.eprintfln("source: cannot read %s: %s", path, os.error_string(err))
 		return 1
 	}
 	s.source_depth += 1
 	defer s.source_depth -= 1
-	native_eval(s, string(data))
+
+	mark := len(s.deferred)
+	native_eval_at(s, string(data), {path, 1})
+	native_run_deferred(s, mark)
 	return s.status
 }

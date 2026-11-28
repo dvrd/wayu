@@ -270,12 +270,12 @@ main :: proc() {
 
 		source, err := os.read_entire_file_from_path(path, context.allocator)
 		if err != nil {
-			fmt.eprintfln("wayu: cannot read %s: %v", path, err)
+			fmt.eprintfln("wayu: cannot read %s: %s", path, os.error_string(err))
 			wayu_exit(EXIT_NOINPUT)
 		}
 		defer delete(source)
 
-		run_native_shell(string(source), login, shell_args)
+		run_native_shell(string(source), login, shell_args, path)
 		return
 	}
 

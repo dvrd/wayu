@@ -40,6 +40,7 @@ ShellTokenKind :: enum {
 ShellToken :: struct {
 	kind:       ShellTokenKind,
 	start, end: int,
+	line:       int,
 	op:         string, // Op only: operator text (slice of the source)
 	word:       ShellWord, // Word only
 }
@@ -147,6 +148,7 @@ shell_parse_statements :: proc(
 
 	for i < len(s) {
 		token_start := i
+		token_line := line
 		c := s[i]
 		switch {
 		case c == '\n':
@@ -173,7 +175,13 @@ shell_parse_statements :: proc(
 				}
 				append(
 					&cur.tokens,
-					ShellToken{start = token_start, end = i, kind = .Op, op = s[start:i]},
+					ShellToken {
+						line = token_line,
+						start = token_start,
+						end = i,
+						kind = .Op,
+						op = s[start:i],
+					},
 				)
 			} else {
 				i = start
@@ -183,7 +191,13 @@ shell_parse_statements :: proc(
 				}
 				append(
 					&cur.tokens,
-					ShellToken{start = token_start, end = i, kind = .Word, word = w},
+					ShellToken {
+						line = token_line,
+						start = token_start,
+						end = i,
+						kind = .Word,
+						word = w,
+					},
 				)
 			}
 		case shell_is_op_byte(c):
@@ -199,7 +213,10 @@ shell_parse_statements :: proc(
 						    s[i] == '>') {i += 1}
 			}
 			op := s[start:i]
-			append(&cur.tokens, ShellToken{start = token_start, end = i, kind = .Op, op = op})
+			append(
+				&cur.tokens,
+				ShellToken{line = token_line, start = token_start, end = i, kind = .Op, op = op},
+			)
 			if strings.has_prefix(op, "<<") && op != "<<<" {
 				fail(&out, &cur, s[i:], line, "here-document")
 				return out
@@ -210,7 +227,16 @@ shell_parse_statements :: proc(
 				fail(&out, &cur, s[i:], line, err)
 				return out
 			}
-			append(&cur.tokens, ShellToken{start = token_start, end = i, kind = .Word, word = w})
+			append(
+				&cur.tokens,
+				ShellToken {
+					line = token_line,
+					start = token_start,
+					end = i,
+					kind = .Word,
+					word = w,
+				},
+			)
 		}
 	}
 	flush(&out, &cur, line)
@@ -703,7 +729,7 @@ shell_read_ansi_c :: proc(s: string, i: ^int, line: ^int, w: ^WordBuf) -> string
 shell_native_parameter :: proc(source: string, i: ^int, w: ^WordBuf) {
 	i^ += 1
 	start := i^
-	if start < len(source) && (strings.index_byte("?#@0123456789", source[start]) >= 0) {
+	if start < len(source) && (strings.index_byte("?!#@0123456789", source[start]) >= 0) {
 		wb_put(w, '$', true)
 		wb_put(w, source[start], true)
 		i^ += 1

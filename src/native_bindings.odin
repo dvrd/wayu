@@ -106,8 +106,14 @@ native_capture :: proc(s: ^Native_Session, source: string) -> (string, bool) {
 		}
 
 		posix.close(fds[1])
+		s.jobs = nil
+		s.completed_jobs = nil
+		s.last_background_pid = 0
 		s.terminal = false
-		native_eval(s, source)
+		s.pipeline_child = true
+		mark := len(s.deferred)
+		native_eval_at(s, source, s.location)
+		native_run_deferred(s, mark)
 		posix._exit(c.int(s.status))
 	}
 
@@ -146,6 +152,11 @@ native_capture :: proc(s: ^Native_Session, source: string) -> (string, bool) {
 		int(posix.WEXITSTATUS(status)) if \
 			posix.WIFEXITED(status) else \
 			128 + int(posix.WTERMSIG(status))
+	if s.sub_status != 0 {
+		s.expansion_failure = s.sub_status
+		return "", false
+	}
+
 	return strings.trim_right(strings.to_string(b), "\n"), ok
 }
 

@@ -8,6 +8,15 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+- **Breaking:** Native scripts now stop at an unhandled nonzero status. A failed
+  pipeline stage or command substitution can stop a script that previously
+  continued. Use `if` or `||` for expected failures, including commands
+  followed by an unconditional `echo "$?"` in older scripts. Wayu reports
+  unhandled failures on stderr and preserves their numeric exit status. Use
+  `defer COMMAND` to run cleanup when the scope exits.
+
+- The native shell handles `read`, `umask`, and `wait` as builtins. Use `wait "$!"` or `wait %1` to collect a background job’s exit status. Arithmetic expansion (`$((...))`) supports integer calculations and numeric variables.
+
 - Set `WAYU_DEBUG=1` to enable diagnostic logging in a debug build. Diagnostics go to stderr so redirected command output can be consumed by scripts.
 
 - Native scripts use `.wy`. Run them with `wayu <file.wy> [args...]`. For direct execution with `./file.wy`, add `#!/usr/bin/env wayu` and grant execute permission.
