@@ -18,6 +18,31 @@ import "core:strings"
 import "core:sys/posix"
 import "core:time"
 
+// An instrumented test child signals its parent on fd 3 and waits on fd 4.
+// The production compiler discards the entire handshake, including environment reads.
+@(private = "file")
+atomic_test_phase :: proc(target, phase: string) {
+	when #config(WAYU_TEST_PUBLICATION_PHASES, false) {
+		if target != os.get_env("WAYU_TEST_TARGET", context.temp_allocator) ||
+		   phase != os.get_env("WAYU_TEST_PHASE", context.temp_allocator) {
+			return
+		}
+
+		token: u8 = 1
+		for posix.write(3, &token, 1) < 0 {
+			if posix.errno() != .EINTR {
+				return
+			}
+		}
+
+		for posix.read(4, &token, 1) < 0 {
+			if posix.errno() != .EINTR {
+				return
+			}
+		}
+	}
+}
+
 // Mode for files that do not exist yet (existing files keep their own mode).
 // 0600: wayu.toml and the generated files can carry secrets (OKAMI-206).
 ATOMIC_DEFAULT_MODE :: os.Permissions{.Read_User, .Write_User}
@@ -110,10 +135,12 @@ write_file_atomic :: proc(path: string, data: []byte) -> os.Error {
 		}
 	}
 
+	atomic_test_phase(target, "before")
 	if err := os.rename(tmp_path, target); err != nil {
 		return err
 	}
 	ok = true
+	atomic_test_phase(target, "after")
 
 	// Best effort: persist the rename itself. Not all filesystems allow
 	// fsync on a directory handle, so a failure here is not an error.

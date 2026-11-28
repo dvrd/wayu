@@ -133,9 +133,16 @@ generate_turbo_export :: proc(dry_run: bool) {
 	}
 
 	// turbo.<ext> runs the live PATH sync like core: keep its file current.
-	sync_file := write_path_sync_file()
-	delete(sync_file)
-	if !write_turbo_file(output_path, content) {
+	if write_path_sync_file() == .Failed {
+		print_error_simple(
+			"Failed to write %s/path_sync.%s",
+			wayu.data,
+			get_shell_extension(wayu.shell),
+		)
+		wayu_exit(EXIT_IOERR)
+	}
+
+	if write_turbo_file(output_path, content) == .Failed {
 		print_error("Failed to write turbo export file")
 		wayu_exit(EXIT_IOERR)
 	}
@@ -177,13 +184,13 @@ build_turbo_content :: proc(mask_secrets := false) -> string {
 
 // Write turbo.<ext> (always rewritten, so `export --check` sees a fresh
 // mtime), owner-only (embeds [env] values, OKAMI-206), zcompiled for zsh.
-write_turbo_file :: proc(path, content: string) -> bool {
-	if !replace_zsh_source(path, content) {
-		return false
+write_turbo_file :: proc(path, content: string) -> Publication_State {
+	state := write_init_file(path, content)
+	if state != .Failed {
+		zcompile_file(path)
 	}
-	restrict_file_mode(path)
-	zcompile_file(path)
-	return true
+
+	return state
 }
 
 // Generate eval-compatible output (for eval "$(wayu export --eval)")

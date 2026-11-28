@@ -1632,7 +1632,11 @@ const_add_secret :: proc(args: []string) {
 			secrets_store_snapshot_restore(&snap)
 			exit_with_entry_error(strings.clone(merr))
 		}
-		regenerate_init_core_silently()
+		if !regenerate_init_core_silently() {
+			print_error_simple("%s", PUBLISH_SAVED_ERROR)
+			wayu_exit(EXIT_IOERR)
+		}
+
 		mode := " (run-only: wayu secrets run)" if run_only else ""
 		switch {
 		case converted:

@@ -162,7 +162,11 @@ generate_plugins_runtime_config :: proc(shell: ShellType) -> bool {
 }
 
 // Generate plugins.{zsh,bash} loader file
-generate_plugins_file :: proc(shell: ShellType) -> bool {
+generate_plugins_file :: proc(shell: ShellType, report: ^Shell_Publication = nil) -> bool {
+	if report != nil {
+		report[.Plugins] = .Failed
+	}
+
 	ext := get_shell_extension(shell)
 	plugins_file := fmt.aprintf("%s/plugins.%s", wayu.data, ext)
 	defer delete(plugins_file)
@@ -408,7 +412,15 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 	if shell == .ZSH && (!unchanged || !os.exists(fmt.tprintf("%s.zwc", plugins_file))) {
 		zcompile_file(plugins_file)
 	}
+	if report != nil {
+		report[.Plugins] = .Current if unchanged else .Written
+	}
+
 	runtime_ok := generate_plugins_runtime_config(shell)
+	if report != nil && shell == .ZSH {
+		report[.Plugin_Config] = .Written if runtime_ok else .Failed
+	}
+
 	// Plugin commands regenerate only this file: start the queued compiles
 	// (plugins.zsh + plugin sources) here; inside a full regeneration the
 	// batch is just flushed earlier.

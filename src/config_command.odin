@@ -32,7 +32,10 @@ handle_config_extra_command :: proc(action: Action, args: []string) {
 		edit_toml_config(toml_file)
 		// Apply the edit: regenerate init files for every initialized shell
 		// (open shells pick up PATH changes at their next prompt via path_sync).
-		regenerate_init_core_silently()
+		if !regenerate_init_core_silently() {
+			print_error_simple("%s", PUBLISH_SAVED_ERROR)
+			wayu_exit(EXIT_IOERR)
+		}
 	case .CHECK:
 		// scan/detect
 		has_fix, has_dry_run, has_yes := extract_scan_flags(args)

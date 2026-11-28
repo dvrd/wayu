@@ -93,9 +93,17 @@ script_path_value :: proc() -> string {
 
 // Regenerate the init files when <data>/bin went on or off PATH since
 // `had_bin` (script_path_value before the change).
-script_sync_path :: proc(had_bin: bool) {
+script_sync_path :: proc(had_bin: bool) -> bool {
 	if had_bin != (len(script_path_value()) > 0) {
-		regenerate_init_core_silently()
+		return regenerate_init_core_silently()
+	}
+
+	return true
+}
+
+script_sync_path_or_exit :: proc(had_bin: bool) {
+	if !script_sync_path(had_bin) {
+		print_error_simple("%s", PUBLISH_SAVED_ERROR); wayu_exit(EXIT_IOERR)
 	}
 }
 
@@ -757,7 +765,7 @@ script_new :: proc(name: string, lang_flag: string) {
 	// had_bin: was <data>/bin on PATH before this script's bin entry?
 	had_bin := len(script_path_value()) > 0
 	ok := script_build(s)
-	script_sync_path(had_bin)
+	script_sync_path_or_exit(had_bin)
 	if !ok {
 		wayu_exit(EXIT_FAILURE)
 	}
@@ -864,12 +872,12 @@ script_remove :: proc(name: string) {
 		wayu_exit(EXIT_IOERR)
 	}
 	had_bin := len(script_path_value()) > 0
-	defer script_sync_path(had_bin)
 	script_remove_bin(s.name)
 	if err := os.remove(s.source); err != nil {
 		print_error_simple("Failed to remove %s", s.source)
 		wayu_exit(EXIT_IOERR)
 	}
+	script_sync_path_or_exit(had_bin)
 	print_success("Removed script: %s", name)
 }
 
@@ -897,12 +905,12 @@ script_remove_dangling_bin :: proc(name: string) {
 	config_lock_acquire_or_exit()
 	defer config_lock_release()
 	had_bin := len(script_path_value()) > 0
-	defer script_sync_path(had_bin)
 	script_remove_bin(name)
 	if script_bin_entry_exists(name) {
 		print_error_simple("Failed to remove %s", bin)
 		wayu_exit(EXIT_IOERR)
 	}
+	script_sync_path_or_exit(had_bin)
 	print_success("Removed %s (no script source)", bin)
 }
 
@@ -945,7 +953,6 @@ doctor_fix_script_bins :: proc() -> (ok: bool, message: string) {
 	}
 	defer config_lock_release()
 	had_bin := len(script_path_value()) > 0
-	defer script_sync_path(had_bin)
 	removed, failed := 0, 0
 	for name in script_dangling_bins() {
 		script_remove_bin(name)
@@ -955,6 +962,10 @@ doctor_fix_script_bins :: proc() -> (ok: bool, message: string) {
 			removed += 1
 		}
 	}
+	if !script_sync_path(had_bin) {
+		return false, PUBLISH_SAVED_ERROR
+	}
+
 	if failed > 0 {
 		return false, fmt.tprintf(
 			"Removed %d bin/ entries; %d could not be removed",
@@ -976,7 +987,7 @@ script_build_command :: proc(names: []string) {
 			config_lock_acquire_or_exit()
 			had_bin := len(script_path_value()) > 0
 			ok := script_build(s)
-			script_sync_path(had_bin)
+			script_sync_path_or_exit(had_bin)
 			config_lock_release()
 			if !ok {
 				wayu_exit(EXIT_FAILURE)
@@ -1001,7 +1012,7 @@ script_build_command :: proc(names: []string) {
 	defer config_lock_release()
 	had_bin := len(script_path_value()) > 0
 	built, failed := scripts_build_stale()
-	script_sync_path(had_bin)
+	script_sync_path_or_exit(had_bin)
 	if built == 0 && failed == 0 {
 		print_info("All scripts are up to date")
 	}
@@ -1354,7 +1365,7 @@ script_import :: proc(paths: []string, keep_original: bool, allow_build := false
 		}
 	}
 
-	script_sync_path(had_bin)
+	script_sync_path_or_exit(had_bin)
 	fmt.println()
 	fmt.printfln("Imported %d, skipped %d", imported, skipped)
 	for plan in plans {

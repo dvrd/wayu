@@ -282,7 +282,11 @@ template_finish :: proc(title: string) {
 		)
 		return
 	}
-	regenerate_init_core_silently()
+	if !regenerate_init_core_silently() {
+		print_error_simple("%s", PUBLISH_SAVED_ERROR)
+		wayu_exit(EXIT_IOERR)
+	}
+
 	print_success(
 		"%s template applied: %d added, %d kept. Reload your shell to activate.",
 		title,

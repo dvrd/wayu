@@ -1360,7 +1360,9 @@ doctor_fix_paths :: proc(alloc: mem.Allocator) -> (removed: int, ok: bool, messa
 	case:
 		return 0, false, "Could not back up or write entries.json"
 	}
-	regenerate_init_core_silently()
+	if !regenerate_init_core_silently() {
+		return removed, false, PUBLISH_SAVED_ERROR
+	}
 
 	return removed, true, fmt.aprintf(
 		"Removed %d missing/duplicate PATH entr%s",

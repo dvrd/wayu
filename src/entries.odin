@@ -1063,7 +1063,10 @@ entries_entry_upsert :: proc(kind: EntryKind, name, value, noun: string) -> (boo
 		return true, ""
 	}
 
-	regenerate_init_core_silently()
+	if !regenerate_init_core_silently() {
+		return false, strings.clone(PUBLISH_SAVED_ERROR)
+	}
+
 	print_success("%s %s: %s", noun, "updated" if existed else "added", name)
 	return true, ""
 }
@@ -1088,7 +1091,10 @@ entries_entry_remove :: proc(kind: EntryKind, name, noun: string) -> (bool, stri
 		return true, ""
 	}
 
-	regenerate_init_core_silently()
+	if !regenerate_init_core_silently() {
+		return false, strings.clone(PUBLISH_SAVED_ERROR)
+	}
+
 	print_success("%s removed: %s", noun, name)
 	return true, ""
 }

@@ -70,7 +70,7 @@ config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, PATH_FILE)
 defer delete(config_file)
 
 content, read_ok := safe_read_file(config_file)
-if !read_ok { os.exit(EXIT_IOERR) }
+if !read_ok { wayu_exit(EXIT_IOERR) }
 defer delete(content)
 ```
 
@@ -177,10 +177,10 @@ print_error_with_context(.FILE_NOT_FOUND, file_path)
 
 ```odin
 print_error("Bad input: %s", name)
-os.exit(EXIT_DATAERR)  // 65
+wayu_exit(EXIT_DATAERR)  // 65
 ```
 
-Always: `print_error*()` then `os.exit(EXIT_*)` as two separate calls.
+Always: `print_error*()` then `wayu_exit(EXIT_*)` as two separate calls.
 
 | Code | Constant | When |
 |------|----------|------|
@@ -201,10 +201,10 @@ Additional codes defined but rarely used: `EXIT_UNAVAILABLE` (69), `EXIT_SOFTWAR
 ```odin
 // These handle error printing internally — callers just check ok
 content, read_ok := safe_read_file(config_file)
-if !read_ok { os.exit(EXIT_IOERR) }
+if !read_ok { wayu_exit(EXIT_IOERR) }
 
 write_ok := safe_write_file(config_file, transmute([]byte)new_content)
-if !write_ok { os.exit(EXIT_IOERR) }
+if !write_ok { wayu_exit(EXIT_IOERR) }
 ```
 
 ### CLI usage errors
@@ -248,20 +248,20 @@ config_file := get_config_file_with_fallback(spec.file_name, DETECTED_SHELL)
 defer delete(config_file)
 
 content, read_ok := safe_read_file(config_file)
-if !read_ok { os.exit(EXIT_IOERR) }
+if !read_ok { wayu_exit(EXIT_IOERR) }
 defer delete(content)
 
 lines := strings.split(string(content), "\n", context.temp_allocator)
 
 // ... modify lines ...
 
-if !create_backup_cli(config_file) { os.exit(EXIT_IOERR) }
+if !create_backup_cli(config_file) { wayu_exit(EXIT_IOERR) }
 
 final_content := strings.join(lines, "\n")
 defer delete(final_content)
 
 write_ok := safe_write_file(config_file, transmute([]byte)final_content)
-if !write_ok { os.exit(EXIT_IOERR) }
+if !write_ok { wayu_exit(EXIT_IOERR) }
 ```
 
 ### Style system — value-copy builders
@@ -324,8 +324,9 @@ if DRY_RUN {
 @(test)
 test_create_backup_existing_file :: proc(t: ^testing.T) {
     // Setup
-    fake_file := "/tmp/wayu-test-file"
+    fake_file := test_tmp("backup-source")
     defer os.remove(fake_file)
+
     os.write_entire_file(fake_file, transmute([]byte)"test content")
 
     // Act
@@ -341,7 +342,7 @@ test_create_backup_existing_file :: proc(t: ^testing.T) {
 - `@(test)` annotation on every test proc
 - `testing.expect(t, condition, message)` for assertions
 - `testing.expect_value(t, got, expected)` for value comparisons
-- Test data in per-process `/tmp/wayu-test-*-<pid>` paths (tests run concurrently across worktrees)
+- Test data in per-process directories via `test_tmp(name)` (tests run concurrently across worktrees)
 - Cleanup with `defer os.remove()` or `defer delete()`
 
 ### Integration tests (Odin)
@@ -377,7 +378,7 @@ Component rendering tested via `wayu -c=<component>` CLI flag.
 - Use `context.temp_allocator` for transient `strings.split()` calls
 - Use adaptive color getters (`get_primary()`, `get_success()`) not raw ANSI codes
 - Use `strings.clone()` when storing data that outlives its source
-- Follow the `print_error() + os.exit(EXIT_*)` pattern
+- Follow the `print_error() + wayu_exit(EXIT_*)` pattern
 - Test in both Zsh and Bash when modifying shell-specific code
 - Add `@(test)` annotation to all test procs
 

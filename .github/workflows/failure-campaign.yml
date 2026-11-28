@@ -3,6 +3,11 @@ name: Failure campaign and candidate trial
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      seeds:
+        description: Space-separated seeds for publication recovery
+        default: '17 29 43 97'
+        type: string
 
 permissions:
   contents: read
@@ -37,6 +42,17 @@ jobs:
         odin build build -out:build_it
         ./build_it build
         mkdir -p evidence
+    - name: Replay interrupted publication
+      shell: bash
+      env:
+        WAYU_BIN: bin/wayu
+        SEEDS: ${{ inputs.seeds || '17' }}
+      run: |
+        read -ra seeds <<< "$SEEDS"
+        for seed in "${seeds[@]}"; do
+          [[ "$seed" =~ ^[0-9]+$ ]]
+          ruby tests/integration/test_publication_recovery.rb --all-phases --seed "$seed" 2>&1 | tee "evidence/replay-$seed.txt"
+        done
     - name: Filesystem and process failures (macOS)
       if: runner.os == 'macOS'
       shell: bash

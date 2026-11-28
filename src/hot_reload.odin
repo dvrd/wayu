@@ -173,7 +173,9 @@ hot_reload_stop :: proc() {
 
 // Trigger manual regeneration
 hot_reload_regenerate :: proc() {
-	regenerate_static()
+	if !regenerate_static() {
+		wayu_exit(EXIT_IOERR)
+	}
 }
 
 // ============================================================================
@@ -321,11 +323,36 @@ print_watch_help :: proc() {
 // Watcher Thread
 // ============================================================================
 
+Watch_Debounce :: struct {
+	last:             time.Tick,
+	pending, secrets: bool,
+}
+
+watch_debounce_note :: proc(d: ^Watch_Debounce, tick: time.Tick, secrets: bool) {
+	d.last = tick
+	d.pending = true
+	d.secrets = d.secrets || secrets
+}
+
+watch_debounce_take :: proc(
+	d: ^Watch_Debounce,
+	tick: time.Tick,
+	delay_ms: int,
+) -> (
+	regenerate, invalidate_secrets: bool,
+) {
+	if !d.pending || time.tick_diff(d.last, tick) < time.Duration(delay_ms) * time.Millisecond {
+		return
+	}
+
+	invalidate_secrets = d.secrets
+	d^ = {}
+	return true, invalidate_secrets
+}
+
 // Thread procedure for file watching
 watcher_thread_proc :: proc() {
-	debounce_timer: time.Time
-	pending_regen := false
-	pending_secrets := false
+	debounce: Watch_Debounce
 
 	for {
 		// Check stop signal
@@ -346,27 +373,18 @@ watcher_thread_proc :: proc() {
 			delete(changed_files)
 		}
 
-		if len(changed_files) > 0 {
-			// Files changed - start/reset debounce timer
-			debounce_timer = time.now()
-			pending_regen = true
-
-			for file in changed_files {
-				print_info("Change detected: %s", file)
-				if watch_path_is_secrets(file) do pending_secrets = true
-			}
+		now := time.tick_now()
+		for file in changed_files {
+			print_info("Change detected: %s", file)
+			watch_debounce_note(&debounce, now, watch_path_is_secrets(file))
 		}
 
-		// Check if debounce period elapsed
-		if pending_regen {
-			elapsed := time.diff(debounce_timer, time.now())
-			if elapsed >= time.Duration(g_watcher.debounce_ms) * time.Millisecond {
-				// New values: drop the session cache so shells re-decrypt.
-				if pending_secrets do secrets_cache_invalidate()
-				regenerate_static()
-				pending_regen = false
-				pending_secrets = false
+		if ready, secrets := watch_debounce_take(&debounce, now, g_watcher.debounce_ms); ready {
+			if secrets {
+				secrets_cache_invalidate()
 			}
+
+			_ = regenerate_static()
 		}
 
 		// This thread polls forever: os.stat and regeneration allocate from
@@ -469,33 +487,37 @@ check_file_changes :: proc() -> []string {
 // <data>/init.<ext> again).
 // The old implementation wrote an orphaned wayu_static.<ext> that nothing
 // sourced and crashed on missing/malformed TOML.
-regenerate_static :: proc() {
+regenerate_static :: proc() -> bool {
 	print_info("Regenerating shell init files...")
 
 	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(toml_path)
 	if !os.exists(toml_path) {
 		print_warning("No wayu.toml found at %s - nothing to regenerate", toml_path)
-		return
+		return true
 	}
 
 	// Under the config lock like `wayu script build`: both build into the
 	// same bin/.NAME.build temp file and write the same hash files.
 	if !config_lock_acquire() {
 		print_warning("Could not take the config lock; nothing regenerated")
-		return
+		return false
 	}
 	// Scripts first: a first built script puts <data>/bin on PATH.
 	if built, failed := scripts_build_stale(quiet = true); built > 0 || failed > 0 {
 		print_info("Scripts rebuilt: %d, failed: %d", built, failed)
 	}
-	regenerate_init_core_silently()
+	published := regenerate_init_core_silently()
 	config_lock_release()
+	if !published {
+		print_error_simple("Correct the runtime path above and run wayu build."); return false
+	}
 
 	core_path := fmt.aprintf("%s/core.%s", wayu.data, get_shell_extension(wayu.shell))
 	defer delete(core_path)
 	print_success("Shell init files regenerated")
 	fmt.printfln("  File: %s", core_path)
+	return true
 }
 
 // Default callback for file changes

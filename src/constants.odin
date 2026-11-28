@@ -159,7 +159,10 @@ toml_constant_remove :: proc(name: string) -> (bool, string) {
 	if _, ok, err := const_remove_secret(name); !ok {
 		return false, strings.clone(err)
 	}
-	regenerate_init_core_silently()
+	if !regenerate_init_core_silently() {
+		return false, strings.clone(PUBLISH_SAVED_ERROR)
+	}
+
 	print_success("Secret removed: %s", name)
 	return true, ""
 }

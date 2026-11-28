@@ -136,7 +136,10 @@ plugin_restore :: proc() -> (int, string) {
 			return EXIT_IOERR, "Plugins restored, but loader generation failed; run: wayu build"
 		}
 	}
-	regenerate_init_core_silently()
+	if !regenerate_init_core_silently() {
+		return EXIT_IOERR, PUBLISH_SAVED_ERROR
+	}
+
 	print_success("Plugin restore complete; open a new shell")
 	return EXIT_SUCCESS, ""
 }

@@ -7,6 +7,7 @@ package test_wayu
 import wayu "../../src"
 import "core:os"
 import "core:testing"
+import "core:time"
 
 @(private = "file")
 changed_has :: proc(changed: []string, path: string) -> bool {
@@ -78,4 +79,26 @@ test_watch_detects_created_and_deleted_files :: proc(t: ^testing.T) {
 	gone := wayu.check_file_changes()
 	testing.expectf(t, changed_has(gone, later) && len(gone) == 1, "deleted: %v", gone)
 	free_changed(gone)
+}
+
+@(test)
+test_watch_debounce_monotonic :: proc(t: ^testing.T) {
+	state: wayu.Watch_Debounce
+	first := time.tick_now()
+	second := time.tick_add(first, 499 * time.Millisecond)
+	wayu.watch_debounce_note(&state, first, true)
+	early, _ := wayu.watch_debounce_take(&state, second, 500)
+	testing.expect(t, !early)
+	wayu.watch_debounce_note(&state, second, false)
+	reset, _ := wayu.watch_debounce_take(&state, time.tick_add(first, 500 * time.Millisecond), 500)
+	testing.expect(t, !reset)
+	// Only the elapsed monotonic interval enters the decision.
+	ready, secrets := wayu.watch_debounce_take(
+		&state,
+		time.tick_add(second, 500 * time.Millisecond),
+		500,
+	)
+	testing.expect(t, ready && secrets)
+	again, _ := wayu.watch_debounce_take(&state, time.tick_add(second, time.Hour), 500)
+	testing.expect(t, !again)
 }

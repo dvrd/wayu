@@ -8,8 +8,58 @@ import "core:os"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
-// Best-effort write for generated init files. Logs a warning on failure
-// instead of silently swallowing the error. Atomic, so a shell starting
+Publication_State :: enum {
+	Skipped,
+	Current,
+	Written,
+	Failed,
+}
+
+Runtime_File :: enum {
+	Core,
+	Path_Sync,
+	Init,
+	Turbo,
+	Plugins,
+	Plugin_Config,
+}
+
+Shell_Publication :: [Runtime_File]Publication_State
+
+PUBLISH_SAVED_ERROR :: "I/O error: changes saved, but shell runtime files could not be refreshed. Correct the path above and run wayu build."
+
+publication_report :: proc(shell: ShellType, files: Shell_Publication) -> bool {
+	ext := get_shell_extension(shell)
+	ok := true
+	for state, file in files {
+		if state != .Failed {
+			continue
+		}
+
+		path: string
+		switch file {
+		case .Core:
+			path = fmt.tprintf("core.%s", ext)
+		case .Path_Sync:
+			path = fmt.tprintf("path_sync.%s", ext)
+		case .Init:
+			path = fmt.tprintf("init.%s", ext)
+		case .Turbo:
+			path = fmt.tprintf("turbo.%s", ext)
+		case .Plugins:
+			path = fmt.tprintf("plugins.%s", ext)
+		case .Plugin_Config:
+			path = "plugins/config.zsh"
+		}
+
+		fmt.eprintfln("wayu: could not refresh %s runtime file %s/%s", ext, wayu.data, path)
+		ok = false
+	}
+
+	return ok
+}
+
+// Replacement is atomic, so a shell starting
 // mid-regeneration never sources a truncated file. Generated core.<ext>
 // files embed [env] values, so they are owner-only (0600); the chmod also
 // repairs files created 0644 by older versions (OKAMI-206).
@@ -18,7 +68,11 @@ import "core:strings"
 // seconds. So: unchanged content is not rewritten (a valid .zwc stays
 // usable), and a rewrite deletes the .zwc — otherwise a digest compiled in
 // the same second from the previous content would shadow the new file.
-write_init_file :: proc(path, content: string) {
+write_init_file :: proc(path, content: string) -> Publication_State {
+	if os.is_dir(path) {
+		return .Failed
+	}
+
 	zwc := fmt.tprintf("%s.zwc", path)
 	if old, err := os.read_entire_file(path, context.allocator); err == nil {
 		same := string(old) == content
@@ -28,14 +82,15 @@ write_init_file :: proc(path, content: string) {
 			if os.exists(zwc) {
 				restrict_file_mode(zwc)
 			}
-			return
+			return .Current
 		}
 	}
 	if !replace_zsh_source(path, content) {
-		print_warning("Failed to write %s", path)
-		return
+		return .Failed
 	}
+
 	restrict_file_mode(path)
+	return .Written
 }
 
 // Atomically replace a file zsh may load through a .zwc digest, deleting the
@@ -46,11 +101,17 @@ write_init_file :: proc(path, content: string) {
 // starting in the same second sourced the old digest, and a background
 // install racing the rewrite could land after the delete (OKAMI-293).
 replace_zsh_source :: proc(path, content: string) -> bool {
-	locked := config_lock_acquire()
-	defer if locked {
-		config_lock_release()
+	if !config_lock_acquire() {
+		return false
 	}
-	_ = os.remove(fmt.tprintf("%s.zwc", path))
+
+	defer config_lock_release()
+
+	if err := os.remove(fmt.tprintf("%s.zwc", path));
+	   err != nil && err != os.General_Error.Not_Exist {
+		return false
+	}
+
 	return write_file_atomic(path, transmute([]byte)content) == nil
 }
 
@@ -225,7 +286,7 @@ shells_to_generate :: proc() -> (out: [4]ShellType, n: int) {
 // also plugins.<ext> from plugins.json (`wayu build`, `wayu init`;
 // OKAMI-309), else only the zsh plugin keybindings (plugins/config.zsh).
 @(private = "file")
-generate_runtime_files_for_active_shell :: proc(plugins := false) -> (plugins_ok: bool) {
+generate_runtime_files_for_active_shell :: proc(plugins := false) -> (files: Shell_Publication) {
 	// Generators use the temp arena for quoting; roll it back per shell so
 	// regenerating several shells doesn't multiply temp usage.
 	has_arena := wayu.temp_arena != nil
@@ -237,17 +298,17 @@ generate_runtime_files_for_active_shell :: proc(plugins := false) -> (plugins_ok
 		virtual.arena_temp_end(arena_mark)
 	}
 	if wayu.shell == .FISH {
-		generate_core_init_fish()
+		generate_core_init_fish(&files)
 	} else {
-		generate_core_init_v2()
+		generate_core_init_v2(&files)
 	}
 	if plugins {
-		plugins_ok = generate_plugins_file(wayu.shell)
-	} else {
-		plugins_ok = generate_plugins_runtime_config(wayu.shell)
+		_ = generate_plugins_file(wayu.shell, &files)
+	} else if wayu.shell == .ZSH {
+		files[.Plugin_Config] = .Written if generate_plugins_runtime_config(.ZSH) else .Failed
 	}
-	// Keep init.{ext} in sync with the current orchestrator template.
-	sync_init_orchestrator()
+
+	files[.Init] = sync_init_orchestrator()
 	return
 }
 
@@ -255,30 +316,29 @@ generate_runtime_files_for_active_shell :: proc(plugins := false) -> (plugins_ok
 // mutation (path/alias/constants add/remove, template apply, hot reload),
 // for every initialized shell (see shells_to_generate).
 //
-// Unlike generate_optimized_init_all this version emits no log output so it
-// can be called on every CLI write without adding noise. Missing wayu.toml
-// or empty configs are treated as no-ops; errors during generation are
-// swallowed because the CLI already printed the user-visible success and
-// we don't want a secondary "regen failed" line to confuse things.
-regenerate_init_core_silently :: proc() {
-	if wayu.dry_run do return
+regenerate_init_core_silently :: proc() -> bool {
+	if wayu.dry_run do return true
 
 	// Only makes sense when there's a wayu.toml to read from - without it
 	// the generators would just write empty files.
 	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(toml_path)
-	if !os.exists(toml_path) do return
+	if !os.exists(toml_path) do return true
 
 	// Invalidate stale cache BEFORE generation so generators read the
 	// current wayu.toml.
 	clear_toml_content_cache()
 
+	ok := true
 	shells, n := shells_to_generate()
 	saved_shell, saved_ext := wayu.shell, wayu.shell_ext
 	for s in shells[:n] {
 		wayu.shell = s
 		wayu.shell_ext = get_shell_extension(s)
-		_ = generate_runtime_files_for_active_shell()
+		files := generate_runtime_files_for_active_shell()
+		if !publication_report(s, files) {
+			ok = false
+		}
 	}
 	wayu.shell, wayu.shell_ext = saved_shell, saved_ext
 
@@ -289,6 +349,7 @@ regenerate_init_core_silently :: proc() {
 	// without this the bytecode speedup was gone after the first mutation
 	// until the next explicit `wayu init` / `build`.
 	flush_zcompile_batch()
+	return ok
 }
 
 // fnv64a of the init.{zsh,bash,fish} templates this wayu writes and of the
@@ -321,32 +382,33 @@ is_known_init_template :: proc(content: string) -> bool {
 // fixes (e.g. the fast path that double-sourced extra/tools). The old file is
 // backed up first. A file the user edited is never rewritten (OKAMI-235): a
 // warning on stderr says how to adopt the new template.
-sync_init_orchestrator :: proc() {
-	if wayu.dry_run do return
+sync_init_orchestrator :: proc() -> Publication_State {
+	if wayu.dry_run do return .Skipped
 	path := fmt.aprintf("%s/init.%s", wayu.data, get_shell_extension(wayu.shell))
 	defer delete(path)
-	if !os.exists(path) do return
+	if !os.exists(path) do return .Skipped
+	if !os.is_file(path) do return .Failed
 
 	template := get_init_template(wayu.shell)
 	data, ok := safe_read_file(path)
-	if !ok do return
+	if !ok do return .Failed
 	defer delete(data)
 	current := string(data)
-	if current == template do return
-	if !strings.contains(current, "Wayu Shell Initialization") do return
+	if current == template do return .Current
+	if !strings.contains(current, "Wayu Shell Initialization") do return .Skipped
 
 	if !is_known_init_template(current) {
 		warn_customized_init(path, current)
-		return
+		return .Skipped
 	}
 	backup_path, backed_up := create_backup(path)
 	if !backed_up {
 		fmt.eprintfln("wayu: warning: could not back up %s; leaving it unchanged", path)
-		return
+		return .Failed
 	}
 	delete(backup_path)
 	cleanup_old_backups(path, 5)
-	write_init_file(path, template)
+	return write_init_file(path, template)
 }
 
 // Tell the user once per distinct edited content that their init.{ext} is
@@ -373,7 +435,8 @@ warn_customized_init :: proc(path, current: string) {
 // initialized shell (see shells_to_generate), printing what was written as
 // `#` comments (harmless if stdout is captured into a shell). `plugins`:
 // also regenerate plugins.<ext> from plugins.json.
-generate_optimized_init_all :: proc(plugins := true) {
+generate_optimized_init_all :: proc(plugins := true) -> bool {
+	failed: [ShellType]bool
 	shells, n := shells_to_generate()
 
 	if wayu.dry_run {
@@ -383,7 +446,7 @@ generate_optimized_init_all :: proc(plugins := true) {
 				fmt.printfln("#   %s/%s.%s", wayu.data, base, get_shell_extension(s))
 			}
 		}
-		return
+		return true
 	}
 
 	saved_shell, saved_ext := wayu.shell, wayu.shell_ext
@@ -391,9 +454,7 @@ generate_optimized_init_all :: proc(plugins := true) {
 	for s in shells[:n] {
 		wayu.shell = s
 		wayu.shell_ext = get_shell_extension(s)
-		if !generate_runtime_files_for_active_shell(plugins) {
-			print_warning("Failed to generate plugins.%s", wayu.shell_ext)
-		}
+		failed[s] = !publication_report(s, generate_runtime_files_for_active_shell(plugins))
 	}
 	wayu.shell, wayu.shell_ext = saved_shell, saved_ext
 
@@ -402,6 +463,10 @@ generate_optimized_init_all :: proc(plugins := true) {
 	flush_zcompile_batch()
 
 	for s in shells[:n] {
+		if failed[s] {
+			continue
+		}
+
 		ext := get_shell_extension(s)
 		any_zsh = any_zsh || s == .ZSH
 		fmt.println("# Init files generated:")
@@ -412,6 +477,13 @@ generate_optimized_init_all :: proc(plugins := true) {
 		fmt.println("#")
 		fmt.println("# core.zsh is compiled to bytecode (core.zsh.zwc) in the background.")
 	}
+	for bad in failed {
+		if bad {
+			return false
+		}
+	}
+
+	return true
 }
 
 // Emit `export NAME="value"` lines for [env]. Values keep $VAR expansion,
@@ -1116,13 +1188,13 @@ emit_path_apply_call_fish :: proc(b: ^strings.Builder, values: []string, sig: u6
 // [paths] values, so an unchanged list never triggers a resync), line 2
 // applies the list (values expanded by the shell, see
 // path_value_shell_word). Returns the file path; the caller deletes it.
-write_path_sync_file :: proc() -> (file: string) {
+write_path_sync_file :: proc() -> Publication_State {
 	values, sig := read_path_sync_values()
 	defer {
 		for v in values {delete(v)}
 		delete(values)
 	}
-	file = fmt.aprintf("%s/path_sync.%s", wayu.data, get_shell_extension(wayu.shell))
+	file := fmt.tprintf("%s/path_sync.%s", wayu.data, get_shell_extension(wayu.shell))
 
 	b: strings.Builder
 	strings.builder_init(&b)
@@ -1136,9 +1208,10 @@ write_path_sync_file :: proc() -> (file: string) {
 	// Atomic replace: open shells read this file from a prompt hook, and a
 	// half-written list would make them drop PATH entries.
 	if write_file_atomic(file, transmute([]byte)strings.to_string(b)) != nil {
-		print_warning("Failed to write %s", file)
+		return .Failed
 	}
-	return
+
+	return .Written
 }
 
 // Export the WAYU_CONFIG_DIR / WAYU_DATA_DIR this core was generated with
@@ -1189,20 +1262,21 @@ emit_dir_overrides :: proc(b: ^strings.Builder, fish: bool) {
 // zsh/bash: write core.<ext> — the ONE generated file init.<ext> sources —
 // and path_sync.<ext> (re-read by the live PATH sync prompt hook). An
 // existing turbo.<ext> gets the same content (`wayu export --turbo`).
-generate_core_init_v2 :: proc() {
+generate_core_init_v2 :: proc(files: ^Shell_Publication) {
 	shell_ext := get_shell_extension(wayu.shell)
-	sync_file := write_path_sync_file()
-	delete(sync_file)
+	files[.Path_Sync] = write_path_sync_file()
 
 	content := build_core_content()
 	defer delete(content)
 	path := fmt.tprintf("%s/core.%s", wayu.data, shell_ext)
-	write_init_file(path, content)
-	zcompile_file(path)
+	files[.Core] = write_init_file(path, content)
+	if files[.Core] != .Failed {
+		zcompile_file(path)
+	}
 
 	turbo := fmt.tprintf("%s/turbo.%s", wayu.data, shell_ext)
 	if os.exists(turbo) {
-		write_turbo_file(turbo, content)
+		files[.Turbo] = write_turbo_file(turbo, content)
 	}
 }
 
@@ -3067,21 +3141,20 @@ read_alias_values :: proc() -> [dynamic]AliasEntry {
 // no zsh-defer in fish: "deferred" tools just run after the plugins.
 // init.fish sources tools.fish then extra.fish after core.fish.
 // An existing turbo.fish is rewritten too (`wayu export --turbo`).
-generate_core_init_fish :: proc() {
+generate_core_init_fish :: proc(files: ^Shell_Publication) {
 	path := fmt.aprintf("%s/core.fish", wayu.data)
 	defer delete(path)
-	sync_file := write_path_sync_file()
-	defer delete(sync_file)
+	files[.Path_Sync] = write_path_sync_file()
 
 	content := build_core_content_fish()
 	defer delete(content)
-	write_init_file(path, content)
+	files[.Core] = write_init_file(path, content)
 
 	turbo := fmt.tprintf("%s/turbo.fish", wayu.data)
 	if os.exists(turbo) {
 		turbo_content := fish_turbo_content(content)
 		defer delete(turbo_content)
-		write_turbo_file(turbo, turbo_content)
+		files[.Turbo] = write_turbo_file(turbo, turbo_content)
 	}
 }
 

@@ -629,7 +629,10 @@ restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 	live_toml := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(live_toml)
 	if file_path == live_toml || file_path == entries_file_path() {
-		regenerate_init_core_silently()
+		if !regenerate_init_core_silently() {
+			print_error_simple("%s", PUBLISH_SAVED_ERROR)
+			wayu_exit(EXIT_IOERR)
+		}
 	}
 
 	print_success("Restored from backup: %s", chosen.backup_file)

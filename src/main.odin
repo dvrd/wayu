@@ -514,13 +514,15 @@ handle_init_command :: proc() {
 	fmt.println()
 
 	// Initialize shell-specific config files
-	init_shell_configs(shell, ext)
+	if !init_shell_configs(shell, ext) {
+		wayu_exit(EXIT_IOERR)
+	}
 
 	fmt.println()
 
 	// Generate optimized init files with dynamic [env] exports
 	print_info("Generating optimized shell init files...")
-	generate_optimized_init_all()
+	publish_host_runtime()
 	fmt.println()
 
 	// Update shell RC file
@@ -566,7 +568,8 @@ print_init_dry_run :: proc(shell: ShellType, ext: string) {
 	fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
 }
 
-init_shell_configs :: proc(shell: ShellType, ext: string) {
+init_shell_configs :: proc(shell: ShellType, ext: string) -> bool {
+	ok := true
 	created_files := 0
 
 	config_files := []struct {
@@ -590,8 +593,12 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 				print_success("Created config file: %s", config_file)
 				created_files += 1
 			} else {
+				ok = false
 				print_error_simple("Failed to create config file: %s", config_file)
 			}
+		} else if !os.is_file(config_file) {
+			print_error_simple("Expected a regular file at %s", config_file)
+			ok = false
 		} else {
 			print_info("Config file already exists: %s", config_file)
 		}
@@ -607,8 +614,12 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 			print_success("Created config file: %s", alias_sources_file)
 			created_files += 1
 		} else {
+			ok = false
 			print_error_simple("Failed to create config file: %s", alias_sources_file)
 		}
+	} else if !os.is_file(alias_sources_file) {
+		print_error_simple("Expected a regular file at %s", alias_sources_file)
+		ok = false
 	} else {
 		print_info("Config file already exists: %s", alias_sources_file)
 	}
@@ -626,8 +637,12 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 			print_success("Created config file: %s", toml_file)
 			created_files += 1
 		} else {
+			ok = false
 			print_error_simple("Failed to create config file: %s", toml_file)
 		}
+	} else if !os.is_file(toml_file) {
+		print_error_simple("Expected a regular file at %s", toml_file)
+		ok = false
 	} else {
 		print_info("Config file already exists: %s", toml_file)
 	}
@@ -636,9 +651,11 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	// after five "Created" lines, OKAMI-357).
 	if created_files > 0 {
 		print_success("Created %d config file(s)", created_files)
-	} else {
+	} else if ok {
 		print_info("All config files already exist")
 	}
+
+	return ok
 }
 
 update_shell_rc :: proc(shell: ShellType, ext: string) {
@@ -1002,6 +1019,10 @@ handle_build_command :: proc(action: Action) {
 		}
 	}
 
+	publish_host_runtime()
+}
+
+publish_host_runtime :: proc() {
 	// plugins.json is checked once: an invalid file (error printed) keeps
 	// every plugins.<ext> as it is, the rest is still regenerated (PATH
 	// sync keeps working), and build exits 78 (OKAMI-309).
@@ -1015,7 +1036,7 @@ handle_build_command :: proc(action: Action) {
 	plugins_cfg, plugins_ok := read_plugin_config_json()
 	cleanup_plugin_config_json(&plugins_cfg)
 
-	generate_optimized_init_all(plugins = plugins_ok)
+	published := generate_optimized_init_all(plugins = plugins_ok)
 	config_lock_release()
 	fmt.println()
 	if !plugins_ok {
@@ -1024,6 +1045,11 @@ handle_build_command :: proc(action: Action) {
 			wayu.data,
 		)
 		wayu_exit(EXIT_CONFIG)
+	}
+
+	if !published {
+		print_error_simple("Correct the runtime path above and run wayu build.")
+		wayu_exit(EXIT_IOERR)
 	}
 }
 // Golden file directory

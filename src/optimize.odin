@@ -1745,11 +1745,14 @@ handle_optimize_command :: proc(action: Action, args: []string) {
 	if !ok {
 		print_error_simple("%s", err)
 		if moved > 0 {
-			regenerate_init_core_silently()
+			_ = regenerate_init_core_silently()
 		}
 		wayu_exit(EXIT_IOERR)
 	}
-	regenerate_init_core_silently()
+	if !regenerate_init_core_silently() {
+		print_error_simple("%s", PUBLISH_SAVED_ERROR); wayu_exit(EXIT_IOERR)
+	}
+
 	optimize_touch_stamp()
 	print_success(
 		"Moved %d line%s into wayu; open a new shell to use them",
@@ -1922,7 +1925,9 @@ optimize_notify :: proc() {
 	plan.files = kept
 	moved, aok, err := optimize_apply(&plan, quiet = true)
 	if moved > 0 {
-		regenerate_init_core_silently()
+		if !regenerate_init_core_silently() {
+			fmt.eprintln(PUBLISH_SAVED_ERROR); return
+		}
 	}
 	if !aok {
 		fmt.eprintfln("wayu: auto_optimize: %s", err)
@@ -2201,7 +2206,10 @@ handle_completions_fpath :: proc(args: []string) {
 		if !entries_save(&store) {
 			wayu_exit(EXIT_IOERR)
 		}
-		regenerate_init_core_silently()
+		if !regenerate_init_core_silently() {
+			print_error_simple("%s", PUBLISH_SAVED_ERROR); wayu_exit(EXIT_IOERR)
+		}
+
 		print_success(
 			"%s %s (zsh: new shells put it on fpath before compinit)",
 			"Added" if sub == "add" else "Removed",
@@ -2314,7 +2322,9 @@ doctor_fix_rc_optimize :: proc() -> (ok: bool, message: string) {
 	}
 	moved, aok, aerr := optimize_apply(&plan)
 	if moved > 0 {
-		regenerate_init_core_silently()
+		if !regenerate_init_core_silently() {
+			return false, PUBLISH_SAVED_ERROR
+		}
 	}
 	if !aok {
 		return false, aerr

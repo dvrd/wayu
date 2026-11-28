@@ -93,10 +93,11 @@ handle_path_command :: proc(action: Action, args: []string, portable := false) {
 		// NOOP: already present (warning printed). Dry-run: preview printed.
 		// Neither changed anything, so no regen, no success line, no hook.
 		changed := res == .OK && !wayu.dry_run
-		if changed {
-			regenerate_init_core_silently()
-		}
+		published := !changed || regenerate_init_core_silently()
 		config_lock_release()
+		if !published {
+			print_error_simple("%s", PUBLISH_SAVED_ERROR); wayu_exit(EXIT_IOERR)
+		}
 		exit_on_path_failure(res)
 		if !changed {
 			return
@@ -118,10 +119,11 @@ handle_path_command :: proc(action: Action, args: []string, portable := false) {
 		config_lock_acquire_or_exit()
 		res := path_remove_result(args[0])
 		changed := res == .OK && !wayu.dry_run
-		if changed {
-			regenerate_init_core_silently()
-		}
+		published := !changed || regenerate_init_core_silently()
 		config_lock_release()
+		if !published {
+			print_error_simple("%s", PUBLISH_SAVED_ERROR); wayu_exit(EXIT_IOERR)
+		}
 		exit_on_path_failure(res)
 		if !changed {
 			return
@@ -272,7 +274,11 @@ mutate_path_entries :: proc(spec: PathMutationSpec, entries: []StorePath, drop: 
 	// The survivors keep their order (PATH precedence).
 	exit_on_path_failure(path_store_drop(entries, drop))
 
-	regenerate_init_core_silently()
+	if !regenerate_init_core_silently() {
+		print_error_simple("%s", PUBLISH_SAVED_ERROR)
+		wayu_exit(EXIT_IOERR)
+	}
+
 	print_success(spec.success_fmt, count)
 }
 
